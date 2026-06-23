@@ -21,7 +21,7 @@ from ..controls.engine import (
     controle_variations,
     controle_rapprochement_bancaire,
     controle_soldes_anormaux_tresorerie,
-    # Partagés (nouveaux)
+    # Partagés
     controle_coherence_cycle,
     controle_soldes_anormaux,
     controle_montants_ronds,
@@ -30,6 +30,12 @@ from ..controls.engine import (
     controle_concentration_compte,
     controle_ratio_avoirs,
     controle_creances_echues,
+    # Nouveaux cycles
+    controle_amortissement_manquant,
+    controle_amort_excedent,
+    controle_ratio_charges_sociales,
+    controle_mensualite_paie,
+    controle_tva_coherence,
     # Utilitaires
     _group_rows,
     _filter_accounts,
@@ -1460,6 +1466,469 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
         "nb_exceptions": len(exceptions_total),
         "resultats": resultats_total,
         "exceptions": exceptions_enrichies,
+        "controles_ignores": ignores,
+    }
+
+
+# ─── Cycle Immobilisations ────────────────────────────────────────────────────
+
+@router.post("/projets/{projet_id}/controles/immobilisations")
+def run_controles_immobilisations(projet_id: str, body: dict = {}):
+    """Lance les 5 contrôles déterministes du cycle immobilisations."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+
+    cycles_couverts = projet.get("cycles_couverts") or []
+    if "immobilisations" not in cycles_couverts:
+        return {"nb_controles": 0, "nb_exceptions": 0, "resultats": [],
+                "exceptions": [], "cycle_ignore": True,
+                "message": "Cycle immobilisations non sélectionné au cadrage."}
+
+    donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve = \
+        _get_donnees_segmentees(db, projet_id)
+    if not donnees_all:
+        raise HTTPException(400, "Aucune donnée importée.")
+
+    seuil = float(projet.get("seuil_signification") or 0)
+    exercice = projet.get("exercice")
+    ci = _seuils_ci(db, projet_id, "immobilisations")
+    ci_facteur = ci["facteur"]
+    resultats_total, exceptions_total, ignores = [], [], []
+
+    PREFIXES_IMO_BRUT = ("20", "21", "22", "23", "24", "25", "26", "27")
+    PREFIXES_IMO_ALL = PREFIXES_IMO_BRUT + ("28",)
+
+    rows_pour_solde = rows_balance if rows_balance else (rows_gl if rows_gl else [])
+    rows_pour_mvt = rows_gl if rows_gl else (rows_balance if rows_balance else [])
+
+    def _skip(ref: str, raison: str):
+        ignores.append({"controle_ref": ref, "raison": raison})
+
+    def _check(ref: str) -> bool:
+        ok, msg = _preconditions_check(ref, ids_gl, ids_balance, ids_releve)
+        if not ok:
+            _skip(ref, msg)
+        return ok
+
+    # ── 1. IMO-GL-COHER ──
+    if _check("IMO-GL-COHER"):
+        ress, excs = controle_coherence_cycle(
+            projet_id, "IMO-GL-COHER", rows_gl, rows_balance, PREFIXES_IMO_ALL,
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 2. IMO-AMORTISSEMENT ──
+    if _check("IMO-AMORTISSEMENT"):
+        res, exc = controle_amortissement_manquant(projet_id, rows_pour_solde)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 3. IMO-AMORT-EXCEDENT ──
+    if _check("IMO-AMORT-EXCEDENT"):
+        res, exc = controle_amort_excedent(projet_id, rows_pour_solde)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 4. IMO-SOLDE-ANORMAL ──
+    if _check("IMO-SOLDE-ANORMAL"):
+        ress, excs = controle_soldes_anormaux(
+            projet_id, "IMO-SOLDE-ANORMAL",
+            rows_pour_solde, PREFIXES_IMO_BRUT, sens_normal="debit",
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 5. IMO-VARIATION ──
+    if seuil > 0 and _check("IMO-VARIATION"):
+        soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_IMO_ALL)
+        if soldes_n:
+            plan_imo = db.get_or_create_planification(projet_id)
+            n1_id_imo = plan_imo.get("balance_n1_fichier_id")
+            if n1_id_imo:
+                donnees_n1_imo = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_imo)]
+                rows_n1_imo = _group_rows(donnees_n1_imo) if donnees_n1_imo else []
+                soldes_n1_imo = _aggreger_soldes_nets(rows_n1_imo, PREFIXES_IMO_ALL)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_imo, seuil * ci_facteur, "IMO-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("IMO-VARIATION", "Balance N-1 non renseignée.")
+
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
+    for r in resultats_total:
+        db.save_resultat(r)
+    for e in exceptions_total:
+        db.save_exception(e)
+
+    db.log(projet_id, "transition_etat", {
+        "action": "controles_immobilisations",
+        "nb_resultats": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "nb_ignores": len(ignores),
+    })
+    _auto_interpreter(db, projet_id, projet, exceptions_total)
+
+    return {
+        "nb_controles": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "resultats": resultats_total,
+        "exceptions": db.list_exceptions(projet_id),
+        "controles_ignores": ignores,
+    }
+
+
+# ─── Cycle Stocks ─────────────────────────────────────────────────────────────
+
+@router.post("/projets/{projet_id}/controles/stocks")
+def run_controles_stocks(projet_id: str, body: dict = {}):
+    """Lance les 5 contrôles déterministes du cycle stocks."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+
+    cycles_couverts = projet.get("cycles_couverts") or []
+    if "stocks" not in cycles_couverts:
+        return {"nb_controles": 0, "nb_exceptions": 0, "resultats": [],
+                "exceptions": [], "cycle_ignore": True,
+                "message": "Cycle stocks non sélectionné au cadrage."}
+
+    donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve = \
+        _get_donnees_segmentees(db, projet_id)
+    if not donnees_all:
+        raise HTTPException(400, "Aucune donnée importée.")
+
+    seuil = float(projet.get("seuil_signification") or 0)
+    exercice = projet.get("exercice")
+    ci = _seuils_ci(db, projet_id, "stocks")
+    ci_facteur = ci["facteur"]
+    resultats_total, exceptions_total, ignores = [], [], []
+
+    PREFIXES_STOCK = ("3",)
+
+    rows_pour_solde = rows_balance if rows_balance else (rows_gl if rows_gl else [])
+    rows_pour_mvt = rows_gl if rows_gl else (rows_balance if rows_balance else [])
+
+    def _skip(ref: str, raison: str):
+        ignores.append({"controle_ref": ref, "raison": raison})
+
+    def _check(ref: str) -> bool:
+        ok, msg = _preconditions_check(ref, ids_gl, ids_balance, ids_releve)
+        if not ok:
+            _skip(ref, msg)
+        return ok
+
+    # ── 1. STOCK-GL-COHER ──
+    if _check("STOCK-GL-COHER"):
+        ress, excs = controle_coherence_cycle(
+            projet_id, "STOCK-GL-COHER", rows_gl, rows_balance, PREFIXES_STOCK,
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 2. STOCK-SOLDE-ANORMAL ──
+    if _check("STOCK-SOLDE-ANORMAL"):
+        ress, excs = controle_soldes_anormaux(
+            projet_id, "STOCK-SOLDE-ANORMAL",
+            rows_pour_solde, PREFIXES_STOCK, sens_normal="debit",
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 3. STOCK-ROUND ──
+    if _check("STOCK-ROUND"):
+        res, exc = controle_montants_ronds(
+            projet_id, "STOCK-ROUND", rows_pour_mvt, PREFIXES_STOCK,
+        )
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 4. STOCK-CUT-OFF ──
+    if _check("STOCK-CUT-OFF"):
+        res, exc = controle_cut_off(
+            projet_id, "STOCK-CUT-OFF", rows_pour_mvt, PREFIXES_STOCK, exercice,
+        )
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 5. STOCK-VARIATION ──
+    if seuil > 0 and _check("STOCK-VARIATION"):
+        soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_STOCK)
+        if soldes_n:
+            plan_stk = db.get_or_create_planification(projet_id)
+            n1_id_stk = plan_stk.get("balance_n1_fichier_id")
+            if n1_id_stk:
+                donnees_n1_stk = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_stk)]
+                rows_n1_stk = _group_rows(donnees_n1_stk) if donnees_n1_stk else []
+                soldes_n1_stk = _aggreger_soldes_nets(rows_n1_stk, PREFIXES_STOCK)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_stk, seuil * ci_facteur, "STOCK-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("STOCK-VARIATION", "Balance N-1 non renseignée.")
+
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
+    for r in resultats_total:
+        db.save_resultat(r)
+    for e in exceptions_total:
+        db.save_exception(e)
+
+    db.log(projet_id, "transition_etat", {
+        "action": "controles_stocks",
+        "nb_resultats": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "nb_ignores": len(ignores),
+    })
+    _auto_interpreter(db, projet_id, projet, exceptions_total)
+
+    return {
+        "nb_controles": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "resultats": resultats_total,
+        "exceptions": db.list_exceptions(projet_id),
+        "controles_ignores": ignores,
+    }
+
+
+# ─── Cycle Paie / Personnel ───────────────────────────────────────────────────
+
+@router.post("/projets/{projet_id}/controles/paie")
+def run_controles_paie(projet_id: str, body: dict = {}):
+    """Lance les 5 contrôles déterministes du cycle paie/personnel."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+
+    cycles_couverts = projet.get("cycles_couverts") or []
+    if "paie" not in cycles_couverts:
+        return {"nb_controles": 0, "nb_exceptions": 0, "resultats": [],
+                "exceptions": [], "cycle_ignore": True,
+                "message": "Cycle paie/personnel non sélectionné au cadrage."}
+
+    donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve = \
+        _get_donnees_segmentees(db, projet_id)
+    if not donnees_all:
+        raise HTTPException(400, "Aucune donnée importée.")
+
+    seuil = float(projet.get("seuil_signification") or 0)
+    exercice = projet.get("exercice")
+    ci = _seuils_ci(db, projet_id, "paie")
+    ci_facteur = ci["facteur"]
+    resultats_total, exceptions_total, ignores = [], [], []
+
+    PREFIXES_CHARGES = ("64",)
+    PREFIXES_DETTES = ("42",)
+    PREFIXES_CYCLE = PREFIXES_CHARGES + PREFIXES_DETTES
+
+    rows_pour_solde = rows_balance if rows_balance else (rows_gl if rows_gl else [])
+    rows_pour_mvt = rows_gl if rows_gl else (rows_balance if rows_balance else [])
+
+    def _skip(ref: str, raison: str):
+        ignores.append({"controle_ref": ref, "raison": raison})
+
+    def _check(ref: str) -> bool:
+        ok, msg = _preconditions_check(ref, ids_gl, ids_balance, ids_releve)
+        if not ok:
+            _skip(ref, msg)
+        return ok
+
+    # ── 1. PAIE-GL-COHER ──
+    if _check("PAIE-GL-COHER"):
+        ress, excs = controle_coherence_cycle(
+            projet_id, "PAIE-GL-COHER", rows_gl, rows_balance, PREFIXES_CYCLE,
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 2. PAIE-SOLDE-ANORMAL ──
+    if _check("PAIE-SOLDE-ANORMAL"):
+        ress, excs = controle_soldes_anormaux(
+            projet_id, "PAIE-SOLDE-ANORMAL",
+            rows_pour_solde, PREFIXES_DETTES, sens_normal="credit",
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 3. PAIE-RATIO-SOCIAL ──
+    if _check("PAIE-RATIO-SOCIAL"):
+        res, exc = controle_ratio_charges_sociales(projet_id, rows_pour_mvt)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 4. PAIE-MENSUALITE ──
+    if _check("PAIE-MENSUALITE"):
+        res, exc = controle_mensualite_paie(projet_id, rows_pour_mvt, exercice)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 5. PAIE-VARIATION ──
+    if seuil > 0 and _check("PAIE-VARIATION"):
+        soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_CHARGES)
+        if soldes_n:
+            plan_paie = db.get_or_create_planification(projet_id)
+            n1_id_paie = plan_paie.get("balance_n1_fichier_id")
+            if n1_id_paie:
+                donnees_n1_paie = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_paie)]
+                rows_n1_paie = _group_rows(donnees_n1_paie) if donnees_n1_paie else []
+                soldes_n1_paie = _aggreger_soldes_nets(rows_n1_paie, PREFIXES_CHARGES)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_paie, seuil * ci_facteur, "PAIE-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("PAIE-VARIATION", "Balance N-1 non renseignée.")
+
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
+    for r in resultats_total:
+        db.save_resultat(r)
+    for e in exceptions_total:
+        db.save_exception(e)
+
+    db.log(projet_id, "transition_etat", {
+        "action": "controles_paie",
+        "nb_resultats": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "nb_ignores": len(ignores),
+    })
+    _auto_interpreter(db, projet_id, projet, exceptions_total)
+
+    return {
+        "nb_controles": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "resultats": resultats_total,
+        "exceptions": db.list_exceptions(projet_id),
+        "controles_ignores": ignores,
+    }
+
+
+# ─── Cycle Impôts / Taxes ─────────────────────────────────────────────────────
+
+@router.post("/projets/{projet_id}/controles/impots")
+def run_controles_impots(projet_id: str, body: dict = {}):
+    """Lance les 5 contrôles déterministes du cycle impôts/taxes."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+
+    cycles_couverts = projet.get("cycles_couverts") or []
+    if "impots" not in cycles_couverts:
+        return {"nb_controles": 0, "nb_exceptions": 0, "resultats": [],
+                "exceptions": [], "cycle_ignore": True,
+                "message": "Cycle impôts/taxes non sélectionné au cadrage."}
+
+    donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve = \
+        _get_donnees_segmentees(db, projet_id)
+    if not donnees_all:
+        raise HTTPException(400, "Aucune donnée importée.")
+
+    seuil = float(projet.get("seuil_signification") or 0)
+    exercice = projet.get("exercice")
+    ci = _seuils_ci(db, projet_id, "impots")
+    ci_facteur = ci["facteur"]
+    resultats_total, exceptions_total, ignores = [], [], []
+
+    PREFIXES_TVA = ("44",)
+    PREFIXES_CHARGES_FISC = ("63",)
+    PREFIXES_CYCLE = PREFIXES_TVA + PREFIXES_CHARGES_FISC
+
+    rows_pour_solde = rows_balance if rows_balance else (rows_gl if rows_gl else [])
+    rows_pour_mvt = rows_gl if rows_gl else (rows_balance if rows_balance else [])
+
+    def _skip(ref: str, raison: str):
+        ignores.append({"controle_ref": ref, "raison": raison})
+
+    def _check(ref: str) -> bool:
+        ok, msg = _preconditions_check(ref, ids_gl, ids_balance, ids_releve)
+        if not ok:
+            _skip(ref, msg)
+        return ok
+
+    # ── 1. TAXE-GL-COHER ──
+    if _check("TAXE-GL-COHER"):
+        ress, excs = controle_coherence_cycle(
+            projet_id, "TAXE-GL-COHER", rows_gl, rows_balance, PREFIXES_CYCLE,
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 2. TAXE-TVA-COHERENCE ──
+    if _check("TAXE-TVA-COHERENCE"):
+        res, exc = controle_tva_coherence(projet_id, rows_pour_solde)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 3. TAXE-SOLDE-ANORMAL : TVA collectée (4457x) doit être créditrice ──
+    if _check("TAXE-SOLDE-ANORMAL"):
+        ress, excs = controle_soldes_anormaux(
+            projet_id, "TAXE-SOLDE-ANORMAL",
+            rows_pour_solde, ("4457",), sens_normal="credit",
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 4. TAXE-CUT-OFF ──
+    if _check("TAXE-CUT-OFF"):
+        res, exc = controle_cut_off(
+            projet_id, "TAXE-CUT-OFF", rows_pour_mvt, PREFIXES_CHARGES_FISC, exercice,
+        )
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 5. TAXE-VARIATION ──
+    if seuil > 0 and _check("TAXE-VARIATION"):
+        soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_CHARGES_FISC)
+        if soldes_n:
+            plan_taxe = db.get_or_create_planification(projet_id)
+            n1_id_taxe = plan_taxe.get("balance_n1_fichier_id")
+            if n1_id_taxe:
+                donnees_n1_taxe = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_taxe)]
+                rows_n1_taxe = _group_rows(donnees_n1_taxe) if donnees_n1_taxe else []
+                soldes_n1_taxe = _aggreger_soldes_nets(rows_n1_taxe, PREFIXES_CHARGES_FISC)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_taxe, seuil * ci_facteur, "TAXE-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("TAXE-VARIATION", "Balance N-1 non renseignée.")
+
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
+    for r in resultats_total:
+        db.save_resultat(r)
+    for e in exceptions_total:
+        db.save_exception(e)
+
+    db.log(projet_id, "transition_etat", {
+        "action": "controles_impots",
+        "nb_resultats": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "nb_ignores": len(ignores),
+    })
+    _auto_interpreter(db, projet_id, projet, exceptions_total)
+
+    return {
+        "nb_controles": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "resultats": resultats_total,
+        "exceptions": db.list_exceptions(projet_id),
         "controles_ignores": ignores,
     }
 

@@ -334,5 +334,280 @@ enregistrer(ControleDefinition(
 ))
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# CYCLE IMMOBILISATIONS (comptes 2xx) — 5 contrôles
+# ═══════════════════════════════════════════════════════════════════════════════
+
+enregistrer(ControleDefinition(
+    ref="IMO-GL-COHER",
+    libelle="Cohérence grand livre / balance — Immobilisations",
+    nep_ref="NEP 500",
+    cycle="immobilisations",
+    description=(
+        "Vérifie que les mouvements du grand livre pour les comptes d'immobilisations (2xx) "
+        "et d'amortissements (28xx) correspondent aux soldes de la balance."
+    ),
+    severite_defaut="critique",
+))
+
+enregistrer(ControleDefinition(
+    ref="IMO-AMORTISSEMENT",
+    libelle="Sous-amortissement — Immobilisations sans amortissements cumulés",
+    nep_ref="NEP 500",
+    cycle="immobilisations",
+    description=(
+        "Détecte des immobilisations amortissables (21x-25x) présentant une valeur nette "
+        "positive sans aucun amortissement cumulé correspondant (28xx). "
+        "Risque de non-respect du plan d'amortissement."
+    ),
+    severite_defaut="significative",
+))
+
+enregistrer(ControleDefinition(
+    ref="IMO-AMORT-EXCEDENT",
+    libelle="Amortissements cumulés supérieurs à la valeur brute",
+    nep_ref="NEP 500",
+    cycle="immobilisations",
+    description=(
+        "Détecte un total d'amortissements cumulés (28xx) supérieur à la valeur brute "
+        "des immobilisations (2xx hors 28xx). "
+        "Une immobilisation ne peut être amortie au-delà de sa valeur d'acquisition."
+    ),
+    severite_defaut="critique",
+))
+
+enregistrer(ControleDefinition(
+    ref="IMO-VARIATION",
+    libelle="Variations N/N-1 — Immobilisations",
+    nep_ref="NEP 520",
+    cycle="immobilisations",
+    description=(
+        "Identifie les variations de solde des comptes d'immobilisations (2xx) "
+        "dépassant le seuil de signification. Une variation importante signale "
+        "des acquisitions, cessions ou réévaluations à documenter."
+    ),
+    severite_defaut="mineure",
+))
+
+enregistrer(ControleDefinition(
+    ref="IMO-SOLDE-ANORMAL",
+    libelle="Soldes créditeurs anormaux — Immobilisations brutes",
+    nep_ref="NEP 500",
+    cycle="immobilisations",
+    description=(
+        "Détecte les comptes d'immobilisations brutes (20x-27x hors 28x) "
+        "présentant un solde créditeur net. "
+        "La valeur brute d'une immobilisation doit être débitrice."
+    ),
+    severite_defaut="significative",
+))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CYCLE STOCKS (comptes 3xx) — 5 contrôles
+# ═══════════════════════════════════════════════════════════════════════════════
+
+enregistrer(ControleDefinition(
+    ref="STOCK-GL-COHER",
+    libelle="Cohérence grand livre / balance — Stocks",
+    nep_ref="NEP 500",
+    cycle="stocks",
+    description=(
+        "Vérifie que les mouvements du grand livre pour les comptes de stocks (3xx) "
+        "correspondent aux soldes de la balance."
+    ),
+    severite_defaut="critique",
+))
+
+enregistrer(ControleDefinition(
+    ref="STOCK-SOLDE-ANORMAL",
+    libelle="Soldes créditeurs anormaux — Stocks",
+    nep_ref="NEP 500",
+    cycle="stocks",
+    description=(
+        "Détecte les comptes de stocks (3xx) présentant un solde créditeur net. "
+        "Un stock ne peut pas avoir de valeur négative — signale une erreur comptable "
+        "ou une valorisation incorrecte."
+    ),
+    severite_defaut="significative",
+))
+
+enregistrer(ControleDefinition(
+    ref="STOCK-VARIATION",
+    libelle="Variations N/N-1 — Stocks",
+    nep_ref="NEP 520",
+    cycle="stocks",
+    description=(
+        "Identifie les variations de solde des comptes de stocks (3xx) "
+        "dépassant le seuil de signification. "
+        "Peut signaler un changement de méthode de valorisation ou une anomalie."
+    ),
+    severite_defaut="mineure",
+))
+
+enregistrer(ControleDefinition(
+    ref="STOCK-ROUND",
+    libelle="Concentration de montants ronds — Stocks",
+    nep_ref="NEP 520",
+    cycle="stocks",
+    description=(
+        "Détecte une proportion anormalement élevée de valorisations rondes dans les "
+        "mouvements de stocks. Un ratio > 40 % signale une valorisation estimée ou fictive."
+    ),
+    severite_defaut="mineure",
+))
+
+enregistrer(ControleDefinition(
+    ref="STOCK-CUT-OFF",
+    libelle="Mouvements de stocks concentrés en fin d'exercice",
+    nep_ref="NEP 330",
+    cycle="stocks",
+    description=(
+        "Détecte une concentration anormale de mouvements de stocks dans les 15 derniers jours "
+        "de l'exercice. Risque de cut-off (rattachement à la mauvaise période) "
+        "ou de manipulation des inventaires de clôture."
+    ),
+    severite_defaut="significative",
+))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CYCLE PAIE / PERSONNEL (comptes 64x + 42x) — 5 contrôles
+# ═══════════════════════════════════════════════════════════════════════════════
+
+enregistrer(ControleDefinition(
+    ref="PAIE-GL-COHER",
+    libelle="Cohérence grand livre / balance — Paie",
+    nep_ref="NEP 500",
+    cycle="paie",
+    description=(
+        "Vérifie que les mouvements du grand livre pour les comptes de charges de personnel "
+        "(64x) et de dettes sociales (42x) correspondent aux soldes de la balance."
+    ),
+    severite_defaut="critique",
+))
+
+enregistrer(ControleDefinition(
+    ref="PAIE-VARIATION",
+    libelle="Variations N/N-1 — Charges de personnel",
+    nep_ref="NEP 520",
+    cycle="paie",
+    description=(
+        "Identifie les variations des charges de personnel (64x) dépassant le seuil "
+        "de signification. Une variation importante peut signaler des embauches ou départs "
+        "non documentés, des augmentations anormales ou des charges fictives."
+    ),
+    severite_defaut="mineure",
+))
+
+enregistrer(ControleDefinition(
+    ref="PAIE-RATIO-SOCIAL",
+    libelle="Ratio charges sociales / salaires bruts hors norme",
+    nep_ref="NEP 520",
+    cycle="paie",
+    description=(
+        "Vérifie que le ratio cotisations patronales (645x) / salaires bruts (641x) "
+        "se situe dans la fourchette attendue (20 %–60 %). "
+        "Un ratio hors norme signale une sous-déclaration ou une anomalie structurelle."
+    ),
+    severite_defaut="significative",
+))
+
+enregistrer(ControleDefinition(
+    ref="PAIE-MENSUALITE",
+    libelle="Régularité mensuelle des salaires",
+    nep_ref="NEP 330",
+    cycle="paie",
+    description=(
+        "Vérifie que des écritures de paie (641x) sont présentes dans au moins 10 mois "
+        "de l'exercice. Des mois sans salaires signalent un risque d'omission "
+        "ou de non-déclaration sur certaines périodes."
+    ),
+    severite_defaut="significative",
+))
+
+enregistrer(ControleDefinition(
+    ref="PAIE-SOLDE-ANORMAL",
+    libelle="Soldes débiteurs anormaux — Dettes sociales",
+    nep_ref="NEP 500",
+    cycle="paie",
+    description=(
+        "Détecte les comptes de dettes sociales (42x) présentant un solde débiteur net. "
+        "Ces comptes doivent normalement être créditeurs (somme due aux organismes sociaux). "
+        "Un solde débiteur signale un trop-versé ou une erreur comptable."
+    ),
+    severite_defaut="significative",
+))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CYCLE IMPÔTS / TAXES (comptes 44x + 63x) — 5 contrôles
+# ═══════════════════════════════════════════════════════════════════════════════
+
+enregistrer(ControleDefinition(
+    ref="TAXE-GL-COHER",
+    libelle="Cohérence grand livre / balance — Impôts et taxes",
+    nep_ref="NEP 500",
+    cycle="impots",
+    description=(
+        "Vérifie que les mouvements du grand livre pour les comptes de TVA/impôts (44x) "
+        "et charges fiscales (63x) correspondent aux soldes de la balance."
+    ),
+    severite_defaut="critique",
+))
+
+enregistrer(ControleDefinition(
+    ref="TAXE-VARIATION",
+    libelle="Variations N/N-1 — Impôts et taxes",
+    nep_ref="NEP 520",
+    cycle="impots",
+    description=(
+        "Identifie les variations des charges fiscales (63x) et comptes de TVA (44x) "
+        "dépassant le seuil de signification. "
+        "Peut signaler un changement de régime fiscal ou une anomalie déclarative."
+    ),
+    severite_defaut="mineure",
+))
+
+enregistrer(ControleDefinition(
+    ref="TAXE-TVA-COHERENCE",
+    libelle="Cohérence TVA déductible / TVA collectée",
+    nep_ref="NEP 520",
+    cycle="impots",
+    description=(
+        "Vérifie que la TVA déductible (4456x) ne dépasse pas anormalement la TVA collectée "
+        "(4457x). Un ratio TVA déductible / collectée > 110 % est suspect sauf justification "
+        "(exportateur, investissements exceptionnels)."
+    ),
+    severite_defaut="significative",
+))
+
+enregistrer(ControleDefinition(
+    ref="TAXE-SOLDE-ANORMAL",
+    libelle="Soldes anormaux — Comptes de TVA et impôts",
+    nep_ref="NEP 500",
+    cycle="impots",
+    description=(
+        "Détecte les comptes de TVA collectée (4457x) présentant un solde débiteur "
+        "et les comptes de TVA déductible (4456x) présentant un solde créditeur. "
+        "Ces situations sont anormales et signalent une erreur ou manipulation."
+    ),
+    severite_defaut="significative",
+))
+
+enregistrer(ControleDefinition(
+    ref="TAXE-CUT-OFF",
+    libelle="Charges fiscales concentrées en fin d'exercice",
+    nep_ref="NEP 330",
+    cycle="impots",
+    description=(
+        "Détecte une concentration anormale d'écritures fiscales (63x) dans les 15 derniers "
+        "jours de l'exercice. Risque de rattachement à la mauvaise période (cut-off) "
+        "ou de régularisation fiscale de fin d'année suspecte."
+    ),
+    severite_defaut="significative",
+))
+
+
 def get_controles_par_cycle(cycle: str) -> list[ControleDefinition]:
     return [c for c in REGISTRE.values() if c.cycle == cycle]

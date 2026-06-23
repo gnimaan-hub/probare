@@ -880,6 +880,319 @@ def controle_ratio_avoirs(
         ), None
 
 
+def controle_amortissement_manquant(
+    projet_id: str,
+    rows: list[RowDict],
+    tolerance: float = 0.01,
+) -> tuple[dict, dict | None]:
+    """
+    IMO-AMORTISSEMENT : détecte des immobilisations amortissables (21x-25x) sans
+    aucun amortissement cumulé correspondant (28xx).
+    """
+    rows_imo = _filter_accounts(rows, ("21", "22", "23", "24", "25"))
+    rows_amort = _filter_accounts(rows, ("28",))
+
+    if not rows_imo:
+        return _result_ok(projet_id, "IMO-AMORTISSEMENT", 0,
+                          "Aucune immobilisation corporelle/incorporelle (21x-25x) détectée.", []), None
+
+    total_imo = 0.0
+    sources_imo = []
+    for row in rows_imo:
+        c = row.get("compte")
+        s = _get_amount(row, "solde")
+        if s == 0:
+            s = _get_amount(row, "debit") - _get_amount(row, "credit")
+        if s > 0:
+            total_imo += s
+            if c:
+                sources_imo.append(c.id)
+
+    if total_imo <= tolerance:
+        return _result_ok(projet_id, "IMO-AMORTISSEMENT", 0,
+                          "Aucune immobilisation nette positive à amortir.", []), None
+
+    total_amort = 0.0
+    for row in rows_amort:
+        s = _get_amount(row, "solde")
+        if s == 0:
+            s = _get_amount(row, "debit") - _get_amount(row, "credit")
+        total_amort += abs(s)
+
+    if total_amort <= tolerance:
+        res, exc = _result_exception(
+            projet_id, "IMO-AMORTISSEMENT", total_imo,
+            f"Immobilisations amortissables de {total_imo:.2f} (21x-25x) sans aucun amortissement "
+            f"cumulé (28xx). Risque de sous-amortissement ou d'omission du plan d'amortissement.",
+            sources_imo[:20],
+        )
+        return res, exc
+
+    taux = total_amort / total_imo
+    return _result_ok(
+        projet_id, "IMO-AMORTISSEMENT", taux,
+        f"Amortissements cumulés : {total_amort:.2f} pour {total_imo:.2f} d'immobilisations "
+        f"({taux*100:.1f}%).",
+        sources_imo[:10],
+    ), None
+
+
+def controle_amort_excedent(
+    projet_id: str,
+    rows: list[RowDict],
+    tolerance: float = 0.01,
+) -> tuple[dict, dict | None]:
+    """
+    IMO-AMORT-EXCEDENT : détecte si les amortissements cumulés (28xx) dépassent
+    la valeur brute des immobilisations (20x-27x hors 28xx).
+    """
+    rows_brut = _filter_accounts(rows, ("20", "21", "22", "23", "24", "25", "26", "27"))
+    rows_amort = _filter_accounts(rows, ("28",))
+
+    total_brut = 0.0
+    sources_brut = []
+    for row in rows_brut:
+        c = row.get("compte")
+        s = _get_amount(row, "solde")
+        if s == 0:
+            s = _get_amount(row, "debit") - _get_amount(row, "credit")
+        if s > 0:
+            total_brut += s
+            if c:
+                sources_brut.append(c.id)
+
+    if total_brut <= tolerance:
+        return _result_ok(projet_id, "IMO-AMORT-EXCEDENT", 0,
+                          "Aucune valeur brute d'immobilisation détectée.", []), None
+
+    total_amort = 0.0
+    sources_amort = []
+    for row in rows_amort:
+        c = row.get("compte")
+        s = _get_amount(row, "solde")
+        if s == 0:
+            s = _get_amount(row, "debit") - _get_amount(row, "credit")
+        total_amort += abs(s)
+        if c:
+            sources_amort.append(c.id)
+
+    sources = (sources_brut + sources_amort)[:30]
+
+    if total_amort > total_brut + tolerance:
+        excedent = total_amort - total_brut
+        res, exc = _result_exception(
+            projet_id, "IMO-AMORT-EXCEDENT", excedent,
+            f"Amortissements cumulés ({total_amort:.2f}) supérieurs à la valeur brute "
+            f"({total_brut:.2f}). Excédent de {excedent:.2f}. "
+            f"Une immobilisation ne peut être amortie au-delà de sa valeur d'acquisition.",
+            sources,
+        )
+        return res, exc
+
+    return _result_ok(
+        projet_id, "IMO-AMORT-EXCEDENT", total_amort,
+        f"Amortissements ({total_amort:.2f}) ≤ valeur brute ({total_brut:.2f}) — cohérent.",
+        sources[:10],
+    ), None
+
+
+def controle_ratio_charges_sociales(
+    projet_id: str,
+    rows: list[RowDict],
+    seuil_min: float = 0.20,
+    seuil_max: float = 0.60,
+) -> tuple[dict, dict | None]:
+    """
+    PAIE-RATIO-SOCIAL : ratio cotisations patronales (645x) / salaires bruts (641x).
+    Fourchette normale : 20 %–60 %. Hors fourchette → exception.
+    """
+    rows_salaires = _filter_accounts(rows, ("641",))
+    rows_charges = _filter_accounts(rows, ("645",))
+
+    if not rows_salaires:
+        return _result_ok(projet_id, "PAIE-RATIO-SOCIAL", 0,
+                          "Aucun compte de salaires (641x) détecté.", []), None
+
+    total_salaires = 0.0
+    sources_sal = []
+    for row in rows_salaires:
+        c = row.get("compte")
+        s = _get_amount(row, "debit")
+        if s == 0:
+            s = abs(_get_amount(row, "solde"))
+        total_salaires += s
+        if c:
+            sources_sal.append(c.id)
+
+    if total_salaires <= 0:
+        return _result_ok(projet_id, "PAIE-RATIO-SOCIAL", 0,
+                          "Total salaires nul — contrôle non applicable.", []), None
+
+    total_charges = 0.0
+    sources_ch = []
+    for row in rows_charges:
+        c = row.get("compte")
+        s = _get_amount(row, "debit")
+        if s == 0:
+            s = abs(_get_amount(row, "solde"))
+        total_charges += s
+        if c:
+            sources_ch.append(c.id)
+
+    ratio = total_charges / total_salaires
+    sources = (sources_sal + sources_ch)[:30]
+
+    if ratio < seuil_min or ratio > seuil_max:
+        msg = (
+            f"Ratio trop bas — risque de sous-déclaration des charges sociales."
+            if ratio < seuil_min
+            else "Ratio trop élevé — anomalie dans la structure salariale."
+        )
+        res, exc = _result_exception(
+            projet_id, "PAIE-RATIO-SOCIAL", ratio,
+            f"Ratio charges sociales / salaires = {ratio*100:.1f}% "
+            f"({total_charges:.2f} / {total_salaires:.2f}). "
+            f"Plage attendue : {seuil_min*100:.0f}%–{seuil_max*100:.0f}%. {msg}",
+            sources,
+        )
+        return res, exc
+
+    return _result_ok(
+        projet_id, "PAIE-RATIO-SOCIAL", ratio,
+        f"Ratio charges sociales / salaires = {ratio*100:.1f}% — dans la fourchette attendue.",
+        sources[:10],
+    ), None
+
+
+def controle_mensualite_paie(
+    projet_id: str,
+    rows: list[RowDict],
+    exercice: str | None,
+    nb_mois_min: int = 10,
+) -> tuple[dict, dict | None]:
+    """
+    PAIE-MENSUALITE : vérifie la régularité des paiements mensuels de salaires (641x-648x).
+    Un exercice complet doit avoir des écritures dans au moins nb_mois_min mois.
+    """
+    fin_exercice = _exercice_end(exercice)
+    rows_paie = _filter_accounts(rows, ("641", "642", "643", "644", "645", "646", "648"))
+
+    if not fin_exercice:
+        return _result_ok(projet_id, "PAIE-MENSUALITE", 0,
+                          "Exercice non renseigné — analyse de mensualité ignorée.", []), None
+
+    if not rows_paie:
+        return _result_ok(projet_id, "PAIE-MENSUALITE", 0,
+                          "Aucun compte de charges de personnel (641x-648x) détecté.", []), None
+
+    annee = fin_exercice.year
+    mois_presents: set[int] = set()
+    sources = []
+
+    for row in rows_paie:
+        dt = _parse_date(_get_str(row, "date"))
+        if dt and dt.year == annee:
+            mois_presents.add(dt.month)
+            c = row.get("compte")
+            if c:
+                sources.append(c.id)
+
+    if not mois_presents:
+        return _result_ok(projet_id, "PAIE-MENSUALITE", 0,
+                          "Aucune date dans les écritures de paie — analyse ignorée.", []), None
+
+    nb_mois = len(mois_presents)
+
+    if nb_mois < nb_mois_min:
+        mois_manquants = sorted(set(range(1, 13)) - mois_presents)
+        res, exc = _result_exception(
+            projet_id, "PAIE-MENSUALITE", nb_mois,
+            f"Seulement {nb_mois}/12 mois avec des écritures de paie (641x). "
+            f"Mois sans écriture : {mois_manquants}. "
+            f"Risque d'omission de salaires ou de non-déclaration sur certaines périodes.",
+            sources[:20],
+        )
+        return res, exc
+
+    return _result_ok(
+        projet_id, "PAIE-MENSUALITE", nb_mois,
+        f"Paie présente sur {nb_mois}/12 mois — régularité satisfaisante.",
+        sources[:10],
+    ), None
+
+
+def controle_tva_coherence(
+    projet_id: str,
+    rows: list[RowDict],
+    seuil_ratio: float = 1.10,
+) -> tuple[dict, dict | None]:
+    """
+    TAXE-TVA-COHERENCE : vérifie que la TVA déductible (4456x) ne dépasse pas anormalement
+    la TVA collectée (4457x). Ratio > seuil_ratio → exception.
+    """
+    rows_deductible = _filter_accounts(rows, ("4456",))
+    rows_collectee = _filter_accounts(rows, ("4457",))
+
+    if not rows_deductible and not rows_collectee:
+        return _result_ok(projet_id, "TAXE-TVA-COHERENCE", 0,
+                          "Aucun compte TVA (4456x/4457x) détecté.", []), None
+
+    total_deductible = 0.0
+    sources_ded = []
+    for row in rows_deductible:
+        c = row.get("compte")
+        s = _get_amount(row, "debit")
+        if s == 0:
+            s = abs(_get_amount(row, "solde"))
+        total_deductible += s
+        if c:
+            sources_ded.append(c.id)
+
+    total_collectee = 0.0
+    sources_col = []
+    for row in rows_collectee:
+        c = row.get("compte")
+        s = _get_amount(row, "credit")
+        if s == 0:
+            s = abs(_get_amount(row, "solde"))
+        total_collectee += s
+        if c:
+            sources_col.append(c.id)
+
+    sources = (sources_ded + sources_col)[:30]
+
+    if total_collectee <= 0:
+        if total_deductible > 0:
+            res, exc = _result_exception(
+                projet_id, "TAXE-TVA-COHERENCE", total_deductible,
+                f"TVA déductible de {total_deductible:.2f} sans TVA collectée. "
+                f"Anomalie : activité assujettie sans opérations taxables ?",
+                sources,
+            )
+            return res, exc
+        return _result_ok(projet_id, "TAXE-TVA-COHERENCE", 0,
+                          "Aucun flux TVA (4456x/4457x) détecté.", []), None
+
+    ratio = total_deductible / total_collectee
+
+    if ratio > seuil_ratio:
+        res, exc = _result_exception(
+            projet_id, "TAXE-TVA-COHERENCE", ratio,
+            f"TVA déductible ({total_deductible:.2f}) / collectée ({total_collectee:.2f}) = "
+            f"{ratio*100:.1f}% — seuil={seuil_ratio*100:.0f}%. "
+            f"La TVA récupérée excède anormalement la TVA collectée. "
+            f"Risque de déductibilité incorrecte ou d'activité exonérée non identifiée.",
+            sources,
+        )
+        return res, exc
+
+    return _result_ok(
+        projet_id, "TAXE-TVA-COHERENCE", ratio,
+        f"TVA déductible / collectée = {ratio*100:.1f}% — cohérent.",
+        sources[:10],
+    ), None
+
+
 def controle_creances_echues(
     projet_id: str,
     rows: list[RowDict],
