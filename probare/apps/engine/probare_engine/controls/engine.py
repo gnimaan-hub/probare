@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from ..provenance.models import DonneeSourcee
 from .registry import REGISTRE
@@ -19,7 +19,7 @@ RowDict = dict[str, DonneeSourcee]
 # ─── Utilitaires internes ──────────────────────────────────────────────────────
 
 def _now() -> str:
-    return datetime.utcnow().isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _result_ok(projet_id: str, controle_ref: str, valeur: Any,

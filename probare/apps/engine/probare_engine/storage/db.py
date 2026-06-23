@@ -297,7 +297,7 @@ class ProjectDB:
 
     def create_projet(self, data: dict) -> dict:
         now = _now()
-        cycles = data.get("cycles_couverts", [])
+        cycles = data.get("cycles_couverts") or ["tresorerie", "achats", "ventes"]
         self.conn.execute(
             """INSERT INTO projet (id,nom,client,nif,exercice,seuil_signification,
                seuil_planification,consentement_client,consentement_horodatage,

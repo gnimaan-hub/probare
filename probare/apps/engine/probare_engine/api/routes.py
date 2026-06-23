@@ -54,6 +54,7 @@ CLIENTS_DB_PATH = GLOBAL_DIR / "clients.db"
 
 _db_cache: dict[str, ProjectDB] = {}
 _clients_db_instance = None
+_DB_CACHE_MAX = 20
 
 
 def _get_clients_db():
@@ -67,6 +68,13 @@ def _get_clients_db():
 
 def _get_db(projet_id: str) -> ProjectDB:
     if projet_id not in _db_cache:
+        if len(_db_cache) >= _DB_CACHE_MAX:
+            oldest_key = next(iter(_db_cache))
+            try:
+                _db_cache[oldest_key].close()
+            except Exception:
+                pass
+            del _db_cache[oldest_key]
         db_path = DATA_DIR / projet_id / "audit.db"
         db = ProjectDB(db_path)
         db.connect()
@@ -105,9 +113,35 @@ def _to_donnee(d: dict) -> DonneeSourcee:
     return DonneeSourcee(**{**d, "valeur": _parse_valeur(d["valeur"], d["type"])})
 
 
+def _llm_guard(db: ProjectDB, projet_id: str) -> tuple[dict, "Anonymizer"]:
+    """
+    Garde obligatoire avant tout appel LLM.
+    Vérifie la clé API et le consentement client.
+    Retourne (projet, anonymizer) ou lève HTTPException.
+    """
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise HTTPException(503, "Clé API Claude non configurée dans l'environnement.")
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    if not projet.get("consentement_client"):
+        raise HTTPException(
+            403,
+            "Consentement client requis avant tout traitement IA. "
+            "Activez-le dans les paramètres du projet (étape Cadrage)."
+        )
+    return projet, Anonymizer()
+
+
 def _auto_interpreter(db, projet_id: str, projet: dict, exceptions: list[dict]) -> None:
     """Lance l'interprétation IA automatique de toutes les exceptions."""
     if not exceptions or not os.environ.get("ANTHROPIC_API_KEY"):
+        return
+    if not projet.get("consentement_client"):
+        db.log(projet_id, "avertissement_llm", {
+            "action": "auto_interpretation",
+            "raison": "consentement_client non accordé — interprétation IA ignorée",
+        })
         return
     try:
         from ..llm.claude import ClaudeClient
@@ -411,7 +445,7 @@ async def upload_fichier(
     # Analyse IA du document (Haiku, synchrone)
     analyse_ia: dict | None = None
     db.update_fichier_ia(fichier_id, {"statut_checklist": "analyse_en_cours"})
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if os.environ.get("ANTHROPIC_API_KEY") and projet.get("consentement_client"):
         try:
             from ..ingestion.dossier_brut import lire_contenu_pour_llm
             from ..llm.claude import ClaudeClient
@@ -519,7 +553,8 @@ def get_onglets_excel(projet_id: str, fichier_id: str):
         onglets_info.append({"nom": sheet_name, "colonnes": colonnes, "apercu": apercu})
 
     analyse_onglets = []
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    db_projet = db.get_projet(projet_id)
+    if os.environ.get("ANTHROPIC_API_KEY") and db_projet and db_projet.get("consentement_client"):
         try:
             from ..llm.claude import ClaudeClient
             docs_attendus = _get_documents_attendus(projet_id, db)
@@ -564,7 +599,8 @@ def importer_onglet(projet_id: str, fichier_id: str, body: ImporterOngletBody):
         raise HTTPException(400, f"Erreur de lecture de l'onglet : {e}")
 
     analyse: dict = {}
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    _proj_onglet = db.get_projet(projet_id)
+    if os.environ.get("ANTHROPIC_API_KEY") and _proj_onglet and _proj_onglet.get("consentement_client"):
         try:
             df = pd.read_excel(str(chemin), sheet_name=body.sheet_name, nrows=10, dtype=str)
             apercu = df.to_csv(index=False)[:3000]
@@ -642,8 +678,7 @@ def decouper_liasse(projet_id: str, fichier_id: str):
 
     if not texte or len(texte) < 100:
         raise HTTPException(400, "Contenu insuffisant pour analyser la liasse.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _projet_liasse, _ = _llm_guard(db, projet_id)
 
     from ..llm.claude import ClaudeClient
     llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
@@ -767,7 +802,7 @@ def evaluer_qci(projet_id: str, cycle: str):
 
     score_info = calculer_niveau_risque(reponses_avec_rep)
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if not os.environ.get("ANTHROPIC_API_KEY") or not projet.get("consentement_client"):
         evaluation = {
             "synthese": f"Score QCI : {score_info['score']:.0%} — Risque {score_info['niveau'].upper()}.",
             "forces": [], "faiblesses": [], "recommandations": [],
@@ -776,8 +811,12 @@ def evaluer_qci(projet_id: str, cycle: str):
         }
     else:
         from ..llm.claude import ClaudeClient
+        anon_qci = Anonymizer()
+        entites_qci = [v for v in [projet.get("client"), projet.get("nif")] if v]
+        ctx_qci = {k: v for k, v in projet.items() if k not in ("client", "nif")}
+        ctx_qci["client"] = anon_qci.pseudonymiser(projet.get("client") or "", entites_qci) if entites_qci else projet.get("client")
         llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
-        evaluation = llm.evaluer_controle_interne(cycle, reponses_enrichies, projet)
+        evaluation = llm.evaluer_controle_interne(cycle, reponses_enrichies, ctx_qci)
 
     evaluation["score"] = score_info["score"]
     evaluation["niveau_risque"] = score_info["niveau"]
@@ -811,8 +850,7 @@ async def analyser_annexe(projet_id: str, annexe_id: str):
     if not annexe or annexe["projet_id"] != projet_id:
         raise HTTPException(404, "Document annexe introuvable.")
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     # Lire le contenu texte du fichier (Excel/CSV → texte brut)
     chemin = DATA_DIR / annexe["chemin_relatif"]
@@ -856,9 +894,7 @@ async def analyser_annexe(projet_id: str, annexe_id: str):
 @router.post("/projets/{projet_id}/mapper-colonnes")
 async def mapper_colonnes(projet_id: str, body: dict):
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    _llm_guard(db, projet_id)
     try:
         from ..llm.claude import ClaudeClient
         def log_llm(t, p): db.log(projet_id, t, p)
@@ -1007,16 +1043,25 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
         if exc:
             exceptions_total.append(exc)
 
-    # ── 7. TRESOR-VARIATION : variations N/N-1 (si seuil défini) ──
+    # ── 7. TRESOR-VARIATION : variations N/N-1 (si seuil défini et N-1 disponible) ──
     if seuil > 0 and _check("TRESOR-VARIATION"):
         rows_pour_solde = rows_balance if rows_balance else rows_gl
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, ("5",))
         if soldes_n:
-            ress, excs = controle_variations(
-                projet_id, soldes_n, {}, seuil * ci_facteur, "TRESOR-VARIATION",
-            )
-            resultats_total.extend(ress)
-            exceptions_total.extend(excs)
+            plan_var = db.get_or_create_planification(projet_id)
+            n1_id = plan_var.get("balance_n1_fichier_id")
+            if n1_id:
+                donnees_n1_raw = db.get_donnees_by_fichier(n1_id)
+                donnees_n1 = [_to_donnee(d) for d in donnees_n1_raw]
+                rows_n1 = _group_rows(donnees_n1) if donnees_n1 else []
+                soldes_n1 = _aggreger_soldes_nets(rows_n1, ("5",))
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1, seuil * ci_facteur, "TRESOR-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("TRESOR-VARIATION", "Balance N-1 non renseignée (configurez-la dans Planification → Variations).")
 
     # ── 8. TRESOR-RAPPROCH : rapprochement bancaire (si relevé importé) ──
     if _check("TRESOR-RAPPROCH"):
@@ -1204,11 +1249,19 @@ def run_controles_achats(projet_id: str, body: dict = {}):
     if seuil > 0 and _check("ACHAT-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_ACHATS)
         if soldes_n:
-            ress, excs = controle_variations(
-                projet_id, soldes_n, {}, seuil * ci_facteur, "ACHAT-VARIATION",
-            )
-            resultats_total.extend(ress)
-            exceptions_total.extend(excs)
+            plan_var_a = db.get_or_create_planification(projet_id)
+            n1_id_a = plan_var_a.get("balance_n1_fichier_id")
+            if n1_id_a:
+                donnees_n1_a = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_a)]
+                rows_n1_a = _group_rows(donnees_n1_a) if donnees_n1_a else []
+                soldes_n1_a = _aggreger_soldes_nets(rows_n1_a, PREFIXES_ACHATS)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_a, seuil * ci_facteur, "ACHAT-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("ACHAT-VARIATION", "Balance N-1 non renseignée (configurez-la dans Planification → Variations).")
 
     for r in resultats_total:
         db.save_resultat(r)
@@ -1360,11 +1413,19 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
     if seuil > 0 and _check("VENTE-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_VENTES)
         if soldes_n:
-            ress, excs = controle_variations(
-                projet_id, soldes_n, {}, seuil * ci_facteur, "VENTE-VARIATION",
-            )
-            resultats_total.extend(ress)
-            exceptions_total.extend(excs)
+            plan_var_v = db.get_or_create_planification(projet_id)
+            n1_id_v = plan_var_v.get("balance_n1_fichier_id")
+            if n1_id_v:
+                donnees_n1_v = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_v)]
+                rows_n1_v = _group_rows(donnees_n1_v) if donnees_n1_v else []
+                soldes_n1_v = _aggreger_soldes_nets(rows_n1_v, PREFIXES_VENTES)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_v, seuil * ci_facteur, "VENTE-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("VENTE-VARIATION", "Balance N-1 non renseignée (configurez-la dans Planification → Variations).")
 
     for r in resultats_total:
         db.save_resultat(r)
@@ -1448,15 +1509,12 @@ def trancher_exception(projet_id: str, exception_id: str, body: TrancheeBody):
 def interpreter_exception(projet_id: str, exception_id: str):
     """(Re)lance l'interprétation IA d'une exception."""
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    projet, anon = _llm_guard(db, projet_id)
 
     exc = db.get_exception(exception_id)
     if not exc:
         raise HTTPException(404, "Exception introuvable.")
 
-    anon = Anonymizer()
     entites_sensibles = [v for v in [projet.get("client"), projet.get("nif")] if v]
     exc_anon = anon.pseudonymiser_dict(exc, ["description"], entites_sensibles)
     ctx = {"exercice": projet.get("exercice"), "seuil": projet.get("seuil_signification")}
@@ -1481,9 +1539,7 @@ def interpreter_exception(projet_id: str, exception_id: str):
 @router.post("/projets/{projet_id}/generer-feuille")
 def generer_feuille(projet_id: str, body: dict = {}):
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    projet, _ = _llm_guard(db, projet_id)
     if db.has_open_exceptions(projet_id):
         raise HTTPException(400, "Exceptions ouvertes non tranchées.")
 
@@ -1646,8 +1702,7 @@ async def cataloguer_document_brut(projet_id: str, doc_id: str):
     doc = db.get_document_brut(doc_id)
     if not doc or doc["projet_id"] != projet_id:
         raise HTTPException(404, "Document introuvable.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     chemin = DATA_DIR / doc["chemin_relatif"]
     if not chemin.exists():
@@ -1683,10 +1738,7 @@ async def cataloguer_document_brut(projet_id: str, doc_id: str):
 async def cataloguer_tous_documents_bruts(projet_id: str):
     """Haiku — catalogue tous les documents en statut 'uploade'."""
     db = _get_db(projet_id)
-    if not db.get_projet(projet_id):
-        raise HTTPException(404, "Projet introuvable.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     docs = [d for d in db.list_documents_bruts(projet_id) if d["statut"] == "uploade"]
     if not docs:
@@ -1738,8 +1790,7 @@ async def extraire_document_brut(projet_id: str, doc_id: str):
         raise HTTPException(404, "Document introuvable.")
     if doc["statut"] not in ("catalogue", "extrait"):
         raise HTTPException(400, "Cataloguez ce document avant d'extraire.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     chemin = DATA_DIR / doc["chemin_relatif"]
     if not chemin.exists():
@@ -1781,10 +1832,7 @@ async def extraire_document_brut(projet_id: str, doc_id: str):
 async def extraire_tous_documents_bruts(projet_id: str):
     """Sonnet — extrait tous les documents en statut 'catalogue'."""
     db = _get_db(projet_id)
-    if not db.get_projet(projet_id):
-        raise HTTPException(404, "Projet introuvable.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     docs = [d for d in db.list_documents_bruts(projet_id)
             if d["statut"] in ("catalogue",)]
@@ -1839,8 +1887,7 @@ async def verifier_document_brut(projet_id: str, doc_id: str):
         raise HTTPException(404, "Document introuvable.")
     if doc["statut"] not in ("extrait", "verifie"):
         raise HTTPException(400, "Extrayez d'abord ce document avant de le vérifier.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     extraction = doc.get("extraction_json")
     if not extraction or not extraction.get("lignes"):
@@ -1889,10 +1936,7 @@ async def verifier_document_brut(projet_id: str, doc_id: str):
 async def verifier_tous_documents_bruts(projet_id: str):
     """Sonnet — vérifie tous les documents en statut 'extrait'."""
     db = _get_db(projet_id)
-    if not db.get_projet(projet_id):
-        raise HTTPException(404, "Projet introuvable.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     docs = [d for d in db.list_documents_bruts(projet_id) if d["statut"] == "extrait"]
     if not docs:
@@ -2464,9 +2508,7 @@ def interpreter_variations(projet_id: str):
     """Sonnet interprète les variations analytiques significatives (PLA-03)."""
     from ..llm.claude import ClaudeClient
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    projet, anon_var = _llm_guard(db, projet_id)
     plan = db.get_or_create_planification(projet_id)
     variations = plan.get("variations_json") or []
     if not variations:
@@ -2476,9 +2518,10 @@ def interpreter_variations(projet_id: str):
     fiche = {k: plan.get(k) for k in (
         "forme_juridique", "activites_principales", "marches_principaux", "systeme_information"
     )}
+    entites_var = [v for v in [projet.get("client"), projet.get("nif")] if v]
     contexte = {
         "exercice": projet.get("exercice"),
-        "client": projet.get("client"),
+        "client": anon_var.pseudonymiser(projet.get("client") or "", entites_var) if entites_var else projet.get("client"),
         "seuil_signification": projet.get("seuil_signification"),
     }
 
@@ -2571,9 +2614,7 @@ def proposer_risques(projet_id: str):
     """Sonnet propose une cartographie de risques depuis la fiche entité + variations (PLA-06 + PLA-07)."""
     from ..llm.claude import ClaudeClient
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    projet, _ = _llm_guard(db, projet_id)
     plan = db.get_or_create_planification(projet_id)
     fiche = {k: plan.get(k) for k in (
         "forme_juridique", "date_creation_entreprise", "activites_principales",
@@ -2644,6 +2685,7 @@ def reformuler_risque(projet_id: str, risque_id: str):
     """Haiku reformule un risque manuel pour l'homogénéiser avec les risques IA."""
     from ..llm.claude import ClaudeClient
     db = _get_db(projet_id)
+    _llm_guard(db, projet_id)
     risque = db.get_risque(risque_id)
     if not risque:
         raise HTTPException(404, "Risque introuvable.")
@@ -2686,9 +2728,7 @@ def generer_programme(projet_id: str):
     from ..llm.claude import ClaudeClient
     from ..controls.registry import REGISTRE
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    projet, _ = _llm_guard(db, projet_id)
 
     risques_valides = [r for r in db.list_risques(projet_id) if r.get("valide_auditeur")]
     if not risques_valides:
@@ -2756,9 +2796,7 @@ def generer_synthese(projet_id: str):
     """Sonnet génère la note de synthèse de planification qui justifie le programme de travail."""
     from ..llm.claude import ClaudeClient
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    projet, _ = _llm_guard(db, projet_id)
 
     plan = db.get_or_create_planification(projet_id)
     risques_valides = [r for r in db.list_risques(projet_id) if r.get("valide_auditeur")]
