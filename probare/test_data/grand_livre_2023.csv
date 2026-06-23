@@ -1,0 +1,16 @@
+﻿compte,libelle,date,numero_piece,debit,credit
+512,Encaissement client Abdourahman,2023-01-10,1001,6200000,0
+512,Paiement fournisseur Gulf Trade,2023-01-18,1002,0,2800000
+531,Versement espèces caisse,2023-01-25,1003,1800000,0
+512,Encaissement facture F-2302,2023-02-08,1005,4500000,0
+512,Règlement loyer bureau,2023-02-15,1006,0,1600000
+512,Virement reçu client Port PAID,2023-02-28,1008,3800000,0
+531,Paiement petites dépenses,2023-03-05,1009,0,145000
+512,Encaissement client Haile Corp,2023-03-12,1010,5100000,0
+512,Paiement salaires février,2023-03-20,1012,0,4200000
+514,Virement inter-comptes,2023-04-02,1013,6500000,0
+512,Encaissement facture F-2308,2023-04-10,1014,3200000,0
+512,Règlement fournisseur Arta Oil,2023-04-18,1015,0,1950000
+531,Versement espèces caisse,2023-04-25,1016,2000000,0
+512,Encaissement client Youssouf SA,2023-05-03,1017,4800000,0
+512,Paiement fournisseur Berbera Int.,2023-05-15,1018,0,2200000

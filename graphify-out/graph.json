@@ -1,0 +1,1117 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {
+    "hyperedges": [
+      {
+        "nodes": [
+          "cadrage",
+          "ingestion",
+          "extraction",
+          "planification",
+          "controles",
+          "revue",
+          "generation",
+          "opinion"
+        ],
+        "label": "audit_pipeline_sequence",
+        "confidence": "EXTRACTED"
+      },
+      {
+        "nodes": [
+          "cycle_tresorerie",
+          "cycle_achats",
+          "cycle_ventes"
+        ],
+        "label": "audit_cycles_covered",
+        "confidence": "EXTRACTED"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "label": "startSidecar",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/main/sidecar.ts",
+      "source_location": "L22",
+      "_origin": "ast",
+      "id": "main_sidecar_startsidecar",
+      "community": 20,
+      "norm_label": "startsidecar"
+    },
+    {
+      "label": "stopSidecar",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/main/sidecar.ts",
+      "source_location": "L77",
+      "_origin": "ast",
+      "id": "main_sidecar_stopsidecar",
+      "community": 21,
+      "norm_label": "stopsidecar"
+    },
+    {
+      "label": "getSidecarPort",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/main/sidecar.ts",
+      "source_location": "L93",
+      "_origin": "ast",
+      "id": "main_sidecar_getsidecarport",
+      "community": 19,
+      "norm_label": "getsidecarport"
+    },
+    {
+      "label": "waitForSidecar",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/main/sidecar.ts",
+      "source_location": "L97",
+      "_origin": "ast",
+      "id": "main_sidecar_waitforsidecar",
+      "community": 22,
+      "norm_label": "waitforsidecar"
+    },
+    {
+      "label": "ElectronAPI",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/preload/index.ts",
+      "source_location": "L8",
+      "_origin": "ast",
+      "id": "preload_index_electronapi",
+      "community": 25,
+      "norm_label": "electronapi"
+    },
+    {
+      "label": "Layout",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/components/layout/Layout.tsx",
+      "source_location": "L5",
+      "_origin": "ast",
+      "id": "layout_layout_layout",
+      "community": 12,
+      "norm_label": "layout"
+    },
+    {
+      "label": "EmptyState",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/components/ui/EmptyState.tsx",
+      "source_location": "L11",
+      "_origin": "ast",
+      "id": "ui_emptystate_emptystate",
+      "community": 32,
+      "norm_label": "emptystate"
+    },
+    {
+      "label": "Spinner",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/components/ui/Spinner.tsx",
+      "source_location": "L14",
+      "_origin": "ast",
+      "id": "ui_spinner_spinner",
+      "community": 33,
+      "norm_label": "spinner"
+    },
+    {
+      "label": "ToastContainer",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/components/ui/ToastContainer.tsx",
+      "source_location": "L19",
+      "_origin": "ast",
+      "id": "ui_toastcontainer_toastcontainer",
+      "community": 34,
+      "norm_label": "toastcontainer"
+    },
+    {
+      "label": "useApi",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/hooks/useApi.ts",
+      "source_location": "L8",
+      "_origin": "ast",
+      "id": "hooks_useapi_useapi",
+      "community": 7,
+      "norm_label": "useapi"
+    },
+    {
+      "label": "useSyncProjet",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/hooks/useProjet.ts",
+      "source_location": "L10",
+      "_origin": "ast",
+      "id": "hooks_useprojet_usesyncprojet",
+      "community": 8,
+      "norm_label": "usesyncprojet"
+    },
+    {
+      "label": "ToastType",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/hooks/useToast.ts",
+      "source_location": "L3",
+      "_origin": "ast",
+      "id": "hooks_usetoast_toasttype",
+      "community": 10,
+      "norm_label": "toasttype"
+    },
+    {
+      "label": "Toast",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/hooks/useToast.ts",
+      "source_location": "L5",
+      "_origin": "ast",
+      "id": "hooks_usetoast_toast",
+      "community": 9,
+      "norm_label": "toast"
+    },
+    {
+      "label": "useToast",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/hooks/useToast.ts",
+      "source_location": "L30",
+      "_origin": "ast",
+      "id": "hooks_usetoast_usetoast",
+      "community": 11,
+      "norm_label": "usetoast"
+    },
+    {
+      "label": "cn",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/lib/utils.ts",
+      "source_location": "L4",
+      "_origin": "ast",
+      "id": "lib_utils_cn",
+      "community": 13,
+      "norm_label": "cn"
+    },
+    {
+      "label": "formatMontant",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/lib/utils.ts",
+      "source_location": "L8",
+      "_origin": "ast",
+      "id": "lib_utils_formatmontant",
+      "community": 16,
+      "norm_label": "formatmontant"
+    },
+    {
+      "label": "formatDate",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/lib/utils.ts",
+      "source_location": "L16",
+      "_origin": "ast",
+      "id": "lib_utils_formatdate",
+      "community": 15,
+      "norm_label": "formatdate"
+    },
+    {
+      "label": "truncate",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/lib/utils.ts",
+      "source_location": "L28",
+      "_origin": "ast",
+      "id": "lib_utils_truncate",
+      "community": 18,
+      "norm_label": "truncate"
+    },
+    {
+      "label": "EtatPipeline",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/lib/utils.ts",
+      "source_location": "L43",
+      "_origin": "ast",
+      "id": "lib_utils_etatpipeline",
+      "community": 14,
+      "norm_label": "etatpipeline"
+    },
+    {
+      "label": "getEtatIndex",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/lib/utils.ts",
+      "source_location": "L45",
+      "_origin": "ast",
+      "id": "lib_utils_getetatindex",
+      "community": 17,
+      "norm_label": "getetatindex"
+    },
+    {
+      "label": "NotFound",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/pages/NotFound.tsx",
+      "source_location": "L4",
+      "_origin": "ast",
+      "id": "pages_notfound_notfound",
+      "community": 24,
+      "norm_label": "notfound"
+    },
+    {
+      "label": "Projet",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/stores/projetStore.ts",
+      "source_location": "L3",
+      "_origin": "ast",
+      "id": "stores_projetstore_projet",
+      "community": 30,
+      "norm_label": "projet"
+    },
+    {
+      "label": "DocumentAnnexe",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/stores/projetStore.ts",
+      "source_location": "L19",
+      "_origin": "ast",
+      "id": "stores_projetstore_documentannexe",
+      "community": 26,
+      "norm_label": "documentannexe"
+    },
+    {
+      "label": "DocumentRequis",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/stores/projetStore.ts",
+      "source_location": "L31",
+      "_origin": "ast",
+      "id": "stores_projetstore_documentrequis",
+      "community": 27,
+      "norm_label": "documentrequis"
+    },
+    {
+      "label": "Exception",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/stores/projetStore.ts",
+      "source_location": "L41",
+      "_origin": "ast",
+      "id": "stores_projetstore_exception",
+      "community": 28,
+      "norm_label": "exception"
+    },
+    {
+      "label": "ResultatControle",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/stores/projetStore.ts",
+      "source_location": "L60",
+      "_origin": "ast",
+      "id": "stores_projetstore_resultatcontrole",
+      "community": 31,
+      "norm_label": "resultatcontrole"
+    },
+    {
+      "label": "FichierSource",
+      "file_type": "code",
+      "source_file": "probare/apps/desktop/src/renderer/src/stores/projetStore.ts",
+      "source_location": "L71",
+      "_origin": "ast",
+      "id": "stores_projetstore_fichiersource",
+      "community": 29,
+      "norm_label": "fichiersource"
+    },
+    {
+      "label": "Cadrage",
+      "type": "concept",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "First pipeline stage: mission parameters and scoping",
+      "file_type": "concept",
+      "id": "cadrage",
+      "community": 4,
+      "norm_label": "cadrage"
+    },
+    {
+      "label": "Ingestion",
+      "type": "module",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "File import stage in the audit pipeline",
+      "file_type": "concept",
+      "id": "ingestion",
+      "community": 4,
+      "norm_label": "ingestion"
+    },
+    {
+      "label": "Extraction",
+      "type": "module",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Data processing stage after ingestion",
+      "file_type": "concept",
+      "id": "extraction",
+      "community": 4,
+      "norm_label": "extraction"
+    },
+    {
+      "label": "Planification",
+      "type": "module",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Risk mapping and threshold calculation stage",
+      "file_type": "concept",
+      "id": "planification",
+      "community": 0,
+      "norm_label": "planification"
+    },
+    {
+      "label": "Controles",
+      "type": "module",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Deterministic audit tests stage",
+      "file_type": "concept",
+      "id": "controles",
+      "community": 1,
+      "norm_label": "controles"
+    },
+    {
+      "label": "Revue",
+      "type": "module",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Exception review stage",
+      "file_type": "concept",
+      "id": "revue",
+      "community": 1,
+      "norm_label": "revue"
+    },
+    {
+      "label": "Generation",
+      "type": "module",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Work file generation stage",
+      "file_type": "concept",
+      "id": "generation",
+      "community": 1,
+      "norm_label": "generation"
+    },
+    {
+      "label": "Opinion",
+      "type": "concept",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Final audit opinion validation stage",
+      "file_type": "concept",
+      "id": "opinion",
+      "community": 1,
+      "norm_label": "opinion"
+    },
+    {
+      "label": "LLM Philosophy",
+      "type": "concept",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Calcul=Python, Interpretation=IA, Supervision=Humain",
+      "file_type": "concept",
+      "id": "llm_philosophy",
+      "community": 5,
+      "norm_label": "llm philosophy"
+    },
+    {
+      "label": "LLMClient",
+      "type": "module",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Abstraction layer for LLM calls",
+      "file_type": "concept",
+      "id": "llm_client",
+      "community": 5,
+      "norm_label": "llmclient"
+    },
+    {
+      "label": "Claude Sonnet",
+      "type": "component",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Default model for interpretation (claude-sonnet-4-6)",
+      "file_type": "concept",
+      "id": "claude_sonnet",
+      "community": 5,
+      "norm_label": "claude sonnet"
+    },
+    {
+      "label": "Claude Haiku",
+      "type": "component",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Model for column mapping (claude-haiku-4-5)",
+      "file_type": "concept",
+      "id": "claude_haiku",
+      "community": 5,
+      "norm_label": "claude haiku"
+    },
+    {
+      "label": "Controls Module",
+      "type": "module",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Deterministic audit controls engine",
+      "file_type": "concept",
+      "id": "controls_module",
+      "community": 2,
+      "norm_label": "controls module"
+    },
+    {
+      "label": "Storage Module",
+      "type": "module",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "SQLite per-project storage",
+      "file_type": "concept",
+      "id": "storage_module",
+      "community": 6,
+      "norm_label": "storage module"
+    },
+    {
+      "label": "Planning Module",
+      "type": "module",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Risk analysis and threshold calculation",
+      "file_type": "concept",
+      "id": "planning_module",
+      "community": 2,
+      "norm_label": "planning module"
+    },
+    {
+      "label": "StateMachine Module",
+      "type": "module",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Pipeline state transitions management",
+      "file_type": "concept",
+      "id": "statemachine_module",
+      "community": 4,
+      "norm_label": "statemachine module"
+    },
+    {
+      "label": "API Routes",
+      "type": "module",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "FastAPI routes for the Python sidecar",
+      "file_type": "concept",
+      "id": "api_routes",
+      "community": 2,
+      "norm_label": "api routes"
+    },
+    {
+      "label": "controls/registry.py",
+      "type": "module",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Controls registry with NEP references",
+      "file_type": "concept",
+      "id": "registry_py",
+      "community": 2,
+      "norm_label": "controls/registry.py"
+    },
+    {
+      "label": "NEP 300",
+      "type": "standard",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Planification standard",
+      "file_type": "concept",
+      "id": "nep_300",
+      "community": 0,
+      "norm_label": "nep 300"
+    },
+    {
+      "label": "NEP 315",
+      "type": "standard",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Connaissance de l entite standard",
+      "file_type": "concept",
+      "id": "nep_315",
+      "community": 0,
+      "norm_label": "nep 315"
+    },
+    {
+      "label": "NEP 320 / ISA 320",
+      "type": "standard",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Seuil de signification standard",
+      "file_type": "concept",
+      "id": "nep_320",
+      "community": 0,
+      "norm_label": "nep 320 / isa 320"
+    },
+    {
+      "label": "NEP 330",
+      "type": "standard",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Procedures d audit standard",
+      "file_type": "concept",
+      "id": "nep_330",
+      "community": 1,
+      "norm_label": "nep 330"
+    },
+    {
+      "label": "NEP 520",
+      "type": "standard",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Procedures analytiques standard",
+      "file_type": "concept",
+      "id": "nep_520",
+      "community": 23,
+      "norm_label": "nep 520"
+    },
+    {
+      "label": "Risque audit",
+      "type": "concept",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Audit risk identified during planning phase",
+      "file_type": "concept",
+      "id": "risque",
+      "community": 0,
+      "norm_label": "risque audit"
+    },
+    {
+      "label": "Assertions audit",
+      "type": "concept",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Audit assertions: existence, exhaustivite, evaluation, cut-off",
+      "file_type": "concept",
+      "id": "assertions",
+      "community": 0,
+      "norm_label": "assertions audit"
+    },
+    {
+      "label": "Seuil de signification",
+      "type": "concept",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Materiality threshold calculated from financial aggregates",
+      "file_type": "concept",
+      "id": "seuil_signification",
+      "community": 0,
+      "norm_label": "seuil de signification"
+    },
+    {
+      "label": "Cartographie des risques",
+      "type": "concept",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Risk mapping table for the audit mission",
+      "file_type": "concept",
+      "id": "cartographie_risques",
+      "community": 0,
+      "norm_label": "cartographie des risques"
+    },
+    {
+      "label": "Programme de travail",
+      "type": "concept",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Work program auto-generated from validated risks",
+      "file_type": "concept",
+      "id": "programme_travail",
+      "community": 0,
+      "norm_label": "programme de travail"
+    },
+    {
+      "label": "Cycle Tresorerie",
+      "type": "concept",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Treasury cycle covering accounts 5xx",
+      "file_type": "concept",
+      "id": "cycle_tresorerie",
+      "community": 1,
+      "norm_label": "cycle tresorerie"
+    },
+    {
+      "label": "Cycle Achats-Fournisseurs",
+      "type": "concept",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Purchases cycle covering accounts 40x + 60x-62x",
+      "file_type": "concept",
+      "id": "cycle_achats",
+      "community": 1,
+      "norm_label": "cycle achats-fournisseurs"
+    },
+    {
+      "label": "Cycle Ventes-Clients",
+      "type": "concept",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Sales cycle covering accounts 41x + 70x-72x",
+      "file_type": "concept",
+      "id": "cycle_ventes",
+      "community": 1,
+      "norm_label": "cycle ventes-clients"
+    },
+    {
+      "label": "Dashboard Page",
+      "type": "component",
+      "source_file": "index.html",
+      "confidence": "EXTRACTED",
+      "description": "Mission list and creation page",
+      "file_type": "concept",
+      "id": "page_dashboard",
+      "community": 3,
+      "norm_label": "dashboard page"
+    },
+    {
+      "label": "Planification Page",
+      "type": "component",
+      "source_file": "index.html",
+      "confidence": "EXTRACTED",
+      "description": "Planning page with 5 sections for risk analysis",
+      "file_type": "concept",
+      "id": "page_planification",
+      "community": 3,
+      "norm_label": "planification page"
+    },
+    {
+      "label": "Controles Page",
+      "type": "component",
+      "source_file": "index.html",
+      "confidence": "EXTRACTED",
+      "description": "Audit controls execution page",
+      "file_type": "concept",
+      "id": "page_controles",
+      "community": 3,
+      "norm_label": "controles page"
+    },
+    {
+      "label": "Cadrage Page",
+      "type": "component",
+      "source_file": "index.html",
+      "confidence": "EXTRACTED",
+      "description": "Mission parameters configuration page",
+      "file_type": "concept",
+      "id": "page_cadrage",
+      "community": 3,
+      "norm_label": "cadrage page"
+    },
+    {
+      "label": "DonneeSourcee",
+      "type": "concept",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Traceable data with projet_id, fichier_source_id, localisation",
+      "file_type": "concept",
+      "id": "donnee_sourcee",
+      "community": 6,
+      "norm_label": "donneesourcee"
+    },
+    {
+      "label": "Journal audit",
+      "type": "concept",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Audit trail logging all transitions, LLM calls, and human actions",
+      "file_type": "concept",
+      "id": "journal_audit",
+      "community": 6,
+      "norm_label": "journal audit"
+    },
+    {
+      "label": "SQLite per-project DB",
+      "type": "component",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Per-project database at ~/.probare/projets/{projet_id}/audit.db",
+      "file_type": "concept",
+      "id": "sqlite_db",
+      "community": 6,
+      "norm_label": "sqlite per-project db"
+    },
+    {
+      "label": "FastAPI Sidecar",
+      "type": "component",
+      "source_file": "CLAUDE.md",
+      "confidence": "EXTRACTED",
+      "description": "Python backend sidecar for the Electron desktop app",
+      "file_type": "concept",
+      "id": "fastapi_sidecar",
+      "community": 2,
+      "norm_label": "fastapi sidecar"
+    },
+    {
+      "label": "Electron App",
+      "type": "component",
+      "source_file": "index.html",
+      "confidence": "EXTRACTED",
+      "description": "Desktop application shell built with Electron",
+      "file_type": "concept",
+      "id": "electron_app",
+      "community": 2,
+      "norm_label": "electron app"
+    },
+    {
+      "label": "React Frontend",
+      "type": "component",
+      "source_file": "index.html",
+      "confidence": "EXTRACTED",
+      "description": "React + TypeScript + Tailwind UI layer",
+      "file_type": "concept",
+      "id": "react_frontend",
+      "community": 3,
+      "norm_label": "react frontend"
+    }
+  ],
+  "links": [
+    {
+      "label": "transitions_to",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "cadrage",
+      "target": "ingestion",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "manages_state",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "statemachine_module",
+      "target": "cadrage",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "transitions_to",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "ingestion",
+      "target": "extraction",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "transitions_to",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "extraction",
+      "target": "planification",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "interprets_for",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "llm_client",
+      "target": "planification",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "frontend_for",
+      "confidence": "EXTRACTED",
+      "source_file": "index.html",
+      "source": "page_planification",
+      "target": "planification",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "produces",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "planification",
+      "target": "cartographie_risques",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "transitions_to",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "planification",
+      "target": "controles",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "governed_by",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "planification",
+      "target": "nep_300",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "governed_by",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "planification",
+      "target": "nep_315",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "generates",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "planification",
+      "target": "programme_travail",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "calculates",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "planification",
+      "target": "seuil_signification",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "covers",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "controles",
+      "target": "cycle_achats",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "covers",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "controles",
+      "target": "cycle_tresorerie",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "covers",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "controles",
+      "target": "cycle_ventes",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "governed_by",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "controles",
+      "target": "nep_330",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "transitions_to",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "controles",
+      "target": "revue",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "interprets_exceptions_for",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "llm_client",
+      "target": "controles",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "frontend_for",
+      "confidence": "EXTRACTED",
+      "source_file": "index.html",
+      "source": "page_controles",
+      "target": "controles",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "drives",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "programme_travail",
+      "target": "controles",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "transitions_to",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "revue",
+      "target": "generation",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "transitions_to",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "generation",
+      "target": "opinion",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "enforced_by",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "llm_philosophy",
+      "target": "llm_client",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "uses_for_mapping",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "llm_client",
+      "target": "claude_haiku",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "uses_by_default",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "llm_client",
+      "target": "claude_sonnet",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "declares_in",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "controls_module",
+      "target": "registry_py",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "exposes",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "fastapi_sidecar",
+      "target": "controls_module",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "stored_in",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "donnee_sourcee",
+      "target": "storage_module",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "uses",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "fastapi_sidecar",
+      "target": "storage_module",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "written_to",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "journal_audit",
+      "target": "storage_module",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "manages",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "storage_module",
+      "target": "sqlite_db",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "exposes",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "fastapi_sidecar",
+      "target": "planning_module",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "part_of",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "api_routes",
+      "target": "fastapi_sidecar",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "governed_by",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "seuil_signification",
+      "target": "nep_320",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "cartographie_risques",
+      "target": "risque",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "relates_to",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source": "risque",
+      "target": "assertions",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "index.html",
+      "source": "react_frontend",
+      "target": "page_dashboard",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "index.html",
+      "source": "react_frontend",
+      "target": "page_planification",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "index.html",
+      "source": "react_frontend",
+      "target": "page_controles",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "index.html",
+      "source": "react_frontend",
+      "target": "page_cadrage",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "communicates_with",
+      "confidence": "EXTRACTED",
+      "source_file": "index.html",
+      "source": "electron_app",
+      "target": "fastapi_sidecar",
+      "confidence_score": 1.0
+    },
+    {
+      "label": "hosts",
+      "confidence": "EXTRACTED",
+      "source_file": "index.html",
+      "source": "electron_app",
+      "target": "react_frontend",
+      "confidence_score": 1.0
+    }
+  ],
+  "hyperedges": [
+    {
+      "nodes": [
+        "cadrage",
+        "ingestion",
+        "extraction",
+        "planification",
+        "controles",
+        "revue",
+        "generation",
+        "opinion"
+      ],
+      "label": "audit_pipeline_sequence",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "nodes": [
+        "cycle_tresorerie",
+        "cycle_achats",
+        "cycle_ventes"
+      ],
+      "label": "audit_cycles_covered",
+      "confidence": "EXTRACTED"
+    }
+  ]
+}

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>graphify - D:/projet/Audit_Comptable/graphify-out/graph.html</title>
+<script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"
+        integrity="sha384-Ux6phic9PEHJ38YtrijhkzyJ8yQlH8i/+buBR8s3mAZOJrP1gwyvAcIYl3GWtpX1"
+        crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f0f1a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; height: 100vh; overflow: hidden; }
+  #graph { flex: 1; }
+  #sidebar { width: 280px; background: #1a1a2e; border-left: 1px solid #2a2a4e; display: flex; flex-direction: column; overflow: hidden; }
+  #search-wrap { padding: 12px; border-bottom: 1px solid #2a2a4e; }
+  #search { width: 100%; background: #0f0f1a; border: 1px solid #3a3a5e; color: #e0e0e0; padding: 7px 10px; border-radius: 6px; font-size: 13px; outline: none; }
+  #search:focus { border-color: #4E79A7; }
+  #search-results { max-height: 140px; overflow-y: auto; padding: 4px 12px; border-bottom: 1px solid #2a2a4e; display: none; }
+  .search-item { padding: 4px 6px; cursor: pointer; border-radius: 4px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .search-item:hover { background: #2a2a4e; }
+  #info-panel { padding: 14px; border-bottom: 1px solid #2a2a4e; min-height: 140px; }
+  #info-panel h3 { font-size: 13px; color: #aaa; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  #info-content { font-size: 13px; color: #ccc; line-height: 1.6; }
+  #info-content .field { margin-bottom: 5px; }
+  #info-content .field b { color: #e0e0e0; }
+  #info-content .empty { color: #555; font-style: italic; }
+  .neighbor-link { display: block; padding: 2px 6px; margin: 2px 0; border-radius: 3px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid #333; }
+  .neighbor-link:hover { background: #2a2a4e; }
+  #neighbors-list { max-height: 160px; overflow-y: auto; margin-top: 4px; }
+  #legend-wrap { flex: 1; overflow-y: auto; padding: 12px; }
+  #legend-wrap h3 { font-size: 13px; color: #aaa; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .legend-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; border-radius: 4px; font-size: 12px; }
+  .legend-item:hover { background: #2a2a4e; padding-left: 4px; }
+  .legend-item.dimmed { opacity: 0.35; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .legend-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .legend-count { color: #666; font-size: 11px; }
+  #stats { padding: 10px 14px; border-top: 1px solid #2a2a4e; font-size: 11px; color: #555; }
+  #legend-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0; }
+  #legend-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: #aaa; user-select: none; }
+  #legend-controls label:hover { color: #e0e0e0; }
+  .legend-cb, #select-all-cb { appearance: none; -webkit-appearance: none; width: 14px; height: 14px; border: 1.5px solid #3a3a5e; border-radius: 3px; background: #0f0f1a; cursor: pointer; position: relative; flex-shrink: 0; }
+  .legend-cb:checked, #select-all-cb:checked { background: #4E79A7; border-color: #4E79A7; }
+  .legend-cb:checked::after, #select-all-cb:checked::after { content: ''; position: absolute; left: 3.5px; top: 1px; width: 4px; height: 7px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  #select-all-cb:indeterminate { background: #4E79A7; border-color: #4E79A7; }
+  #select-all-cb:indeterminate::after { content: ''; position: absolute; left: 2px; top: 5px; width: 8px; height: 2px; background: #fff; border: none; transform: none; }
+</style>
+</head>
+<body>
+<div id="graph"></div>
+<div id="sidebar">
+  <div id="search-wrap">
+    <input id="search" type="text" placeholder="Search nodes..." autocomplete="off">
+    <div id="search-results"></div>
+  </div>
+  <div id="info-panel">
+    <h3>Node Info</h3>
+    <div id="info-content"><span class="empty">Click a node to inspect it</span></div>
+  </div>
+  <div id="legend-wrap">
+    <h3>Communities</h3>
+    <div id="legend-controls">
+      <label><input type="checkbox" id="select-all-cb" checked onchange="toggleAllCommunities(!this.checked)">Select All</label>
+    </div>
+    <div id="legend"></div>
+  </div>
+  <div id="stats">68 nodes &middot; 42 edges &middot; 35 communities</div>
+</div>
+<script>
+const RAW_NODES = [{"id": "main_sidecar_startsidecar", "label": "startSidecar", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "startSidecar", "community": 20, "community_name": "Module 20", "source_file": "probare/apps/desktop/src/main/sidecar.ts", "file_type": "code", "degree": 0}, {"id": "main_sidecar_stopsidecar", "label": "stopSidecar", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "stopSidecar", "community": 21, "community_name": "Module 21", "source_file": "probare/apps/desktop/src/main/sidecar.ts", "file_type": "code", "degree": 0}, {"id": "main_sidecar_getsidecarport", "label": "getSidecarPort", "color": {"background": "#BAB0AC", "border": "#BAB0AC", "highlight": {"background": "#ffffff", "border": "#BAB0AC"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "getSidecarPort", "community": 19, "community_name": "Module 19", "source_file": "probare/apps/desktop/src/main/sidecar.ts", "file_type": "code", "degree": 0}, {"id": "main_sidecar_waitforsidecar", "label": "waitForSidecar", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "waitForSidecar", "community": 22, "community_name": "Module 22", "source_file": "probare/apps/desktop/src/main/sidecar.ts", "file_type": "code", "degree": 0}, {"id": "preload_index_electronapi", "label": "ElectronAPI", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "ElectronAPI", "community": 25, "community_name": "Module 25", "source_file": "probare/apps/desktop/src/preload/index.ts", "file_type": "code", "degree": 0}, {"id": "layout_layout_layout", "label": "Layout", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Layout", "community": 12, "community_name": "Module 12", "source_file": "probare/apps/desktop/src/renderer/src/components/layout/Layout.tsx", "file_type": "code", "degree": 0}, {"id": "ui_emptystate_emptystate", "label": "EmptyState", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "EmptyState", "community": 32, "community_name": "Module 32", "source_file": "probare/apps/desktop/src/renderer/src/components/ui/EmptyState.tsx", "file_type": "code", "degree": 0}, {"id": "ui_spinner_spinner", "label": "Spinner", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Spinner", "community": 33, "community_name": "Module 33", "source_file": "probare/apps/desktop/src/renderer/src/components/ui/Spinner.tsx", "file_type": "code", "degree": 0}, {"id": "ui_toastcontainer_toastcontainer", "label": "ToastContainer", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "ToastContainer", "community": 34, "community_name": "Module 34", "source_file": "probare/apps/desktop/src/renderer/src/components/ui/ToastContainer.tsx", "file_type": "code", "degree": 0}, {"id": "hooks_useapi_useapi", "label": "useApi", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "useApi", "community": 7, "community_name": "Hook API", "source_file": "probare/apps/desktop/src/renderer/src/hooks/useApi.ts", "file_type": "code", "degree": 0}, {"id": "hooks_useprojet_usesyncprojet", "label": "useSyncProjet", "color": {"background": "#9C755F", "border": "#9C755F", "highlight": {"background": "#ffffff", "border": "#9C755F"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "useSyncProjet", "community": 8, "community_name": "Hook Projet", "source_file": "probare/apps/desktop/src/renderer/src/hooks/useProjet.ts", "file_type": "code", "degree": 0}, {"id": "hooks_usetoast_toasttype", "label": "ToastType", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "ToastType", "community": 10, "community_name": "Module 10", "source_file": "probare/apps/desktop/src/renderer/src/hooks/useToast.ts", "file_type": "code", "degree": 0}, {"id": "hooks_usetoast_toast", "label": "Toast", "color": {"background": "#BAB0AC", "border": "#BAB0AC", "highlight": {"background": "#ffffff", "border": "#BAB0AC"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Toast", "community": 9, "community_name": "Hook Toast", "source_file": "probare/apps/desktop/src/renderer/src/hooks/useToast.ts", "file_type": "code", "degree": 0}, {"id": "hooks_usetoast_usetoast", "label": "useToast", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "useToast", "community": 11, "community_name": "Module 11", "source_file": "probare/apps/desktop/src/renderer/src/hooks/useToast.ts", "file_type": "code", "degree": 0}, {"id": "lib_utils_cn", "label": "cn", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "cn", "community": 13, "community_name": "Module 13", "source_file": "probare/apps/desktop/src/renderer/src/lib/utils.ts", "file_type": "code", "degree": 0}, {"id": "lib_utils_formatmontant", "label": "formatMontant", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "formatMontant", "community": 16, "community_name": "Module 16", "source_file": "probare/apps/desktop/src/renderer/src/lib/utils.ts", "file_type": "code", "degree": 0}, {"id": "lib_utils_formatdate", "label": "formatDate", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "formatDate", "community": 15, "community_name": "Module 15", "source_file": "probare/apps/desktop/src/renderer/src/lib/utils.ts", "file_type": "code", "degree": 0}, {"id": "lib_utils_truncate", "label": "truncate", "color": {"background": "#9C755F", "border": "#9C755F", "highlight": {"background": "#ffffff", "border": "#9C755F"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "truncate", "community": 18, "community_name": "Module 18", "source_file": "probare/apps/desktop/src/renderer/src/lib/utils.ts", "file_type": "code", "degree": 0}, {"id": "lib_utils_etatpipeline", "label": "EtatPipeline", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "EtatPipeline", "community": 14, "community_name": "Module 14", "source_file": "probare/apps/desktop/src/renderer/src/lib/utils.ts", "file_type": "code", "degree": 0}, {"id": "lib_utils_getetatindex", "label": "getEtatIndex", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "getEtatIndex", "community": 17, "community_name": "Module 17", "source_file": "probare/apps/desktop/src/renderer/src/lib/utils.ts", "file_type": "code", "degree": 0}, {"id": "pages_notfound_notfound", "label": "NotFound", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "NotFound", "community": 24, "community_name": "Module 24", "source_file": "probare/apps/desktop/src/renderer/src/pages/NotFound.tsx", "file_type": "code", "degree": 0}, {"id": "stores_projetstore_projet", "label": "Projet", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Projet", "community": 30, "community_name": "Module 30", "source_file": "probare/apps/desktop/src/renderer/src/stores/projetStore.ts", "file_type": "code", "degree": 0}, {"id": "stores_projetstore_documentannexe", "label": "DocumentAnnexe", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "DocumentAnnexe", "community": 26, "community_name": "Module 26", "source_file": "probare/apps/desktop/src/renderer/src/stores/projetStore.ts", "file_type": "code", "degree": 0}, {"id": "stores_projetstore_documentrequis", "label": "DocumentRequis", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "DocumentRequis", "community": 27, "community_name": "Module 27", "source_file": "probare/apps/desktop/src/renderer/src/stores/projetStore.ts", "file_type": "code", "degree": 0}, {"id": "stores_projetstore_exception", "label": "Exception", "color": {"background": "#9C755F", "border": "#9C755F", "highlight": {"background": "#ffffff", "border": "#9C755F"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Exception", "community": 28, "community_name": "Module 28", "source_file": "probare/apps/desktop/src/renderer/src/stores/projetStore.ts", "file_type": "code", "degree": 0}, {"id": "stores_projetstore_resultatcontrole", "label": "ResultatControle", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "ResultatControle", "community": 31, "community_name": "Module 31", "source_file": "probare/apps/desktop/src/renderer/src/stores/projetStore.ts", "file_type": "code", "degree": 0}, {"id": "stores_projetstore_fichiersource", "label": "FichierSource", "color": {"background": "#BAB0AC", "border": "#BAB0AC", "highlight": {"background": "#ffffff", "border": "#BAB0AC"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "FichierSource", "community": 29, "community_name": "Module 29", "source_file": "probare/apps/desktop/src/renderer/src/stores/projetStore.ts", "file_type": "code", "degree": 0}, {"id": "cadrage", "label": "Cadrage", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Cadrage", "community": 4, "community_name": "Pipeline ?tats", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 2}, {"id": "ingestion", "label": "Ingestion", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Ingestion", "community": 4, "community_name": "Pipeline ?tats", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 2}, {"id": "extraction", "label": "Extraction", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Extraction", "community": 4, "community_name": "Pipeline ?tats", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 2}, {"id": "planification", "label": "Planification", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 40.0, "font": {"size": 12, "color": "#ffffff"}, "title": "Planification", "community": 0, "community_name": "Planification & Risques", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 9}, {"id": "controles", "label": "Controles", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 40.0, "font": {"size": 12, "color": "#ffffff"}, "title": "Controles", "community": 1, "community_name": "Contr?les & Cycles Audit", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 9}, {"id": "revue", "label": "Revue", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Revue", "community": 1, "community_name": "Contr?les & Cycles Audit", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 2}, {"id": "generation", "label": "Generation", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Generation", "community": 1, "community_name": "Contr?les & Cycles Audit", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 2}, {"id": "opinion", "label": "Opinion", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Opinion", "community": 1, "community_name": "Contr?les & Cycles Audit", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "llm_philosophy", "label": "LLM Philosophy", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "LLM Philosophy", "community": 5, "community_name": "LLM & IA", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "llm_client", "label": "LLMClient", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "LLMClient", "community": 5, "community_name": "LLM & IA", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 5}, {"id": "claude_sonnet", "label": "Claude Sonnet", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Claude Sonnet", "community": 5, "community_name": "LLM & IA", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "claude_haiku", "label": "Claude Haiku", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Claude Haiku", "community": 5, "community_name": "LLM & IA", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "controls_module", "label": "Controls Module", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Controls Module", "community": 2, "community_name": "Infrastructure Backend", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 2}, {"id": "storage_module", "label": "Storage Module", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 23.3, "font": {"size": 12, "color": "#ffffff"}, "title": "Storage Module", "community": 6, "community_name": "Donn?es & Tra?abilit?", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 4}, {"id": "planning_module", "label": "Planning Module", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Planning Module", "community": 2, "community_name": "Infrastructure Backend", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "statemachine_module", "label": "StateMachine Module", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "StateMachine Module", "community": 4, "community_name": "Pipeline ?tats", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "api_routes", "label": "API Routes", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "API Routes", "community": 2, "community_name": "Infrastructure Backend", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "registry_py", "label": "controls/registry.py", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "controls/registry.py", "community": 2, "community_name": "Infrastructure Backend", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "nep_300", "label": "NEP 300", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "NEP 300", "community": 0, "community_name": "Planification & Risques", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "nep_315", "label": "NEP 315", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "NEP 315", "community": 0, "community_name": "Planification & Risques", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "nep_320", "label": "NEP 320 / ISA 320", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "NEP 320 / ISA 320", "community": 0, "community_name": "Planification & Risques", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "nep_330", "label": "NEP 330", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "NEP 330", "community": 1, "community_name": "Contr?les & Cycles Audit", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "nep_520", "label": "NEP 520", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "NEP 520", "community": 23, "community_name": "Module 23", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 0}, {"id": "risque", "label": "Risque audit", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Risque audit", "community": 0, "community_name": "Planification & Risques", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 2}, {"id": "assertions", "label": "Assertions audit", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Assertions audit", "community": 0, "community_name": "Planification & Risques", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "seuil_signification", "label": "Seuil de signification", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Seuil de signification", "community": 0, "community_name": "Planification & Risques", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 2}, {"id": "cartographie_risques", "label": "Cartographie des risques", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Cartographie des risques", "community": 0, "community_name": "Planification & Risques", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 2}, {"id": "programme_travail", "label": "Programme de travail", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Programme de travail", "community": 0, "community_name": "Planification & Risques", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 2}, {"id": "cycle_tresorerie", "label": "Cycle Tresorerie", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Cycle Tresorerie", "community": 1, "community_name": "Contr?les & Cycles Audit", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "cycle_achats", "label": "Cycle Achats-Fournisseurs", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Cycle Achats-Fournisseurs", "community": 1, "community_name": "Contr?les & Cycles Audit", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "cycle_ventes", "label": "Cycle Ventes-Clients", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Cycle Ventes-Clients", "community": 1, "community_name": "Contr?les & Cycles Audit", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "page_dashboard", "label": "Dashboard Page", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Dashboard Page", "community": 3, "community_name": "Frontend React Pages", "source_file": "index.html", "file_type": "concept", "degree": 1}, {"id": "page_planification", "label": "Planification Page", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Planification Page", "community": 3, "community_name": "Frontend React Pages", "source_file": "index.html", "file_type": "concept", "degree": 2}, {"id": "page_controles", "label": "Controles Page", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Controles Page", "community": 3, "community_name": "Frontend React Pages", "source_file": "index.html", "file_type": "concept", "degree": 2}, {"id": "page_cadrage", "label": "Cadrage Page", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Cadrage Page", "community": 3, "community_name": "Frontend React Pages", "source_file": "index.html", "file_type": "concept", "degree": 1}, {"id": "donnee_sourcee", "label": "DonneeSourcee", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DonneeSourcee", "community": 6, "community_name": "Donn?es & Tra?abilit?", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "journal_audit", "label": "Journal audit", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Journal audit", "community": 6, "community_name": "Donn?es & Tra?abilit?", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "sqlite_db", "label": "SQLite per-project DB", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "SQLite per-project DB", "community": 6, "community_name": "Donn?es & Tra?abilit?", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 1}, {"id": "fastapi_sidecar", "label": "FastAPI Sidecar", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "FastAPI Sidecar", "community": 2, "community_name": "Infrastructure Backend", "source_file": "CLAUDE.md", "file_type": "concept", "degree": 5}, {"id": "electron_app", "label": "Electron App", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Electron App", "community": 2, "community_name": "Infrastructure Backend", "source_file": "index.html", "file_type": "concept", "degree": 2}, {"id": "react_frontend", "label": "React Frontend", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "React Frontend", "community": 3, "community_name": "Frontend React Pages", "source_file": "index.html", "file_type": "concept", "degree": 5}];
+const RAW_EDGES = [{"from": "cadrage", "to": "ingestion", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "statemachine_module", "to": "cadrage", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "ingestion", "to": "extraction", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "extraction", "to": "planification", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "llm_client", "to": "planification", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "page_planification", "to": "planification", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "planification", "to": "cartographie_risques", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "planification", "to": "controles", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "planification", "to": "nep_300", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "planification", "to": "nep_315", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "planification", "to": "programme_travail", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "planification", "to": "seuil_signification", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "controles", "to": "cycle_achats", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "controles", "to": "cycle_tresorerie", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "controles", "to": "cycle_ventes", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "controles", "to": "nep_330", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "controles", "to": "revue", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "llm_client", "to": "controles", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "page_controles", "to": "controles", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "programme_travail", "to": "controles", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "revue", "to": "generation", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "generation", "to": "opinion", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "llm_philosophy", "to": "llm_client", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "llm_client", "to": "claude_haiku", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "llm_client", "to": "claude_sonnet", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "controls_module", "to": "registry_py", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "fastapi_sidecar", "to": "controls_module", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "donnee_sourcee", "to": "storage_module", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "fastapi_sidecar", "to": "storage_module", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "journal_audit", "to": "storage_module", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "storage_module", "to": "sqlite_db", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "fastapi_sidecar", "to": "planning_module", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "api_routes", "to": "fastapi_sidecar", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "seuil_signification", "to": "nep_320", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "cartographie_risques", "to": "risque", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "risque", "to": "assertions", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "react_frontend", "to": "page_dashboard", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "react_frontend", "to": "page_planification", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "react_frontend", "to": "page_controles", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "react_frontend", "to": "page_cadrage", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "electron_app", "to": "fastapi_sidecar", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "electron_app", "to": "react_frontend", "label": "", "title": " [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}];
+const LEGEND = [{"cid": 0, "color": "#4E79A7", "label": "Planification &amp; Risques", "count": 9}, {"cid": 1, "color": "#F28E2B", "label": "Contr?les &amp; Cycles Audit", "count": 8}, {"cid": 2, "color": "#E15759", "label": "Infrastructure Backend", "count": 6}, {"cid": 3, "color": "#76B7B2", "label": "Frontend React Pages", "count": 5}, {"cid": 4, "color": "#59A14F", "label": "Pipeline ?tats", "count": 4}, {"cid": 5, "color": "#EDC948", "label": "LLM &amp; IA", "count": 4}, {"cid": 6, "color": "#B07AA1", "label": "Donn?es &amp; Tra?abilit?", "count": 4}, {"cid": 7, "color": "#FF9DA7", "label": "Hook API", "count": 1}, {"cid": 8, "color": "#9C755F", "label": "Hook Projet", "count": 1}, {"cid": 9, "color": "#BAB0AC", "label": "Hook Toast", "count": 1}, {"cid": 10, "color": "#4E79A7", "label": "Module 10", "count": 1}, {"cid": 11, "color": "#F28E2B", "label": "Module 11", "count": 1}, {"cid": 12, "color": "#E15759", "label": "Module 12", "count": 1}, {"cid": 13, "color": "#76B7B2", "label": "Module 13", "count": 1}, {"cid": 14, "color": "#59A14F", "label": "Module 14", "count": 1}, {"cid": 15, "color": "#EDC948", "label": "Module 15", "count": 1}, {"cid": 16, "color": "#B07AA1", "label": "Module 16", "count": 1}, {"cid": 17, "color": "#FF9DA7", "label": "Module 17", "count": 1}, {"cid": 18, "color": "#9C755F", "label": "Module 18", "count": 1}, {"cid": 19, "color": "#BAB0AC", "label": "Module 19", "count": 1}, {"cid": 20, "color": "#4E79A7", "label": "Module 20", "count": 1}, {"cid": 21, "color": "#F28E2B", "label": "Module 21", "count": 1}, {"cid": 22, "color": "#E15759", "label": "Module 22", "count": 1}, {"cid": 23, "color": "#76B7B2", "label": "Module 23", "count": 1}, {"cid": 24, "color": "#59A14F", "label": "Module 24", "count": 1}, {"cid": 25, "color": "#EDC948", "label": "Module 25", "count": 1}, {"cid": 26, "color": "#B07AA1", "label": "Module 26", "count": 1}, {"cid": 27, "color": "#FF9DA7", "label": "Module 27", "count": 1}, {"cid": 28, "color": "#9C755F", "label": "Module 28", "count": 1}, {"cid": 29, "color": "#BAB0AC", "label": "Module 29", "count": 1}, {"cid": 30, "color": "#4E79A7", "label": "Module 30", "count": 1}, {"cid": 31, "color": "#F28E2B", "label": "Module 31", "count": 1}, {"cid": 32, "color": "#E15759", "label": "Module 32", "count": 1}, {"cid": 33, "color": "#76B7B2", "label": "Module 33", "count": 1}, {"cid": 34, "color": "#59A14F", "label": "Module 34", "count": 1}];
+
+// HTML-escape helper — prevents XSS when injecting graph data into innerHTML
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Build vis datasets
+const nodesDS = new vis.DataSet(RAW_NODES.map(n => ({
+  id: n.id, label: n.label, color: n.color, size: n.size,
+  font: n.font, title: n.title,
+  _community: n.community, _community_name: n.community_name,
+  _source_file: n.source_file, _file_type: n.file_type, _degree: n.degree,
+})));
+
+const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({
+  id: i, from: e.from, to: e.to,
+  label: '',
+  title: e.title,
+  dashes: e.dashes,
+  width: e.width,
+  color: e.color,
+  arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+})));
+
+const container = document.getElementById('graph');
+const network = new vis.Network(container, { nodes: nodesDS, edges: edgesDS }, {
+  physics: {
+    enabled: true,
+    solver: 'forceAtlas2Based',
+    forceAtlas2Based: {
+      gravitationalConstant: -60,
+      centralGravity: 0.005,
+      springLength: 120,
+      springConstant: 0.08,
+      damping: 0.4,
+      avoidOverlap: 0.8,
+    },
+    stabilization: { iterations: 200, fit: true },
+  },
+  interaction: {
+    hover: true,
+    tooltipDelay: 100,
+    hideEdgesOnDrag: true,
+    navigationButtons: false,
+    keyboard: false,
+  },
+  nodes: { shape: 'dot', borderWidth: 1.5 },
+  edges: { smooth: { type: 'continuous', roundness: 0.2 }, selectionWidth: 3 },
+});
+
+network.once('stabilizationIterationsDone', () => {
+  network.setOptions({ physics: { enabled: false } });
+});
+
+function showInfo(nodeId) {
+  const n = nodesDS.get(nodeId);
+  if (!n) return;
+  const neighborIds = network.getConnectedNodes(nodeId);
+  const neighborItems = neighborIds.map(nid => {
+    const nb = nodesDS.get(nid);
+    const color = nb ? nb.color.background : '#555';
+    return `<span class="neighbor-link" style="border-left-color:${esc(color)}" onclick="focusNode(${JSON.stringify(nid)})">${esc(nb ? nb.label : nid)}</span>`;
+  }).join('');
+  document.getElementById('info-content').innerHTML = `
+    <div class="field"><b>${esc(n.label)}</b></div>
+    <div class="field">Type: ${esc(n._file_type || 'unknown')}</div>
+    <div class="field">Community: ${esc(n._community_name)}</div>
+    <div class="field">Source: ${esc(n._source_file || '-')}</div>
+    <div class="field">Degree: ${n._degree}</div>
+    ${neighborIds.length ? `<div class="field" style="margin-top:8px;color:#aaa;font-size:11px">Neighbors (${neighborIds.length})</div><div id="neighbors-list">${neighborItems}</div>` : ''}
+  `;
+}
+
+function focusNode(nodeId) {
+  network.focus(nodeId, { scale: 1.4, animation: true });
+  network.selectNodes([nodeId]);
+  showInfo(nodeId);
+}
+
+// Track hovered node — hover detection is more reliable than click params
+let hoveredNodeId = null;
+network.on('hoverNode', params => {
+  hoveredNodeId = params.node;
+  container.style.cursor = 'pointer';
+});
+network.on('blurNode', () => {
+  hoveredNodeId = null;
+  container.style.cursor = 'default';
+});
+container.addEventListener('click', () => {
+  if (hoveredNodeId !== null) {
+    showInfo(hoveredNodeId);
+    network.selectNodes([hoveredNodeId]);
+  }
+});
+network.on('click', params => {
+  if (params.nodes.length > 0) {
+    showInfo(params.nodes[0]);
+  } else if (hoveredNodeId === null) {
+    document.getElementById('info-content').innerHTML = '<span class="empty">Click a node to inspect it</span>';
+  }
+});
+
+const searchInput = document.getElementById('search');
+const searchResults = document.getElementById('search-results');
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.toLowerCase().trim();
+  searchResults.innerHTML = '';
+  if (!q) { searchResults.style.display = 'none'; return; }
+  const matches = RAW_NODES.filter(n => n.label.toLowerCase().includes(q)).slice(0, 20);
+  if (!matches.length) { searchResults.style.display = 'none'; return; }
+  searchResults.style.display = 'block';
+  matches.forEach(n => {
+    const el = document.createElement('div');
+    el.className = 'search-item';
+    el.textContent = n.label;
+    el.style.borderLeft = `3px solid ${n.color.background}`;
+    el.style.paddingLeft = '8px';
+    el.onclick = () => {
+      network.focus(n.id, { scale: 1.5, animation: true });
+      network.selectNodes([n.id]);
+      showInfo(n.id);
+      searchResults.style.display = 'none';
+      searchInput.value = '';
+    };
+    searchResults.appendChild(el);
+  });
+});
+document.addEventListener('click', e => {
+  if (!searchResults.contains(e.target) && e.target !== searchInput)
+    searchResults.style.display = 'none';
+});
+
+const hiddenCommunities = new Set();
+
+const selectAllCb = document.getElementById('select-all-cb');
+
+function updateSelectAllState() {
+  const total = LEGEND.length;
+  const hidden = hiddenCommunities.size;
+  selectAllCb.checked = hidden === 0;
+  selectAllCb.indeterminate = hidden > 0 && hidden < total;
+}
+
+function toggleAllCommunities(hide) {
+  document.querySelectorAll('.legend-item').forEach(item => {
+    hide ? item.classList.add('dimmed') : item.classList.remove('dimmed');
+  });
+  document.querySelectorAll('.legend-cb').forEach(cb => {
+    cb.checked = !hide;
+  });
+  LEGEND.forEach(c => {
+    if (hide) hiddenCommunities.add(c.cid); else hiddenCommunities.delete(c.cid);
+  });
+  const updates = RAW_NODES.map(n => ({ id: n.id, hidden: hide }));
+  nodesDS.update(updates);
+  updateSelectAllState();
+}
+
+const legendEl = document.getElementById('legend');
+LEGEND.forEach(c => {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'legend-cb';
+  cb.checked = true;
+  cb.addEventListener('change', (e) => {
+    e.stopPropagation();
+    if (cb.checked) {
+      hiddenCommunities.delete(c.cid);
+      item.classList.remove('dimmed');
+    } else {
+      hiddenCommunities.add(c.cid);
+      item.classList.add('dimmed');
+    }
+    const updates = RAW_NODES
+      .filter(n => n.community === c.cid)
+      .map(n => ({ id: n.id, hidden: !cb.checked }));
+    nodesDS.update(updates);
+    updateSelectAllState();
+  });
+  item.innerHTML = `<div class="legend-dot" style="background:${c.color}"></div>
+    <span class="legend-label">${c.label}</span>
+    <span class="legend-count">${c.count}</span>`;
+  item.prepend(cb);
+  item.onclick = (e) => {
+    if (e.target === cb) return;
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event('change'));
+  };
+  legendEl.appendChild(item);
+});
+</script>
+<script>
+// Render hyperedges as shaded regions
+const hyperedges = [{"nodes": ["cadrage", "ingestion", "extraction", "planification", "controles", "revue", "generation", "opinion"], "label": "audit_pipeline_sequence", "confidence": "EXTRACTED"}, {"nodes": ["cycle_tresorerie", "cycle_achats", "cycle_ventes"], "label": "audit_cycles_covered", "confidence": "EXTRACTED"}];
+// afterDrawing passes ctx already transformed to network coordinate space.
+// Draw node positions raw — no manual pan/zoom/DPR math needed.
+network.on('afterDrawing', function(ctx) {
+    hyperedges.forEach(h => {
+        const positions = h.nodes
+            .map(nid => network.getPositions([nid])[nid])
+            .filter(p => p !== undefined);
+        if (positions.length < 2) return;
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = '#6366f1';
+        ctx.strokeStyle = '#6366f1';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        // Centroid and expanded hull in network coordinates
+        const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
+        const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
+        const expanded = positions.map(p => ({
+            x: cx + (p.x - cx) * 1.15,
+            y: cy + (p.y - cy) * 1.15
+        }));
+        ctx.moveTo(expanded[0].x, expanded[0].y);
+        expanded.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.4;
+        ctx.stroke();
+        // Label
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#4f46e5';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(h.label, cx, cy - 5);
+        ctx.restore();
+    });
+});
+</script>
+</body>
+</html>

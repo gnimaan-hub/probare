@@ -1,0 +1,8 @@
+D:\projet\Audit_Comptable\cdc_text.txt
+D:\projet\Audit_Comptable\cdc_text2.txt
+D:\projet\Audit_Comptable\claude-code-brief.md
+D:\projet\Audit_Comptable\graphify-out\converted\Documentation_Probare_MVP_3b0500e8.md
+D:\projet\Audit_Comptable\graphify-out\converted\Probare_Cahier_des_charges_619396fd.md
+D:\projet\Audit_Comptable\graphify-out\converted\Probare_Reference_Audit_fed0ea97.md
+D:\projet\Audit_Comptable\probare\CLAUDE.md
+D:\projet\Audit_Comptable\probare\apps\desktop\src\renderer\index.html

@@ -1,0 +1,16 @@
+﻿compte,libelle,date,numero_piece,debit,credit
+512,Encaissement client Mahamoud,2022-01-12,1001,5800000,0
+512,Paiement fournisseur Orient Trade,2022-01-20,1002,0,2300000
+512,Encaissement facture F-2201,2022-01-28,1003,3500000,0
+531,Versement caisse [DOUBLON pièce 1003],2022-02-01,1003,1200000,0
+512,Règlement loyer janvier,2022-02-05,1004,0,1500000
+512,Encaissement client Ibrahim,2022-02-14,1005,4200000,0
+512,Paiement fournisseur Tadjourah,2022-02-22,1006,0,1800000
+512,Virement reçu client Djib Port,2022-03-01,1007,6000000,0
+514,Virement inter-comptes [DOUBLON pièce 1007],2022-03-05,1007,5000000,0
+512,Encaissement facture F-2206,2022-03-12,1008,3800000,0
+531,Paiement petites dépenses,2022-03-18,1009,0,165000
+512,Encaissement client Awash SA,2022-04-02,1010,4500000,0
+512,Paiement salaires mars,2022-04-08,1011,0,3800000
+531,Versement espèces caisse,2022-04-15,1012,1200000,0
+512,Encaissement client Port Obock,2022-04-22,1013,3200000,0

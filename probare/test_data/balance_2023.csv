@@ -1,0 +1,14 @@
+﻿compte,libelle,debit,credit,exercice
+101,Capital social,0,25000000,2023
+106,Réserves légales,0,3500000,2023
+161,Emprunts BCI long terme,0,21000000,2023
+401,Fournisseurs divers,0,9500000,2023
+411,Clients Djibouti,18500000,0,2023
+416,Clients douteux,2000000,0,2023
+512,Banque BCI — CC n°4521 [ERREUR: 6 500 000 en trop],35000000,0,2023
+514,Banque CFE — CC n°8830,6500000,0,2023
+531,Caisse principale,5500000,0,2023
+601,Achats matières premières,11000000,0,2023
+624,Transports sur achats,2000000,0,2023
+641,Rémunérations du personnel,13000000,0,2023
+706,Prestations de services,0,30000000,2023

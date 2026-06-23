@@ -1,0 +1,432 @@
+{
+  "D:\\projet\\Audit_Comptable\\.claude\\launch.json": {
+    "mtime": 1781784444.4566991,
+    "ast_hash": "0d3108c59b819131529be7df63ddf336",
+    "semantic_hash": "0d3108c59b819131529be7df63ddf336"
+  },
+  "D:\\projet\\Audit_Comptable\\.claude\\settings.local.json": {
+    "mtime": 1781782100.4479089,
+    "ast_hash": "6047bb74c0c54c63256c1cb5094970e6",
+    "semantic_hash": "6047bb74c0c54c63256c1cb5094970e6"
+  },
+  "D:\\projet\\Audit_Comptable\\generer_doc.py": {
+    "mtime": 1781789782.6981285,
+    "ast_hash": "bf03fe973d1887999b68eab5219281dd",
+    "semantic_hash": "bf03fe973d1887999b68eab5219281dd"
+  },
+  "D:\\projet\\Audit_Comptable\\generer_jeux_test.py": {
+    "mtime": 1781942153.9715934,
+    "ast_hash": "e8baf8c72c4123bd4341ae2307c818db",
+    "semantic_hash": "e8baf8c72c4123bd4341ae2307c818db"
+  },
+  "D:\\projet\\Audit_Comptable\\lancer_probare.ps1": {
+    "mtime": 1781940995.540374,
+    "ast_hash": "2b33559ca518b4fe01b9569df05b9545",
+    "semantic_hash": "2b33559ca518b4fe01b9569df05b9545"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\.claude\\launch.json": {
+    "mtime": 1781784388.664077,
+    "ast_hash": "ade96b9c1647d795aaa5fd1a26a2a052",
+    "semantic_hash": "ade96b9c1647d795aaa5fd1a26a2a052"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\.claude\\launch.json": {
+    "mtime": 1781954828.518345,
+    "ast_hash": "3f452d33b441d5f0b9edd4326df9f587",
+    "semantic_hash": "3f452d33b441d5f0b9edd4326df9f587"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\electron.vite.config.ts": {
+    "mtime": 1781782606.4963868,
+    "ast_hash": "54ae4c7e05fcd2601b2e1995abfee658",
+    "semantic_hash": "54ae4c7e05fcd2601b2e1995abfee658"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\package.json": {
+    "mtime": 1781942837.3088322,
+    "ast_hash": "e441805b82ccb9c31e7c81722e1a3e92",
+    "semantic_hash": "e441805b82ccb9c31e7c81722e1a3e92"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\postcss.config.js": {
+    "mtime": 1781782636.317536,
+    "ast_hash": "854b38759e7a8b4b82306ae2d9a3a833",
+    "semantic_hash": "854b38759e7a8b4b82306ae2d9a3a833"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\main\\index.ts": {
+    "mtime": 1781782661.0490909,
+    "ast_hash": "244703cc726d9cc7108c9f11be0b730c",
+    "semantic_hash": "244703cc726d9cc7108c9f11be0b730c"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\main\\sidecar.ts": {
+    "mtime": 1781943224.9772604,
+    "ast_hash": "d7adf24859c4660b785a1130e00278eb",
+    "semantic_hash": "d7adf24859c4660b785a1130e00278eb"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\preload\\index.ts": {
+    "mtime": 1781782684.228533,
+    "ast_hash": "85470d215a622cfb7b8d8b407eda324c",
+    "semantic_hash": "85470d215a622cfb7b8d8b407eda324c"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\App.tsx": {
+    "mtime": 1782046978.4491181,
+    "ast_hash": "730c227fb77a03ea009b472c552b516f",
+    "semantic_hash": "730c227fb77a03ea009b472c552b516f"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\components\\layout\\Header.tsx": {
+    "mtime": 1781782834.046328,
+    "ast_hash": "198efac8e8c424604aebd2cf4fc48582",
+    "semantic_hash": "198efac8e8c424604aebd2cf4fc48582"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\components\\layout\\Layout.tsx": {
+    "mtime": 1781782843.7277992,
+    "ast_hash": "60c2b282e76a99575f68bc49d7c00de1",
+    "semantic_hash": "60c2b282e76a99575f68bc49d7c00de1"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\components\\layout\\Sidebar.tsx": {
+    "mtime": 1781782825.5479753,
+    "ast_hash": "5ac0c3635ff6155e110034e497a85a02",
+    "semantic_hash": "5ac0c3635ff6155e110034e497a85a02"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\components\\ui\\EmptyState.tsx": {
+    "mtime": 1781782790.2626126,
+    "ast_hash": "b5b4276686bc9280a33816f56c5d9668",
+    "semantic_hash": "b5b4276686bc9280a33816f56c5d9668"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\components\\ui\\Spinner.tsx": {
+    "mtime": 1781782783.2634196,
+    "ast_hash": "21c0308231c2332436b496ee48ed9865",
+    "semantic_hash": "21c0308231c2332436b496ee48ed9865"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\components\\ui\\ToastContainer.tsx": {
+    "mtime": 1781782777.9625423,
+    "ast_hash": "f31e8433d0b3328eaee1bdd7bf6cb2f1",
+    "semantic_hash": "f31e8433d0b3328eaee1bdd7bf6cb2f1"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\hooks\\useApi.ts": {
+    "mtime": 1782045033.0126941,
+    "ast_hash": "f2e83f41d0150a6c009c3fd9767ab95d",
+    "semantic_hash": "f2e83f41d0150a6c009c3fd9767ab95d"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\hooks\\useProjet.ts": {
+    "mtime": 1781784775.5871174,
+    "ast_hash": "5a25a2decc143eec700ccbf67eaa27f7",
+    "semantic_hash": "5a25a2decc143eec700ccbf67eaa27f7"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\hooks\\useToast.ts": {
+    "mtime": 1781782767.6834793,
+    "ast_hash": "0195ad0b5a3a0520616e2690e7b0779b",
+    "semantic_hash": "0195ad0b5a3a0520616e2690e7b0779b"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\lib\\utils.ts": {
+    "mtime": 1782046725.8109345,
+    "ast_hash": "024fba28e920a7860a7dbff5b26e2860",
+    "semantic_hash": "024fba28e920a7860a7dbff5b26e2860"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\main.tsx": {
+    "mtime": 1781782708.4747767,
+    "ast_hash": "5ac8f8ccdcd0cdc404b7729fae07c5ee",
+    "semantic_hash": "5ac8f8ccdcd0cdc404b7729fae07c5ee"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\pages\\Cadrage.tsx": {
+    "mtime": 1782045409.8365095,
+    "ast_hash": "b0b376a18487433da4c1b68946700fc9",
+    "semantic_hash": "b0b376a18487433da4c1b68946700fc9"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\pages\\Controles.tsx": {
+    "mtime": 1781961721.62913,
+    "ast_hash": "5b4ac923ab059a1de4668821c76c034b",
+    "semantic_hash": "5b4ac923ab059a1de4668821c76c034b"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\pages\\Dashboard.tsx": {
+    "mtime": 1782045400.1283555,
+    "ast_hash": "6fbc2315e8e7009b4633c7cb93b69a9b",
+    "semantic_hash": "6fbc2315e8e7009b4633c7cb93b69a9b"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\pages\\DossierBrut.tsx": {
+    "mtime": 1781964040.9753058,
+    "ast_hash": "f582da085b73c94511dee91c1b1d9085",
+    "semantic_hash": "f582da085b73c94511dee91c1b1d9085"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\pages\\DossierPermanent.tsx": {
+    "mtime": 1782045046.4607184,
+    "ast_hash": "73056c6f2080e37b7e25e391f7322a6b",
+    "semantic_hash": "73056c6f2080e37b7e25e391f7322a6b"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\pages\\DossiersPermanents.tsx": {
+    "mtime": 1782045092.667426,
+    "ast_hash": "a3ab76f1327708f72124cf3b6cf94f02",
+    "semantic_hash": "a3ab76f1327708f72124cf3b6cf94f02"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\pages\\Exceptions.tsx": {
+    "mtime": 1781945708.9966564,
+    "ast_hash": "3e4ab270ad6b46fac76e56e337ce5f9f",
+    "semantic_hash": "3e4ab270ad6b46fac76e56e337ce5f9f"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\pages\\Ingestion.tsx": {
+    "mtime": 1782047013.212517,
+    "ast_hash": "fd57262a8d388f1a8c9b627009e1ea6c",
+    "semantic_hash": "fd57262a8d388f1a8c9b627009e1ea6c"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\pages\\Journal.tsx": {
+    "mtime": 1781783122.9638038,
+    "ast_hash": "59ea76e6cf1fc79e2f9f7f74071e8c76",
+    "semantic_hash": "59ea76e6cf1fc79e2f9f7f74071e8c76"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\pages\\NotFound.tsx": {
+    "mtime": 1781783129.8006835,
+    "ast_hash": "2abd486f348d6903e825e6b54795ef9a",
+    "semantic_hash": "2abd486f348d6903e825e6b54795ef9a"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\pages\\Planification.tsx": {
+    "mtime": 1782047087.9965389,
+    "ast_hash": "8ea7746b5f7f75b6925a6d195afe2158",
+    "semantic_hash": "8ea7746b5f7f75b6925a6d195afe2158"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\pages\\Rapport.tsx": {
+    "mtime": 1781945655.074666,
+    "ast_hash": "1b48107a42e5cb5eb205b2dcfd0fd731",
+    "semantic_hash": "1b48107a42e5cb5eb205b2dcfd0fd731"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\src\\stores\\projetStore.ts": {
+    "mtime": 1781954593.4752555,
+    "ast_hash": "f8da1625841598796be4b3ba1924282b",
+    "semantic_hash": "f8da1625841598796be4b3ba1924282b"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\tailwind.config.js": {
+    "mtime": 1781782633.3109295,
+    "ast_hash": "8eeb3fbb8060b85c67663b85850705e0",
+    "semantic_hash": "8eeb3fbb8060b85c67663b85850705e0"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\tsconfig.json": {
+    "mtime": 1781782610.8935213,
+    "ast_hash": "20340495003cb80714eef25962dbe17e",
+    "semantic_hash": "20340495003cb80714eef25962dbe17e"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\tsconfig.node.json": {
+    "mtime": 1781783395.9195108,
+    "ast_hash": "31e5b66d257048cef452e3cb8c0a72fc",
+    "semantic_hash": "31e5b66d257048cef452e3cb8c0a72fc"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\tsconfig.web.json": {
+    "mtime": 1781783403.703946,
+    "ast_hash": "2597cb836affff1c54c8b9d4fb122fcf",
+    "semantic_hash": "2597cb836affff1c54c8b9d4fb122fcf"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\vite.preview.config.ts": {
+    "mtime": 1781784452.1459439,
+    "ast_hash": "1a980dc629ee1b4271600208708b102b",
+    "semantic_hash": "1a980dc629ee1b4271600208708b102b"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\__init__.py": {
+    "mtime": 1781782527.8806732,
+    "ast_hash": "8111bef68e6469402626988f1804873c",
+    "semantic_hash": "8111bef68e6469402626988f1804873c"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\anonymization\\__init__.py": {
+    "mtime": 1781782364.453765,
+    "ast_hash": "4e4215cb755934324910cb0534f37f1d",
+    "semantic_hash": "4e4215cb755934324910cb0534f37f1d"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\anonymization\\anonymizer.py": {
+    "mtime": 1781782360.8884315,
+    "ast_hash": "373bc85fee502314d17c34cf670f96e9",
+    "semantic_hash": "373bc85fee502314d17c34cf670f96e9"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\api\\__init__.py": {
+    "mtime": 1781782455.755345,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\api\\routes.py": {
+    "mtime": 1782046710.499443,
+    "ast_hash": "ad8d1f60a89bc15de90cf8e8a0f833dd",
+    "semantic_hash": "ad8d1f60a89bc15de90cf8e8a0f833dd"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\audit_trail\\__init__.py": {
+    "mtime": 1781782536.731991,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\controls\\__init__.py": {
+    "mtime": 1781782349.2916036,
+    "ast_hash": "05ee0e455055590dda942c93242f415b",
+    "semantic_hash": "05ee0e455055590dda942c93242f415b"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\controls\\document_types.py": {
+    "mtime": 1781954182.9685128,
+    "ast_hash": "54b7fdb28a9478b08304ec3116381ba2",
+    "semantic_hash": "54b7fdb28a9478b08304ec3116381ba2"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\controls\\engine.py": {
+    "mtime": 1781951053.5601866,
+    "ast_hash": "4ebaf3fda2b0fbaf4dd55af82e70fdec",
+    "semantic_hash": "4ebaf3fda2b0fbaf4dd55af82e70fdec"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\controls\\registry.py": {
+    "mtime": 1781950908.6671276,
+    "ast_hash": "6b4d95eada70ef58c801089b2d2dc358",
+    "semantic_hash": "6b4d95eada70ef58c801089b2d2dc358"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\cycles\\__init__.py": {
+    "mtime": 1781782539.6044748,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\ingestion\\__init__.py": {
+    "mtime": 1781782288.4713073,
+    "ast_hash": "d9a14f405c77cd0fc2c3dbd293e5b8b4",
+    "semantic_hash": "d9a14f405c77cd0fc2c3dbd293e5b8b4"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\ingestion\\dossier_brut.py": {
+    "mtime": 1781963105.1166873,
+    "ast_hash": "03dd7f77a627c7fdb0cd5077c53d7958",
+    "semantic_hash": "03dd7f77a627c7fdb0cd5077c53d7958"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\ingestion\\excel_csv.py": {
+    "mtime": 1781782283.872414,
+    "ast_hash": "04b65058f0c001fc9150a7eb6eba8881",
+    "semantic_hash": "04b65058f0c001fc9150a7eb6eba8881"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\llm\\__init__.py": {
+    "mtime": 1781782410.8511424,
+    "ast_hash": "fdd619ad38a79a360508c4edae99de5c",
+    "semantic_hash": "fdd619ad38a79a360508c4edae99de5c"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\llm\\claude.py": {
+    "mtime": 1782046601.0164227,
+    "ast_hash": "8eaf298c4c86b0063eec44bb99676d04",
+    "semantic_hash": "8eaf298c4c86b0063eec44bb99676d04"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\llm\\client.py": {
+    "mtime": 1781782374.2448013,
+    "ast_hash": "2be86564115a2891694435a60f080120",
+    "semantic_hash": "2be86564115a2891694435a60f080120"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\main.py": {
+    "mtime": 1781945130.9367018,
+    "ast_hash": "1b8375d03e1871328f15a70dfb5edaa5",
+    "semantic_hash": "1b8375d03e1871328f15a70dfb5edaa5"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\planning\\__init__.py": {
+    "mtime": 1782046523.1138415,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\planning\\analytical.py": {
+    "mtime": 1782046551.9841769,
+    "ast_hash": "2ac54b8c469038c7d5943a3eb54b3cec",
+    "semantic_hash": "2ac54b8c469038c7d5943a3eb54b3cec"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\planning\\thresholds.py": {
+    "mtime": 1782046562.877494,
+    "ast_hash": "02ccf78c40237d4ab3a8418485b05fb1",
+    "semantic_hash": "02ccf78c40237d4ab3a8418485b05fb1"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\provenance\\__init__.py": {
+    "mtime": 1781782198.101733,
+    "ast_hash": "7d9842cef7c7f7881ffa1034390ed2b7",
+    "semantic_hash": "7d9842cef7c7f7881ffa1034390ed2b7"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\provenance\\models.py": {
+    "mtime": 1781783538.2192204,
+    "ast_hash": "efdf793fd71d801a820ff73a9442f4c6",
+    "semantic_hash": "efdf793fd71d801a820ff73a9442f4c6"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\reporting\\__init__.py": {
+    "mtime": 1781782448.8422754,
+    "ast_hash": "c1c169ed7d2a7ae1019f3902fe1c7a64",
+    "semantic_hash": "c1c169ed7d2a7ae1019f3902fe1c7a64"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\reporting\\export.py": {
+    "mtime": 1781782444.4413562,
+    "ast_hash": "494dbf0c6685cc46020fc381f60f53f5",
+    "semantic_hash": "494dbf0c6685cc46020fc381f60f53f5"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\statemachine\\__init__.py": {
+    "mtime": 1781782259.1636982,
+    "ast_hash": "88fc039a293399c9d74033df272b98f0",
+    "semantic_hash": "88fc039a293399c9d74033df272b98f0"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\statemachine\\pipeline.py": {
+    "mtime": 1782046607.9553285,
+    "ast_hash": "7e4cbe3fdb7d43a536903c33060c1bc7",
+    "semantic_hash": "7e4cbe3fdb7d43a536903c33060c1bc7"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\storage\\__init__.py": {
+    "mtime": 1781782243.401589,
+    "ast_hash": "54c626f7da391f6dca82d3e9300744c1",
+    "semantic_hash": "54c626f7da391f6dca82d3e9300744c1"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\storage\\clients_db.py": {
+    "mtime": 1782044799.6864815,
+    "ast_hash": "c6637f634804285c19e167bde620d4be",
+    "semantic_hash": "c6637f634804285c19e167bde620d4be"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\probare_engine\\storage\\db.py": {
+    "mtime": 1782046690.9178622,
+    "ast_hash": "cb2d761044fbdf3255c867b0db426249",
+    "semantic_hash": "cb2d761044fbdf3255c867b0db426249"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\pyproject.toml": {
+    "mtime": 1781783186.583677,
+    "ast_hash": "d28f49df9d2fae8c482d1b539fa8a068",
+    "semantic_hash": "d28f49df9d2fae8c482d1b539fa8a068"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\tests\\__init__.py": {
+    "mtime": 1781782544.843371,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\tests\\test_anonymization.py": {
+    "mtime": 1781782585.7867994,
+    "ast_hash": "c4f7f767180cebd93d3dc462d530389a",
+    "semantic_hash": "c4f7f767180cebd93d3dc462d530389a"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\tests\\test_controls.py": {
+    "mtime": 1781951578.7047372,
+    "ast_hash": "d30ab0202b42831ebc3a5209d8cbea6c",
+    "semantic_hash": "d30ab0202b42831ebc3a5209d8cbea6c"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\engine\\tests\\test_new_features.py": {
+    "mtime": 1781958640.2499511,
+    "ast_hash": "44cddb13e30c83527b13fa3689e3adab",
+    "semantic_hash": "44cddb13e30c83527b13fa3689e3adab"
+  },
+  "D:\\projet\\Audit_Comptable\\cdc_text.txt": {
+    "mtime": 1782043803.396913,
+    "ast_hash": "7ea97e20469ee57972a01387ab19e4e8",
+    "semantic_hash": "7ea97e20469ee57972a01387ab19e4e8"
+  },
+  "D:\\projet\\Audit_Comptable\\cdc_text2.txt": {
+    "mtime": 1782043817.1534367,
+    "ast_hash": "8df46d20ccc5eb6792784b7f022fd253",
+    "semantic_hash": "8df46d20ccc5eb6792784b7f022fd253"
+  },
+  "D:\\projet\\Audit_Comptable\\claude-code-brief.md": {
+    "mtime": 1781776941.4367063,
+    "ast_hash": "b9dea7e75fdc2f42e9ddd8af8d895070",
+    "semantic_hash": "b9dea7e75fdc2f42e9ddd8af8d895070"
+  },
+  "D:\\projet\\Audit_Comptable\\graphify-out\\converted\\Documentation_Probare_MVP_3b0500e8.md": {
+    "mtime": 1782124779.6344576,
+    "ast_hash": "70c507f72fefec2d3ec01417239ef788",
+    "semantic_hash": "70c507f72fefec2d3ec01417239ef788"
+  },
+  "D:\\projet\\Audit_Comptable\\graphify-out\\converted\\Probare_Cahier_des_charges_619396fd.md": {
+    "mtime": 1782124779.9401686,
+    "ast_hash": "449f2ffdd5a047ea37bdf910d2440340",
+    "semantic_hash": "449f2ffdd5a047ea37bdf910d2440340"
+  },
+  "D:\\projet\\Audit_Comptable\\graphify-out\\converted\\Probare_Reference_Audit_fed0ea97.md": {
+    "mtime": 1782124780.528057,
+    "ast_hash": "2e71a533bc867f900ac8f617ab87d68f",
+    "semantic_hash": "2e71a533bc867f900ac8f617ab87d68f"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\CLAUDE.md": {
+    "mtime": 1781950864.7733655,
+    "ast_hash": "5213c6ca1eceddc039752d382c082434",
+    "semantic_hash": "5213c6ca1eceddc039752d382c082434"
+  },
+  "D:\\projet\\Audit_Comptable\\probare\\apps\\desktop\\src\\renderer\\index.html": {
+    "mtime": 1781782700.814314,
+    "ast_hash": "0ab6c5decb6e889378b5068dffe7ef33",
+    "semantic_hash": "0ab6c5decb6e889378b5068dffe7ef33"
+  }
+}

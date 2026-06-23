@@ -1,0 +1,14 @@
+﻿compte,libelle,debit,credit,exercice
+101,Capital social,0,20000000,2022
+106,Réserves légales,0,2000000,2022
+161,Emprunts BCI long terme,0,24000000,2022
+401,Fournisseurs divers,0,7000000,2022
+411,Clients Djibouti,15000000,0,2022
+416,Clients douteux,1500000,0,2022
+512,Banque BCI — CC n°4521,24000000,0,2022
+514,Banque CFE — CC n°8830,5000000,0,2022
+531,Caisse principale,4500000,0,2022
+601,Achats matières premières,9000000,0,2022
+624,Transports sur achats,1500000,0,2022
+641,Rémunérations du personnel,12000000,0,2022
+706,Prestations de services,0,19500000,2022
