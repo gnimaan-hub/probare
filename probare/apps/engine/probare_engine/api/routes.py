@@ -3460,3 +3460,302 @@ def telecharger_note_planification(projet_id: str):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         filename=filename,
     )
+
+
+# ─── Circularisation (NEP 505) ────────────────────────────────────────────────
+
+class CircularisationBody(BaseModel):
+    cycle: str
+    compte: str
+    libelle: str | None = None
+    solde_comptable: float | None = None
+    sources: list[str] = []
+    type_circularisation: str = "client"
+
+
+@router.get("/projets/{projet_id}/circularisation")
+def list_circularisations(projet_id: str, cycle: str | None = None):
+    db = _get_db(projet_id)
+    items = db.list_circularisations(projet_id, cycle)
+    return {"circularisations": items}
+
+
+@router.post("/projets/{projet_id}/circularisation/proposer")
+def proposer_tiers_circularisation(projet_id: str, body: dict):
+    """Propose les N tiers à circulariser pour un cycle donné."""
+    from ..controls.circularisation import proposer_tiers
+    cycle = body.get("cycle", "ventes")
+    n = int(body.get("n", 10))
+    prefixes = body.get("prefixes") or _cycle_prefixes(cycle)
+    db = _get_db(projet_id)
+    donnees_raw = db.get_donnees_by_projet(projet_id)
+    donnees = [_to_donnee(d) for d in donnees_raw]
+    rows = _group_rows(donnees) if donnees else []
+    tiers = proposer_tiers(rows, prefixes, n)
+    return {"tiers": tiers}
+
+
+@router.post("/projets/{projet_id}/circularisation")
+def create_circularisation(projet_id: str, body: CircularisationBody):
+    db = _get_db(projet_id)
+    data = body.model_dump()
+    data["projet_id"] = projet_id
+    data["statut"] = "propose"
+    item = db.save_circularisation(data)
+    db.log(projet_id, "action_humaine", {"action": "creer_circularisation", "id": item["id"]})
+    return {"circularisation": item}
+
+
+@router.patch("/projets/{projet_id}/circularisation/{circ_id}")
+def update_circularisation(projet_id: str, circ_id: str, body: dict):
+    db = _get_db(projet_id)
+    item = db.update_circularisation(circ_id, body)
+    if not item:
+        raise HTTPException(404, "Circularisation introuvable.")
+    db.log(projet_id, "action_humaine", {"action": "maj_circularisation", "id": circ_id,
+                                          "statut": body.get("statut")})
+    return {"circularisation": item}
+
+
+@router.delete("/projets/{projet_id}/circularisation/{circ_id}")
+def delete_circularisation(projet_id: str, circ_id: str):
+    db = _get_db(projet_id)
+    db.delete_circularisation(circ_id)
+    db.log(projet_id, "action_humaine", {"action": "supprimer_circularisation", "id": circ_id})
+    return {"deleted": True}
+
+
+@router.post("/projets/{projet_id}/circularisation/{circ_id}/generer-lettre")
+def generer_lettre_circularisation(projet_id: str, circ_id: str):
+    db = _get_db(projet_id)
+    projet, _ = _llm_guard(db, projet_id)
+    circ = db.get_circularisation(circ_id)
+    if not circ:
+        raise HTTPException(404, "Circularisation introuvable.")
+    from ..llm.claude import ClaudeClient
+    ctx = {"exercice": projet.get("exercice"), "seuil_signification": projet.get("seuil_signification")}
+    try:
+        llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+        lettre = llm.generer_lettre_circularisation(
+            tiers={**circ, "solde_comptable": circ.get("solde_comptable")},
+            contexte_projet=ctx,
+            type_circularisation=circ.get("type_circularisation", "client"),
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Erreur LLM : {e}")
+    item = db.update_circularisation(circ_id, {
+        "lettre_ia": json.dumps(lettre, ensure_ascii=False),
+        "statut": "envoye",
+    })
+    db.log(projet_id, "appel_llm", {"action": "generer_lettre_circularisation", "id": circ_id})
+    return {"circularisation": item, "lettre": lettre}
+
+
+@router.post("/projets/{projet_id}/circularisation/{circ_id}/enregistrer-reponse")
+def enregistrer_reponse_circularisation(projet_id: str, circ_id: str, body: dict):
+    """Enregistre le solde confirmé par le tiers et calcule l'écart (Python)."""
+    from ..controls.circularisation import calculer_ecart
+    db = _get_db(projet_id)
+    circ = db.get_circularisation(circ_id)
+    if not circ:
+        raise HTTPException(404, "Circularisation introuvable.")
+    solde_confirme = float(body.get("solde_confirme", 0.0))
+    solde_comptable = float(circ.get("solde_comptable") or 0.0)
+    ecart_data = calculer_ecart(solde_comptable, solde_confirme)
+    item = db.update_circularisation(circ_id, {
+        "solde_confirme": solde_confirme,
+        "reponse_brute": body.get("reponse_brute", ""),
+        "date_reponse": body.get("date_reponse") or _now(),
+        "statut": "reponse_recue",
+        **ecart_data,
+    })
+    db.log(projet_id, "action_humaine", {"action": "enregistrer_reponse_circularisation",
+                                          "id": circ_id, "ecart": ecart_data["ecart"]})
+    return {"circularisation": item, "ecart": ecart_data}
+
+
+@router.post("/projets/{projet_id}/circularisation/{circ_id}/analyser")
+def analyser_reponse_circularisation(projet_id: str, circ_id: str):
+    db = _get_db(projet_id)
+    projet, _ = _llm_guard(db, projet_id)
+    circ = db.get_circularisation(circ_id)
+    if not circ:
+        raise HTTPException(404, "Circularisation introuvable.")
+    if circ.get("statut") not in ("reponse_recue", "clos"):
+        raise HTTPException(400, "Enregistrez d'abord la réponse du tiers.")
+    from ..controls.circularisation import calculer_ecart
+    from ..llm.claude import ClaudeClient
+    ecart_data = calculer_ecart(
+        float(circ.get("solde_comptable") or 0.0),
+        float(circ.get("solde_confirme") or 0.0),
+    )
+    ctx = {"exercice": projet.get("exercice"), "seuil_signification": projet.get("seuil_signification")}
+    try:
+        llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+        analyse = llm.analyser_reponse_circularisation(
+            tiers=circ, ecart=ecart_data,
+            reponse_brute=circ.get("reponse_brute") or "",
+            contexte_projet=ctx,
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Erreur LLM : {e}")
+    item = db.update_circularisation(circ_id, {
+        "analyse_ia": json.dumps(analyse, ensure_ascii=False),
+        "statut": "clos",
+    })
+    db.log(projet_id, "appel_llm", {"action": "analyser_reponse_circularisation", "id": circ_id})
+    return {"circularisation": item, "analyse": analyse}
+
+
+# ─── Sondages sur pièces (NEP 530) ───────────────────────────────────────────
+
+def _cycle_prefixes(cycle: str) -> list[str]:
+    """Retourne les préfixes de compte standard pour un cycle."""
+    _MAP = {
+        "tresorerie": ["51", "52", "53", "54", "58"],
+        "achats": ["40", "60", "61", "62"],
+        "ventes": ["41", "70", "71", "72"],
+        "immobilisations": ["20", "21", "22", "23", "28"],
+        "stocks": ["31", "32", "33", "34", "35", "37", "38"],
+        "paie": ["42", "43", "64"],
+        "impots": ["44", "63"],
+        "capitaux_propres": ["10", "11", "12", "13", "14", "15", "16"],
+    }
+    return _MAP.get(cycle, [])
+
+
+class SondageCreateBody(BaseModel):
+    cycle: str
+    libelle: str
+    prefixes: list[str] = []
+    taux_erreur_tolere: float = 0.05
+    niveau_confiance: int = 95
+
+
+@router.get("/projets/{projet_id}/sondages")
+def list_sondages(projet_id: str, cycle: str | None = None):
+    db = _get_db(projet_id)
+    items = db.list_sondages(projet_id, cycle)
+    for s in items:
+        s["elements"] = db.list_sondage_elements(s["id"])
+    return {"sondages": items}
+
+
+@router.post("/projets/{projet_id}/sondages")
+def create_sondage(projet_id: str, body: SondageCreateBody):
+    """Crée un sondage et calcule la taille d'échantillon recommandée (Python)."""
+    from ..controls.sondages import calculer_taille_echantillon
+    db = _get_db(projet_id)
+    prefixes = body.prefixes or _cycle_prefixes(body.cycle)
+    donnees_raw = db.get_donnees_by_projet(projet_id)
+    donnees = [_to_donnee(d) for d in donnees_raw]
+    rows = _group_rows(donnees) if donnees else []
+    population_rows = _filter_accounts(rows, tuple(prefixes)) if prefixes else rows
+    population = len(population_rows)
+    montant_population = sum(
+        abs(_get_amount(r, "solde") or (_get_amount(r, "debit") - _get_amount(r, "credit")))
+        for r in population_rows
+    )
+    calcul = calculer_taille_echantillon(population, body.taux_erreur_tolere, body.niveau_confiance)
+    import time
+    seed = int(time.time()) % 1000000
+    data = {
+        "projet_id": projet_id,
+        "cycle": body.cycle,
+        "libelle": body.libelle,
+        "prefixes": prefixes,
+        "population": population,
+        "taille_echantillon": calcul["taille_recommandee"],
+        "taux_erreur_tolere": body.taux_erreur_tolere,
+        "niveau_confiance": body.niveau_confiance,
+        "montant_population": round(montant_population, 2),
+        "seed": seed,
+        "statut": "en_cours",
+    }
+    sondage = db.save_sondage(data)
+    db.log(projet_id, "action_humaine", {"action": "creer_sondage", "id": sondage["id"],
+                                          "population": population, "taille": calcul["taille_recommandee"]})
+    return {"sondage": sondage, "calcul": calcul}
+
+
+@router.post("/projets/{projet_id}/sondages/{sondage_id}/selectionner")
+def selectionner_echantillon(projet_id: str, sondage_id: str, body: dict | None = None):
+    """Sélectionne l'échantillon (Python pur — déterministe par seed)."""
+    from ..controls.sondages import selectionner_echantillon as _selectionner
+    db = _get_db(projet_id)
+    sondage = db.get_sondage(sondage_id)
+    if not sondage:
+        raise HTTPException(404, "Sondage introuvable.")
+    prefixes = sondage.get("prefixes") or []
+    n = int(sondage.get("taille_echantillon") or 10)
+    seed = sondage.get("seed")
+    if body and body.get("taille_echantillon"):
+        n = int(body["taille_echantillon"])
+        db.update_sondage(sondage_id, {"taille_echantillon": n})
+    donnees_raw = db.get_donnees_by_projet(projet_id)
+    donnees = [_to_donnee(d) for d in donnees_raw]
+    rows = _group_rows(donnees) if donnees else []
+    elements = _selectionner(rows, prefixes, n, seed)
+    db.delete_sondage_elements(sondage_id)
+    for elt in elements:
+        db.save_sondage_element({**elt, "sondage_id": sondage_id, "projet_id": projet_id})
+    saved = db.list_sondage_elements(sondage_id)
+    db.log(projet_id, "action_humaine", {"action": "selectionner_echantillon",
+                                          "sondage_id": sondage_id, "n": len(saved)})
+    return {"elements": saved, "sondage": db.get_sondage(sondage_id)}
+
+
+@router.patch("/projets/{projet_id}/sondages/{sondage_id}/elements/{element_id}")
+def update_sondage_element(projet_id: str, sondage_id: str, element_id: str, body: dict):
+    """Marque un élément comme anomalie ou non — les stats sont recalculées côté Python."""
+    db = _get_db(projet_id)
+    elt = db.update_sondage_element(element_id, body)
+    if not elt:
+        raise HTTPException(404, "Élément introuvable.")
+    sondage = db.recalculer_sondage_stats(sondage_id)
+    db.log(projet_id, "action_humaine", {"action": "maj_element_sondage", "element_id": element_id,
+                                          "est_anomalie": body.get("est_anomalie")})
+    return {"element": elt, "sondage": sondage}
+
+
+@router.post("/projets/{projet_id}/sondages/{sondage_id}/conclure")
+def conclure_sondage(projet_id: str, sondage_id: str):
+    """Calcule la projection d'erreur (Python) et demande la conclusion à l'IA."""
+    from ..controls.sondages import projeter_erreur
+    db = _get_db(projet_id)
+    projet, _ = _llm_guard(db, projet_id)
+    sondage = db.get_sondage(sondage_id)
+    if not sondage:
+        raise HTTPException(404, "Sondage introuvable.")
+    elements = db.list_sondage_elements(sondage_id)
+    nb = int(sondage.get("nb_anomalies") or 0)
+    montant_anomalies = float(sondage.get("montant_anomalies") or 0.0)
+    taille = int(sondage.get("taille_echantillon") or len(elements))
+    montant_pop = float(sondage.get("montant_population") or 0.0)
+    projection = projeter_erreur(nb, montant_anomalies, montant_pop, taille)
+    db.update_sondage(sondage_id, {
+        "taux_anomalie": projection["taux_anomalie"],
+        "montant_projete": projection["montant_projete_population"],
+    })
+    from ..llm.claude import ClaudeClient
+    ctx = {"exercice": projet.get("exercice"), "seuil_signification": projet.get("seuil_signification")}
+    anomalies = [e for e in elements if e.get("est_anomalie")]
+    try:
+        llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+        conclusion = llm.conclure_sondage(sondage, projection, anomalies, ctx)
+    except Exception as e:
+        raise HTTPException(500, f"Erreur LLM : {e}")
+    sondage = db.update_sondage(sondage_id, {
+        "conclusion_ia": json.dumps(conclusion, ensure_ascii=False),
+        "statut": "conclu",
+    })
+    db.log(projet_id, "appel_llm", {"action": "conclure_sondage", "id": sondage_id})
+    return {"sondage": sondage, "projection": projection, "conclusion": conclusion}
+
+
+@router.delete("/projets/{projet_id}/sondages/{sondage_id}")
+def delete_sondage(projet_id: str, sondage_id: str):
+    db = _get_db(projet_id)
+    db.delete_sondage(sondage_id)
+    db.log(projet_id, "action_humaine", {"action": "supprimer_sondage", "id": sondage_id})
+    return {"deleted": True}
