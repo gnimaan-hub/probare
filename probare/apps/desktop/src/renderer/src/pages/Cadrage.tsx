@@ -135,11 +135,11 @@ export function Cadrage() {
     try {
       await handleSave()
       const updated = await post(`/projets/${projetId}/transition`, {
-        vers: 'ingestion',
+        vers: 'evaluation_ci',
         acteur: 'utilisateur',
       })
       setProjetActif(updated)
-      navigate(`/projet/${projetId}/ingestion`)
+      navigate(`/projet/${projetId}/evaluation-ci`)
     } catch (e: any) {
       toast.error(e.message)
     } finally {
@@ -165,7 +165,7 @@ export function Cadrage() {
             {!locked && (
               <button onClick={handlePasserIngestion} disabled={transitioning} className="btn-primary">
                 {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
-                Passer à l'ingestion
+                Passer au contrôle interne
               </button>
             )}
           </div>

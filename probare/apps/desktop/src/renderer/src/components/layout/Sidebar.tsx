@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Settings, FolderOpen, Upload,
   ShieldCheck, AlertTriangle, FileText, ChevronLeft,
-  Activity, ArrowLeft, ClipboardList
+  Activity, ArrowLeft, ClipboardList, BarChart2
 } from 'lucide-react'
 import { useProjetStore } from '../../stores/projetStore'
 import { ETATS_PIPELINE, getEtatIndex } from '../../lib/utils'
@@ -22,13 +22,14 @@ const navItems: NavItemDef[] = [
 ]
 
 const projetNavItems: NavItemDef[] = [
-  { to: 'cadrage', icon: Settings, label: 'Cadrage', minEtat: 'cadrage' },
-  { to: 'ingestion', icon: Upload, label: 'Ingestion', minEtat: 'cadrage' },
-  { to: 'planification', icon: ClipboardList, label: 'Planification', minEtat: 'extraction' },
-  { to: 'controles', icon: ShieldCheck, label: 'Contrôles', minEtat: 'planification' },
-  { to: 'exceptions', icon: AlertTriangle, label: 'Exceptions', minEtat: 'controles' },
-  { to: 'rapport', icon: FileText, label: 'Rapport', minEtat: 'revue' },
-  { to: 'journal', icon: Activity, label: 'Journal', minEtat: 'cadrage' },
+  { to: 'cadrage',          icon: Settings,      label: 'Cadrage',              minEtat: 'cadrage' },
+  { to: 'evaluation-ci',    icon: ShieldCheck,   label: 'Contrôle interne',     minEtat: 'cadrage' },
+  { to: 'ingestion',        icon: Upload,        label: 'Ingestion',            minEtat: 'evaluation_ci' },
+  { to: 'planification',    icon: ClipboardList, label: 'Planification',        minEtat: 'ingestion' },
+  { to: 'controles',        icon: BarChart2,     label: 'Travaux substantifs',  minEtat: 'planification' },
+  { to: 'exceptions',       icon: AlertTriangle, label: 'Exceptions',           minEtat: 'travaux_substantifs' },
+  { to: 'rapport',          icon: FileText,      label: 'Rapport',              minEtat: 'revue' },
+  { to: 'journal',          icon: Activity,      label: 'Journal',              minEtat: 'cadrage' },
 ]
 
 function PipelineProgress({ etatCourant }: { etatCourant: string }) {

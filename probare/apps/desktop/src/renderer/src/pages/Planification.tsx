@@ -5,7 +5,7 @@ import {
   Building2, TrendingUp, Target, ShieldAlert, ClipboardList,
   Sparkles, ArrowRight, Save, Plus, Trash2, Check, X,
   Info, CheckCircle, AlertTriangle, BarChart3, Users,
-  Lock, ArrowUpDown, Filter, RefreshCw,
+  Lock, ArrowUpDown, Filter, RefreshCw, Download,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
@@ -194,7 +194,7 @@ function SectionNav({
 export function Planification() {
   const { projetId } = useParams<{ projetId: string }>()
   const navigate = useNavigate()
-  const { get, post, patch } = useApi()
+  const { get, post, patch, downloadBlob } = useApi()
   const toast = useToast()
   const { projetActif, setProjetActif } = useProjetStore()
 
@@ -206,6 +206,7 @@ export function Planification() {
   const [loading, setLoading] = useState(true)
   const [activeSection, setActiveSection] = useState('fiche-entite')
   const [transitioning, setTransitioning] = useState(false)
+  const [notePrete, setNotePrete] = useState(false)
 
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
 
@@ -227,6 +228,7 @@ export function Planification() {
       if (rawNote) {
         try {
           setNoteSynthese(typeof rawNote === 'string' ? JSON.parse(rawNote) : rawNote)
+          setNotePrete(true)
         } catch { /* ignore */ }
       }
       setProjetActif(projData)
@@ -267,19 +269,34 @@ export function Planification() {
     sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  // ── Transition vers contrôles ─────────────────────────────────────────────
+  // ── Transition vers évaluation CI ────────────────────────────────────────
 
   const handlePasserControles = async () => {
     if (!projetId) return
     setTransitioning(true)
     try {
-      const updated = await post(`/projets/${projetId}/transition`, { vers: 'controles', acteur: 'utilisateur' })
+      const updated = await post(`/projets/${projetId}/transition`, { vers: 'travaux_substantifs', acteur: 'utilisateur' })
       setProjetActif(updated)
       navigate(`/projet/${projetId}/controles`)
     } catch (e: any) {
       toast.error(e.message)
     } finally {
       setTransitioning(false)
+    }
+  }
+
+  const handleTelechargerNote = async () => {
+    if (!projetId) return
+    try {
+      const { blob, filename } = await downloadBlob(`/projets/${projetId}/planification/telecharger-note`, 'GET')
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      toast.error(e.message)
     }
   }
 
@@ -292,7 +309,7 @@ export function Planification() {
   }
 
   const etatCourant = projetActif?.etat_courant || 'planification'
-  const locked = ['controles', 'revue', 'generation', 'opinion'].includes(etatCourant)
+  const locked = ['travaux_substantifs', 'controles', 'revue', 'generation', 'opinion'].includes(etatCourant)
 
   return (
     <div className="flex flex-col h-full">
@@ -300,16 +317,24 @@ export function Planification() {
         title="Planification"
         subtitle={projetActif?.nom}
         actions={
-          !locked && (
-            <button
-              onClick={handlePasserControles}
-              disabled={transitioning}
-              className="btn-primary gap-2"
-            >
-              {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
-              Passer aux contrôles
-            </button>
-          )
+          <div className="flex items-center gap-2">
+            {notePrete && (
+              <button onClick={handleTelechargerNote} className="btn-secondary gap-2">
+                <Download className="w-4 h-4" />
+                Note de planification
+              </button>
+            )}
+            {!locked && (
+              <button
+                onClick={handlePasserControles}
+                disabled={transitioning}
+                className="btn-primary gap-2"
+              >
+                {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
+                Passer aux travaux substantifs
+              </button>
+            )}
+          </div>
         }
       />
 
@@ -436,6 +461,7 @@ export function Planification() {
               noteSynthese={noteSynthese}
               onChanged={setProgramme}
               onSyntheseGenerated={setNoteSynthese}
+              onDocxPret={setNotePrete}
             />
           </section>
 
@@ -456,7 +482,7 @@ export function Planification() {
                 className="btn-primary gap-2 flex-shrink-0"
               >
                 {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
-                Passer aux contrôles
+                Passer aux travaux substantifs
               </button>
             </div>
           )}
@@ -1515,7 +1541,7 @@ function RisqueCard({ risque, locked, onValider, onDelete, projetId, onUpdated }
 // ─── SECTION 5 : Programme de travail ────────────────────────────────────────
 
 function ProgrammeSection({
-  programme, risques, locked, projetId, doneRisques, noteSynthese, onChanged, onSyntheseGenerated
+  programme, risques, locked, projetId, doneRisques, noteSynthese, onChanged, onSyntheseGenerated, onDocxPret
 }: {
   programme: ProgrammeItem[]
   risques: Risque[]
@@ -1525,6 +1551,7 @@ function ProgrammeSection({
   noteSynthese: NoteSynthese | null
   onChanged: (p: ProgrammeItem[]) => void
   onSyntheseGenerated: (n: NoteSynthese) => void
+  onDocxPret?: (pret: boolean) => void
 }) {
   const { post, patch, downloadBlob } = useApi()
   const toast = useToast()
@@ -1538,7 +1565,7 @@ function ProgrammeSection({
     try {
       const res = await post(`/projets/${projetId}/planification/generer-synthese`, {})
       onSyntheseGenerated(res.note_synthese)
-      if (res.docx_pret) setDocxPret(true)
+      if (res.docx_pret) { setDocxPret(true); onDocxPret?.(true) }
       toast.success('Note de planification générée — le fichier .docx est prêt.')
     } catch (e: any) {
       toast.error(e.message)
@@ -1581,7 +1608,7 @@ function ProgrammeSection({
       try {
         const synthRes = await post(`/projets/${projetId}/planification/generer-synthese`, {})
         onSyntheseGenerated(synthRes.note_synthese)
-        if (synthRes.docx_pret) setDocxPret(true)
+        if (synthRes.docx_pret) { setDocxPret(true); onDocxPret?.(true) }
         toast.success('Note de planification .docx prête à télécharger.')
       } catch { /* non bloquant */ } finally {
         setGeneratingSynthese(false)

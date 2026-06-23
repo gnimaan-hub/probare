@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard'
 import { Cadrage } from './pages/Cadrage'
 import { Ingestion } from './pages/Ingestion'
 import { Controles } from './pages/Controles'
+import { EvaluationCI } from './pages/EvaluationCI'
 import { Exceptions } from './pages/Exceptions'
 import { Rapport } from './pages/Rapport'
 import { Journal } from './pages/Journal'
@@ -104,6 +105,7 @@ export default function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/projet/:projetId/cadrage" element={<Cadrage />} />
         <Route path="/projet/:projetId/ingestion" element={<Ingestion />} />
+        <Route path="/projet/:projetId/evaluation-ci" element={<EvaluationCI />} />
         <Route path="/projet/:projetId/controles" element={<Controles />} />
         <Route path="/projet/:projetId/exceptions" element={<Exceptions />} />
         <Route path="/projet/:projetId/rapport" element={<Rapport />} />

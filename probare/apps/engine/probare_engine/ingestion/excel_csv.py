@@ -22,29 +22,114 @@ def hash_file(path: Path) -> str:
 
 
 def _detect_column_mapping(df: pd.DataFrame) -> dict[str, str | None]:
-    """Heuristique simple pour mapper les colonnes connues."""
-    cols = {c.lower().strip(): c for c in df.columns}
+    """
+    Mappe les colonnes connues avec correspondance exacte puis par sous-chaîne.
+    Gère les balances (Solde Débiteur / Solde Créditeur) et les grands livres.
+    """
+    col_keys = {c.lower().strip(): c for c in df.columns}
     mapping: dict[str, str | None] = {
         "compte": None, "libelle": None, "debit": None,
         "credit": None, "date": None, "numero_piece": None,
         "solde": None, "exercice": None,
     }
-    synonymes = {
-        "compte": ["compte", "account", "n_compte", "num_compte", "code_compte"],
-        "libelle": ["libelle", "libellé", "label", "designation", "désignation", "intitulé", "intitule"],
-        "debit": ["debit", "débit", "db", "montant_debit", "montant_débit"],
-        "credit": ["credit", "crédit", "cr", "montant_credit", "montant_crédit"],
-        "date": ["date", "date_ecriture", "date_piece", "date_op"],
-        "numero_piece": ["piece", "pièce", "numero_piece", "num_piece", "ref_piece", "facture", "n_facture"],
-        "solde": ["solde", "balance", "sold"],
-        "exercice": ["exercice", "annee", "année", "year"],
+
+    # Synonymes exacts (sous-chaîne dans le nom de colonne en minuscules)
+    # Ordre : du plus précis au plus générique pour éviter les collisions
+    synonymes: dict[str, list[str]] = {
+        "compte":       ["n° compte", "n°compte", "num_compte", "n_compte", "code_compte",
+                         "numéro de compte", "numero de compte", "num. compte",
+                         "compte", "account", "code"],
+        "libelle":      ["intitulé du compte", "intitule du compte", "libellé du compte",
+                         "libellé", "libelle", "intitulé", "intitule",
+                         "designation", "désignation", "label"],
+        # Débit total / mouvements : priorité sur "solde débiteur"
+        "debit":        ["mouvement débit", "mouvement debit", "total débit", "total debit",
+                         "montant débit", "montant debit", "montant_débit", "montant_debit",
+                         "débit", "debit", " db"],
+        # Crédit total / mouvements
+        "credit":       ["mouvement crédit", "mouvement credit", "total crédit", "total credit",
+                         "montant crédit", "montant credit", "montant_crédit", "montant_credit",
+                         "crédit", "credit", " cr"],
+        # Solde débiteur et créditeur — traités séparément ci-dessous
+        "solde":        ["solde net", "solde final", "solde", "balance", "sold"],
+        "date":         ["date opération", "date operation", "date écriture", "date ecriture",
+                         "date_ecriture", "date_piece", "date_op", "date"],
+        "numero_piece": ["n° pièce", "n°pièce", "ref piece", "ref_piece", "num_piece",
+                         "numéro pièce", "n° facture", "n°facture", "facture", "pièce", "piece"],
+        "exercice":     ["exercice", "annee", "année", "year"],
     }
-    for field, syns in synonymes.items():
+
+    def _find(syns: list[str]) -> str | None:
+        """Cherche d'abord une correspondance exacte puis par sous-chaîne."""
         for syn in syns:
-            if syn in cols:
-                mapping[field] = cols[syn]
+            if syn in col_keys:
+                return col_keys[syn]
+        # Sous-chaîne (permet "Solde Débiteur" → debit)
+        for syn in syns:
+            for key, orig in col_keys.items():
+                if syn in key:
+                    return orig
+        return None
+
+    for field, syns in synonymes.items():
+        mapping[field] = _find(syns)
+
+    # Cas spécial balance : "Solde Débiteur" → debit, "Solde Créditeur" → credit
+    if mapping["debit"] is None:
+        for key, orig in col_keys.items():
+            if "solde" in key and ("débit" in key or "debit" in key):
+                mapping["debit"] = orig
                 break
+    if mapping["credit"] is None:
+        for key, orig in col_keys.items():
+            if "solde" in key and ("crédit" in key or "credit" in key):
+                mapping["credit"] = orig
+                break
+
+    # Éviter que "solde" soit mappé sur une colonne déjà prise par debit/credit
+    if mapping["solde"] and mapping["solde"] in (mapping["debit"], mapping["credit"]):
+        mapping["solde"] = None
+
     return mapping
+
+
+_HEADER_KEYWORDS = {
+    "compte", "account", "code",
+    "libelle", "libellé", "intitulé", "intitule", "designation", "désignation",
+    "debit", "débit", "credit", "crédit",
+    "solde", "balance",
+    "date", "piece", "pièce", "ref",
+    "montant", "amount",
+}
+
+
+def _detect_header_row(path: Path, sheet_name: str | int, max_scan: int = 15) -> int:
+    """
+    Scanne les premières lignes pour trouver la ligne d'en-tête réelle.
+    Retourne l'index 0-based de la ligne à passer à pd.read_excel(header=N).
+
+    Stratégie : la ligne d'en-tête est celle qui contient ≥ 2 mots-clés
+    comptables parmi ses cellules non-vides. On prend la première telle ligne.
+    """
+    try:
+        raw = pd.read_excel(
+            path, sheet_name=sheet_name, dtype=str, header=None, nrows=max_scan
+        )
+    except Exception:
+        return 0
+
+    for idx, row in raw.iterrows():
+        cells = [str(v).lower().strip() for v in row if pd.notna(v) and str(v).strip()]
+        if len(cells) < 2:
+            continue
+        hits = sum(
+            1 for c in cells
+            if any(kw in c for kw in _HEADER_KEYWORDS)
+        )
+        if hits >= 2:
+            return int(idx)
+
+    return 0
 
 
 def lire_fichier(
@@ -60,7 +145,8 @@ def lire_fichier(
     """
     suffix = path.suffix.lower()
     if suffix in (".xlsx", ".xls", ".xlsm"):
-        df = pd.read_excel(path, sheet_name=sheet_name, dtype=str, header=0)
+        header_row = _detect_header_row(path, sheet_name)
+        df = pd.read_excel(path, sheet_name=sheet_name, dtype=str, header=header_row)
         source_prefix = f"{Path(path).stem}!{_sheet_name(df, sheet_name)}"
     elif suffix == ".csv":
         df = pd.read_csv(path, dtype=str, encoding="utf-8-sig")

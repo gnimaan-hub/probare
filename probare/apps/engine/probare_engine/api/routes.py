@@ -78,6 +78,18 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _get_documents_attendus(projet_id: str, db) -> list[dict]:
+    """Retourne la liste dédupliquée des documents attendus selon les cycles du projet."""
+    from ..controls.document_types import DOCUMENTS_PAR_CYCLE
+    projet = db.get_projet(projet_id)
+    cycles = projet.get("cycles_couverts") or []
+    seen: dict[str, dict] = {}
+    for cycle in cycles:
+        for doc in DOCUMENTS_PAR_CYCLE.get(cycle, []):
+            seen[doc["type"]] = doc
+    return list(seen.values())
+
+
 def _parse_valeur(val: str | None, type_: str) -> float | str | None:
     if val is None:
         return None
@@ -386,11 +398,52 @@ async def upload_fichier(
         "nb_donnees": len(donnees),
     })
 
+    # Détection des onglets pour les Excel (toujours, sans IA)
+    onglets_disponibles: list[str] = []
+    if file_path.suffix.lower() in (".xlsx", ".xls", ".xlsm"):
+        try:
+            import pandas as pd
+            ef = pd.ExcelFile(str(file_path))
+            onglets_disponibles = ef.sheet_names
+        except Exception:
+            pass
+
+    # Analyse IA du document (Haiku, synchrone)
+    analyse_ia: dict | None = None
+    db.update_fichier_ia(fichier_id, {"statut_checklist": "analyse_en_cours"})
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        try:
+            from ..ingestion.dossier_brut import lire_contenu_pour_llm
+            from ..llm.claude import ClaudeClient
+            texte, _, _ = lire_contenu_pour_llm(file_path)
+            docs_attendus = _get_documents_attendus(projet_id, db)
+            llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+            analyse_ia = llm.analyser_document_ingestion(
+                fichier.filename or "", texte[:5000], docs_attendus
+            )
+            type_detecte = analyse_ia.get("type_comptable")
+            correspond_a = analyse_ia.get("correspond_a")
+            update: dict = {
+                "description_ia": analyse_ia.get("description", ""),
+                "nature_ia": analyse_ia.get("nature", ""),
+                "correspond_a": correspond_a,
+                "statut_checklist": "valide" if correspond_a else "non_attendu",
+                # Toujours normaliser : type comptable détecté OU "annexe"
+                "type_document": type_detecte if type_detecte in ("grand_livre", "balance", "releve_bancaire") else "annexe",
+            }
+            db.update_fichier_ia(fichier_id, update)
+        except Exception:
+            db.update_fichier_ia(fichier_id, {"statut_checklist": "non_attendu"})
+    else:
+        db.update_fichier_ia(fichier_id, {"statut_checklist": "non_attendu"})
+
     return {
         "type": "fichier",
         "fichier_source_id": fichier_id,
         "nb_donnees_extraites": len(donnees),
         "metadata": metadata,
+        "analyse_ia": analyse_ia,
+        "onglets_disponibles": onglets_disponibles,
     }
 
 
@@ -398,6 +451,14 @@ async def upload_fichier(
 def list_fichiers(projet_id: str):
     db = _get_db(projet_id)
     return {"fichiers": db.list_fichiers(projet_id)}
+
+
+@router.delete("/projets/{projet_id}/fichiers/{fichier_id}")
+def delete_fichier(projet_id: str, fichier_id: str):
+    db = _get_db(projet_id)
+    db.delete_fichier_source(fichier_id)
+    db.log(projet_id, "action_humaine", {"action": "delete_fichier", "fichier_id": fichier_id})
+    return {"deleted": True, "fichier_id": fichier_id}
 
 
 @router.get("/projets/{projet_id}/documents-requis")
@@ -423,6 +484,312 @@ def get_documents_requis(projet_id: str):
         "preconditions_ok": len(manquants_requis) == 0,
         "manquants": manquants_requis,
     }
+
+
+# ─── Ingestion intelligente : onglets Excel ───────────────────────────────────
+
+@router.get("/projets/{projet_id}/fichiers/{fichier_id}/onglets")
+def get_onglets_excel(projet_id: str, fichier_id: str):
+    """Analyse les onglets d'un fichier Excel avec Haiku."""
+    import pandas as pd
+    db = _get_db(projet_id)
+    fichiers = db.list_fichiers(projet_id)
+    fichier = next((f for f in fichiers if f["id"] == fichier_id), None)
+    if not fichier:
+        raise HTTPException(404, "Fichier introuvable.")
+
+    chemin = DATA_DIR / fichier["chemin_relatif"]
+    if not chemin.exists():
+        raise HTTPException(404, "Fichier physique introuvable.")
+    if chemin.suffix.lower() not in (".xlsx", ".xls", ".xlsm"):
+        raise HTTPException(400, "Ce fichier n'est pas un Excel.")
+
+    from ..ingestion.excel_csv import _detect_header_row
+    ef = pd.ExcelFile(str(chemin))
+    onglets_info = []
+    for sheet_name in ef.sheet_names:
+        try:
+            header_row = _detect_header_row(chemin, sheet_name)
+            df = pd.read_excel(str(chemin), sheet_name=sheet_name, header=header_row, nrows=20, dtype=str)
+            apercu = df.to_csv(index=False)[:2000]
+            colonnes = [str(c) for c in df.columns]
+        except Exception:
+            apercu = ""
+            colonnes = []
+        onglets_info.append({"nom": sheet_name, "colonnes": colonnes, "apercu": apercu})
+
+    analyse_onglets = []
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        try:
+            from ..llm.claude import ClaudeClient
+            docs_attendus = _get_documents_attendus(projet_id, db)
+            llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+            analyse_onglets = llm.analyser_onglets_excel(fichier["nom"], onglets_info, docs_attendus)
+        except Exception:
+            analyse_onglets = []
+
+    return {
+        "fichier_id": fichier_id,
+        "nom": fichier["nom"],
+        "onglets": onglets_info,
+        "analyse_ia": analyse_onglets,
+    }
+
+
+class ImporterOngletBody(BaseModel):
+    sheet_name: str
+    type_force: str | None = None
+
+
+@router.post("/projets/{projet_id}/fichiers/{fichier_id}/importer-onglet")
+def importer_onglet(projet_id: str, fichier_id: str, body: ImporterOngletBody):
+    """Importe un onglet Excel comme fichier source distinct avec analyse Haiku."""
+    import pandas as pd
+    db = _get_db(projet_id)
+    fichiers = db.list_fichiers(projet_id)
+    fichier_parent = next((f for f in fichiers if f["id"] == fichier_id), None)
+    if not fichier_parent:
+        raise HTTPException(404, "Fichier parent introuvable.")
+
+    chemin = DATA_DIR / fichier_parent["chemin_relatif"]
+    if not chemin.exists():
+        raise HTTPException(404, "Fichier physique introuvable.")
+
+    onglet_id = str(uuid.uuid4())
+    nom_onglet = f"{fichier_parent['nom']} — {body.sheet_name}"
+
+    try:
+        donnees, metadata = lire_fichier(chemin, projet_id, onglet_id, body.sheet_name)
+    except Exception as e:
+        raise HTTPException(400, f"Erreur de lecture de l'onglet : {e}")
+
+    analyse: dict = {}
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        try:
+            df = pd.read_excel(str(chemin), sheet_name=body.sheet_name, nrows=10, dtype=str)
+            apercu = df.to_csv(index=False)[:3000]
+            from ..llm.claude import ClaudeClient
+            docs_attendus = _get_documents_attendus(projet_id, db)
+            llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+            analyses = llm.analyser_onglets_excel(
+                fichier_parent["nom"],
+                [{"nom": body.sheet_name, "colonnes": [str(c) for c in df.columns], "apercu": apercu}],
+                docs_attendus,
+            )
+            if analyses:
+                analyse = analyses[0]
+        except Exception:
+            pass
+
+    type_detecte = body.type_force or analyse.get("type_comptable") or "annexe"
+    correspond_a = analyse.get("correspond_a")
+
+    db.save_fichier_source({
+        "id": onglet_id,
+        "projet_id": projet_id,
+        "nom": nom_onglet,
+        "chemin_relatif": fichier_parent.get("chemin_relatif", ""),
+        "type": type_detecte,
+        "type_document": type_detecte,
+        "hash": fichier_parent.get("hash", ""),
+        "importe_le": _now(),
+        "description_ia": analyse.get("description", ""),
+        "nature_ia": analyse.get("nature", ""),
+        "correspond_a": correspond_a,
+        "statut_checklist": "valide" if correspond_a else "non_attendu",
+        "onglet": body.sheet_name,
+    })
+    db.save_donnees_sourcees([d.model_dump() for d in donnees])
+    db.log(projet_id, "action_humaine", {
+        "action": "import_onglet",
+        "fichier": fichier_parent["nom"],
+        "onglet": body.sheet_name,
+        "nb_donnees": len(donnees),
+    })
+
+    return {
+        "fichier_source_id": onglet_id,
+        "nom": nom_onglet,
+        "onglet": body.sheet_name,
+        "type_document": type_detecte,
+        "nb_donnees_extraites": len(donnees),
+        "analyse_ia": analyse,
+    }
+
+
+@router.post("/projets/{projet_id}/fichiers/{fichier_id}/decouper-liasse")
+def decouper_liasse(projet_id: str, fichier_id: str):
+    """Haiku identifie les documents individuels dans une liasse PDF/Word."""
+    db = _get_db(projet_id)
+    fichiers = db.list_fichiers(projet_id)
+    fichier = next((f for f in fichiers if f.get("id") == fichier_id), None)
+    if not fichier:
+        # Chercher aussi dans les annexes
+        annexes = db.list_annexes(projet_id)
+        fichier = next((a for a in annexes if a.get("id") == fichier_id), None)
+    if not fichier:
+        raise HTTPException(404, "Fichier introuvable.")
+
+    chemin_rel = fichier.get("chemin_relatif")
+    if not chemin_rel:
+        raise HTTPException(400, "Chemin introuvable.")
+    chemin = DATA_DIR / chemin_rel
+    if not chemin.exists():
+        raise HTTPException(404, "Fichier physique introuvable.")
+
+    from ..ingestion.dossier_brut import lire_contenu_pour_llm
+    texte, _, _ = lire_contenu_pour_llm(chemin)
+
+    if not texte or len(texte) < 100:
+        raise HTTPException(400, "Contenu insuffisant pour analyser la liasse.")
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise HTTPException(503, "Clé API non configurée.")
+
+    from ..llm.claude import ClaudeClient
+    llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+    resultat = llm.decouper_liasse_document(fichier["nom"], texte[:8000])
+
+    db.log(projet_id, "appel_ia", {
+        "action": "decouper_liasse",
+        "fichier_id": fichier_id,
+        "nb_documents": resultat.get("nb_documents", 0),
+    })
+
+    return resultat
+
+
+# ─── QCI — Évaluation du Contrôle Interne ────────────────────────────────────
+
+@router.get("/projets/{projet_id}/qci")
+def get_qci(projet_id: str):
+    """Retourne les questions QCI et les réponses existantes pour tous les cycles du projet."""
+    from ..controls.qci import QCI_PAR_CYCLE, calculer_niveau_risque
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    cycles = projet.get("cycles_couverts") or []
+    evaluations = {e["cycle"]: e for e in db.get_qci_evaluations(projet_id)}
+
+    result = {}
+    for cycle in cycles:
+        questions = QCI_PAR_CYCLE.get(cycle, [])
+        reponses_db = db.list_qci_reponses(projet_id, cycle)
+        reponses_map = {r["question_id"]: r for r in reponses_db}
+
+        questions_avec_reponses = []
+        for q in questions:
+            rep = reponses_map.get(q["id"], {})
+            questions_avec_reponses.append({
+                **q,
+                "reponse": rep.get("reponse"),
+                "commentaire": rep.get("commentaire", ""),
+                "repondu_le": rep.get("repondu_le"),
+            })
+
+        reponses_pour_score = [
+            {"reponse": r.get("reponse")}
+            for r in questions_avec_reponses if r.get("reponse")
+        ]
+        score_info = calculer_niveau_risque(reponses_pour_score) if reponses_pour_score else None
+
+        result[cycle] = {
+            "cycle": cycle,
+            "questions": questions_avec_reponses,
+            "nb_repondues": sum(1 for q in questions_avec_reponses if q.get("reponse")),
+            "nb_total": len(questions),
+            "score_info": score_info,
+            "evaluation": evaluations.get(cycle),
+        }
+
+    return {"cycles": result, "projet_id": projet_id}
+
+
+class QciReponseBody(BaseModel):
+    reponses: list[dict]  # [{question_id, reponse, commentaire}]
+
+
+@router.post("/projets/{projet_id}/qci/{cycle}/reponses")
+def save_qci_reponses(projet_id: str, cycle: str, body: QciReponseBody):
+    """Enregistre les réponses QCI pour un cycle."""
+    from ..controls.qci import QCI_PAR_CYCLE
+    db = _get_db(projet_id)
+    if cycle not in QCI_PAR_CYCLE:
+        raise HTTPException(400, f"Cycle inconnu : {cycle}")
+
+    for rep in body.reponses:
+        qid = rep.get("question_id")
+        reponse = rep.get("reponse")
+        commentaire = rep.get("commentaire", "")
+        if not qid or reponse not in ("oui", "non", "na"):
+            continue
+        db.save_qci_reponse(projet_id, cycle, qid, reponse, commentaire)
+
+    db.log(projet_id, "action_humaine", {
+        "action": "qci_reponses",
+        "cycle": cycle,
+        "nb_reponses": len(body.reponses),
+    })
+
+    reponses = db.list_qci_reponses(projet_id, cycle)
+    return {"cycle": cycle, "nb_enregistrees": len(reponses)}
+
+
+@router.post("/projets/{projet_id}/qci/{cycle}/evaluer")
+def evaluer_qci(projet_id: str, cycle: str):
+    """Déclenche l'évaluation IA du contrôle interne pour un cycle."""
+    from ..controls.qci import QCI_PAR_CYCLE, calculer_niveau_risque
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    if cycle not in QCI_PAR_CYCLE:
+        raise HTTPException(400, f"Cycle inconnu : {cycle}")
+
+    questions = QCI_PAR_CYCLE[cycle]
+    reponses_db = db.list_qci_reponses(projet_id, cycle)
+    reponses_map = {r["question_id"]: r for r in reponses_db}
+
+    reponses_enrichies = []
+    for q in questions:
+        rep = reponses_map.get(q["id"], {})
+        reponses_enrichies.append({
+            "question_id": q["id"],
+            "question": q["question"],
+            "reponse": rep.get("reponse"),
+            "commentaire": rep.get("commentaire", ""),
+            "risque_si_non": q.get("risque_si_non", ""),
+        })
+
+    reponses_avec_rep = [r for r in reponses_enrichies if r.get("reponse")]
+    if len(reponses_avec_rep) < 3:
+        raise HTTPException(400, "Répondez à au moins 3 questions avant de déclencher l'évaluation.")
+
+    score_info = calculer_niveau_risque(reponses_avec_rep)
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        evaluation = {
+            "synthese": f"Score QCI : {score_info['score']:.0%} — Risque {score_info['niveau'].upper()}.",
+            "forces": [], "faiblesses": [], "recommandations": [],
+            "niveau_risque": score_info["niveau"],
+            "score": score_info["score"],
+        }
+    else:
+        from ..llm.claude import ClaudeClient
+        llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+        evaluation = llm.evaluer_controle_interne(cycle, reponses_enrichies, projet)
+
+    evaluation["score"] = score_info["score"]
+    evaluation["niveau_risque"] = score_info["niveau"]
+    db.save_qci_evaluation(projet_id, cycle, evaluation)
+    db.log(projet_id, "appel_ia", {
+        "action": "evaluation_ci",
+        "cycle": cycle,
+        "niveau": score_info["niveau"],
+        "score": score_info["score"],
+    })
+
+    return evaluation
 
 
 # ─── Documents annexes ────────────────────────────────────────────────────────
@@ -525,6 +892,27 @@ def get_registre(projet_id: str = None):
     ]}
 
 
+def _seuils_ci(db, projet_id: str, cycle: str) -> dict:
+    """
+    Retourne les multiplicateurs de sensibilité selon le niveau de risque CI du cycle.
+    CI élevé → seuils plus bas → plus d'exceptions levées (approche substantive renforcée).
+    CI faible → seuils plus hauts → on s'appuie sur le CI, moins d'exceptions.
+    """
+    evaluations = {e["cycle"]: e for e in db.get_qci_evaluations(projet_id)}
+    eval_cycle = evaluations.get(cycle, {})
+    niveau = (eval_cycle.get("niveau_risque") or "").lower()
+
+    # Multiplicateur appliqué sur seuil_pct_min et seuil_abs_min
+    # CI élevé : on divise les seuils par 2 (on devient plus sensible)
+    # CI faible : on multiplie les seuils par 1.5 (on réduit les tests)
+    if niveau == "eleve":
+        return {"facteur": 0.5, "note_ci": "CI élevé — seuils de détection réduits (approche substantive renforcée)"}
+    elif niveau == "faible":
+        return {"facteur": 1.5, "note_ci": "CI faible — seuils de détection relevés (appui sur le contrôle interne)"}
+    else:
+        return {"facteur": 1.0, "note_ci": "CI moyen ou non évalué — seuils standards"}
+
+
 # ─── Cycle Trésorerie ─────────────────────────────────────────────────────────
 
 @router.post("/projets/{projet_id}/controles/tresorerie")
@@ -548,6 +936,8 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
 
     seuil = float(projet.get("seuil_signification") or 0)
     exercice = projet.get("exercice")
+    ci = _seuils_ci(db, projet_id, "tresorerie")
+    ci_facteur = ci["facteur"]
     resultats_total, exceptions_total, ignores = [], [], []
 
     def _skip(ref: str, raison: str):
@@ -623,7 +1013,7 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, ("5",))
         if soldes_n:
             ress, excs = controle_variations(
-                projet_id, soldes_n, {}, seuil, "TRESOR-VARIATION",
+                projet_id, soldes_n, {}, seuil * ci_facteur, "TRESOR-VARIATION",
             )
             resultats_total.extend(ress)
             exceptions_total.extend(excs)
@@ -712,6 +1102,8 @@ def run_controles_achats(projet_id: str, body: dict = {}):
 
     exercice = projet.get("exercice")
     seuil = float(projet.get("seuil_signification") or 0)
+    ci = _seuils_ci(db, projet_id, "achats")
+    ci_facteur = ci["facteur"]
     resultats_total, exceptions_total, ignores = [], [], []
 
     PREFIXES_FOURN = ("40",)
@@ -813,7 +1205,7 @@ def run_controles_achats(projet_id: str, body: dict = {}):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_ACHATS)
         if soldes_n:
             ress, excs = controle_variations(
-                projet_id, soldes_n, {}, seuil, "ACHAT-VARIATION",
+                projet_id, soldes_n, {}, seuil * ci_facteur, "ACHAT-VARIATION",
             )
             resultats_total.extend(ress)
             exceptions_total.extend(excs)
@@ -864,6 +1256,8 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
 
     exercice = projet.get("exercice")
     seuil = float(projet.get("seuil_signification") or 0)
+    ci = _seuils_ci(db, projet_id, "ventes")
+    ci_facteur = ci["facteur"]
     resultats_total, exceptions_total, ignores = [], [], []
 
     PREFIXES_CLIENTS = ("41",)
@@ -967,7 +1361,7 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_VENTES)
         if soldes_n:
             ress, excs = controle_variations(
-                projet_id, soldes_n, {}, seuil, "VENTE-VARIATION",
+                projet_id, soldes_n, {}, seuil * ci_facteur, "VENTE-VARIATION",
             )
             resultats_total.extend(ress)
             exceptions_total.extend(excs)

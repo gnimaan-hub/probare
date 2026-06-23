@@ -173,7 +173,7 @@ function CyclePanel({
 
   const nbOk = resultats.filter((r) => r.statut === 'ok').length
   const nbExc = resultats.filter((r) => r.statut === 'exception').length
-  const canRun = ['controles', 'extraction', 'revue'].includes(etatCourant)
+  const canRun = ['travaux_substantifs', 'controles', 'extraction', 'revue'].includes(etatCourant)
 
   return (
     <div className="space-y-4">
@@ -321,23 +321,27 @@ export function Controles() {
     }
   }
 
-  const canRun = ['controles', 'extraction', 'revue'].includes(etatCourant)
+  const canRun = ['travaux_substantifs', 'controles', 'extraction', 'revue'].includes(etatCourant)
+  const canPasser = resultats.length > 0 && ['travaux_substantifs', 'controles'].includes(etatCourant)
   const nbCycles = cyclesMission.length
+
+  // Sous-onglet : procédures analytiques vs contrôles de détail
+  const [sousOnglet, setSousOnglet] = useState<'analytiques' | 'detail'>('analytiques')
 
   return (
     <div className="flex flex-col h-full">
       <Header
-        title="Contrôles déterministes"
-        subtitle={`Calcul Python — ${nbCycles} cycle${nbCycles !== 1 ? 's' : ''} dans la mission`}
+        title="Travaux substantifs"
+        subtitle={`${nbCycles} cycle${nbCycles !== 1 ? 's' : ''} · Procédures analytiques & contrôles de détail`}
         actions={
           <div className="flex gap-2">
-            {canRun && (
+            {canRun && sousOnglet === 'analytiques' && (
               <button onClick={handleLancerTous} disabled={launchingAll} className="btn-secondary">
                 {launchingAll ? <Spinner size="sm" /> : <Play className="w-4 h-4" />}
-                Lancer tous les contrôles
+                Lancer les procédures analytiques
               </button>
             )}
-            {resultats.length > 0 && etatCourant === 'controles' && (
+            {canPasser && (
               <button onClick={handlePasserRevue} disabled={transitioning} className="btn-primary">
                 {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
                 Passer à la revue
@@ -348,41 +352,91 @@ export function Controles() {
       />
 
       <div className="flex-1 overflow-y-auto">
-        {/* Onglets cycles — uniquement ceux de la mission */}
-        <div className="border-b border-border bg-white sticky top-0 z-10">
-          <div className="flex">
-            {cyclesMission.map((c) => {
-              const Icon = c.icon
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => setActiveCycle(c.id)}
-                  className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium border-b-2 transition-colors ${
-                    activeCycle === c.id
-                      ? 'border-primary-600 text-primary-700 bg-primary-50/50'
-                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {c.label}
-                </button>
-              )
-            })}
+        {/* Sous-onglets familles de travaux */}
+        <div className="border-b border-border bg-white sticky top-0 z-20">
+          <div className="flex px-6 pt-1">
+            <button
+              onClick={() => setSousOnglet('analytiques')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                sousOnglet === 'analytiques'
+                  ? 'border-primary-600 text-primary-700'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Play className="w-3.5 h-3.5" />
+              Procédures analytiques
+            </button>
+            <button
+              onClick={() => setSousOnglet('detail')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                sousOnglet === 'detail'
+                  ? 'border-primary-600 text-primary-700'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <CheckCircle className="w-3.5 h-3.5" />
+              Contrôles de détail
+              <span className="ml-1 text-xs bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded-full">V2</span>
+            </button>
           </div>
         </div>
 
-        {/* Contenu du cycle actif */}
-        <div className="p-6 max-w-3xl mx-auto">
-          {projetId && cyclesMission.map((c) => (
-            <div key={c.id} className={activeCycle === c.id ? '' : 'hidden'}>
-              <CyclePanel
-                cycle={c}
-                projetId={projetId}
-                etatCourant={etatCourant}
-              />
+        {sousOnglet === 'analytiques' ? (
+          <>
+            {/* Onglets cycles */}
+            <div className="border-b border-border bg-white sticky top-[41px] z-10">
+              <div className="flex">
+                {cyclesMission.map((c) => {
+                  const Icon = c.icon
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setActiveCycle(c.id)}
+                      className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                        activeCycle === c.id
+                          ? 'border-primary-600 text-primary-700 bg-primary-50/50'
+                          : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {c.label}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-          ))}
-        </div>
+
+            {/* Contenu cycle actif */}
+            <div className="p-6 max-w-3xl mx-auto">
+              {projetId && cyclesMission.map((c) => (
+                <div key={c.id} className={activeCycle === c.id ? '' : 'hidden'}>
+                  <CyclePanel
+                    cycle={c}
+                    projetId={projetId}
+                    etatCourant={etatCourant}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-20 gap-4 text-center max-w-sm mx-auto">
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
+              <CheckCircle className="w-8 h-8 text-slate-300" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-700 mb-1">Contrôles de détail — Version 2</h3>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                Les contrôles de détail (sondages sur pièces, circularisation clients/fournisseurs,
+                confirmation bancaire) seront disponibles dans la prochaine version de Probare.
+              </p>
+              <p className="text-xs text-slate-400 mt-3">
+                En attendant, les procédures analytiques couvrent les assertions d'exhaustivité,
+                de coupure et de cohérence globale.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

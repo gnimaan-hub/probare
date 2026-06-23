@@ -4,19 +4,22 @@ from typing import Literal
 from ..storage.db import ProjectDB
 
 ETATS = Literal[
-    "cadrage", "ingestion", "extraction", "planification",
-    "controles", "revue", "generation", "opinion"
+    "cadrage", "evaluation_ci", "ingestion",
+    "planification", "travaux_substantifs", "revue", "generation", "opinion"
 ]
 
 TRANSITIONS_AUTORISEES: dict[str, list[str]] = {
-    "cadrage":        ["ingestion"],
-    "ingestion":      ["extraction"],
-    "extraction":     ["planification"],
-    "planification":  ["controles"],
-    "controles":      ["revue"],
-    "revue":          ["generation"],
-    "generation":     ["opinion"],
-    "opinion":        [],
+    "cadrage":              ["evaluation_ci"],
+    "evaluation_ci":        ["ingestion"],
+    "ingestion":            ["planification"],
+    "planification":        ["travaux_substantifs"],
+    "travaux_substantifs":  ["revue"],
+    "revue":                ["generation"],
+    "generation":           ["opinion"],
+    "opinion":              [],
+    # Rétrocompatibilité
+    "extraction":           ["planification", "travaux_substantifs"],
+    "controles":            ["travaux_substantifs", "revue"],
 }
 
 

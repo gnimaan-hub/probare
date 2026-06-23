@@ -79,6 +79,264 @@ Réponds UNIQUEMENT avec un JSON valide de la forme :
                 pass
         return {"mapping": {}, "confiance": 0.0, "notes": "Réponse non parseable."}
 
+    # ─── Ingestion intelligente ────────────────────────────────────────────────
+
+    def _parse_json(self, text: str) -> Any:
+        """Parse JSON depuis une réponse LLM en tolérant du texte avant/après."""
+        import re as _re
+        text = _re.sub(r"```(?:json)?\s*", "", text.strip()).strip()
+        start = text.find("{")
+        start_arr = text.find("[")
+        # Prendre le premier délimiteur
+        if start_arr >= 0 and (start < 0 or start_arr < start):
+            end = text.rfind("]") + 1
+            if end > start_arr:
+                try:
+                    return json.loads(text[start_arr:end])
+                except Exception:
+                    pass
+        if start >= 0:
+            end = text.rfind("}") + 1
+            if end > start:
+                try:
+                    return json.loads(text[start:end])
+                except Exception:
+                    pass
+        return None
+
+    def analyser_document_ingestion(
+        self,
+        nom_fichier: str,
+        contenu_texte: str,
+        documents_attendus: list[dict],
+    ) -> dict:
+        """Haiku identifie la nature d'un document déposé pour l'audit."""
+        types_attendus = ", ".join(
+            f"{d['type']} ({d.get('label', d['type'])})" for d in documents_attendus
+        )
+        prompt = f"""Tu es expert-comptable chargé d'identifier la nature d'un document d'audit.
+
+Nom du fichier : {nom_fichier}
+
+Contenu extrait (premiers caractères) :
+{contenu_texte[:4000]}
+
+Documents attendus dans cette mission : {types_attendus or "aucun spécifié"}
+
+Identifie la nature de ce document. Types comptables reconnus :
+- grand_livre : journal détaillé des écritures (date, compte, libellé, débit, crédit, pièce)
+- balance : résumé par compte (soldes, totaux débits/crédits)
+- releve_bancaire : extrait de compte bancaire
+- bulletin_paie : fiche de paie employé
+- facture : facture fournisseur ou client
+- declaration_fiscale : TVA, impôts, déclarations
+- contrat : accord, bail, convention
+- rapport : rapport de gestion, rapport CA
+- autre : tout autre document
+
+Réponds UNIQUEMENT avec ce JSON valide (sans commentaire) :
+{{
+  "nature": "grand_livre|balance|releve_bancaire|bulletin_paie|facture|declaration_fiscale|contrat|rapport|autre",
+  "type_comptable": "grand_livre|balance|releve_bancaire|null",
+  "description": "Description en 1-2 phrases de ce que contient ce document",
+  "objectif": "Utilité de ce document dans un contexte d'audit en 1 phrase",
+  "correspond_a": "grand_livre|balance|releve_bancaire|null",
+  "confiance": 0.0
+}}"""
+
+        resp = self._client.messages.create(
+            model=MODEL_SIMPLE,
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_SIMPLE, "analyser_document_ingestion",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+
+        result = self._parse_json(resp.content[0].text)
+        if not isinstance(result, dict):
+            return {"nature": "autre", "type_comptable": None, "correspond_a": None,
+                    "description": nom_fichier, "objectif": "", "confiance": 0.0}
+        # Normaliser correspond_a : null/None/string "null" → None
+        if result.get("correspond_a") in (None, "null", ""):
+            result["correspond_a"] = None
+        if result.get("type_comptable") in (None, "null", ""):
+            result["type_comptable"] = None
+        return result
+
+    def analyser_onglets_excel(
+        self,
+        nom_fichier: str,
+        onglets: list[dict],
+        documents_attendus: list[dict],
+    ) -> list[dict]:
+        """Haiku analyse chaque onglet d'un Excel et identifie sa nature."""
+        types_attendus = ", ".join(
+            f"{d['type']} ({d.get('label', d['type'])})" for d in documents_attendus
+        )
+        onglets_desc = ""
+        for o in onglets:
+            onglets_desc += f"\n--- Onglet : {o['nom']} ---\n"
+            onglets_desc += f"Colonnes : {', '.join(o.get('colonnes', [])[:20])}\n"
+            onglets_desc += f"Aperçu :\n{o.get('apercu', '')[:800]}\n"
+
+        prompt = f"""Tu es expert-comptable. Analyse les onglets du fichier Excel "{nom_fichier}".
+
+Documents attendus dans la mission : {types_attendus or "aucun spécifié"}
+
+{onglets_desc}
+
+Pour chaque onglet, identifie sa nature et si elle correspond à un document attendu.
+
+Réponds UNIQUEMENT avec un tableau JSON (un objet par onglet, même ordre) :
+[
+  {{
+    "nom_onglet": "nom exact de l'onglet",
+    "nature": "grand_livre|balance|releve_bancaire|bulletin_paie|facture|autre",
+    "type_comptable": "grand_livre|balance|releve_bancaire|null",
+    "description": "ce que contient cet onglet en 1 phrase",
+    "correspond_a": "grand_livre|balance|releve_bancaire|null",
+    "confiance": 0.0,
+    "recommande_import": true
+  }}
+]"""
+
+        resp = self._client.messages.create(
+            model=MODEL_SIMPLE,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_SIMPLE, "analyser_onglets_excel",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+
+        result = self._parse_json(resp.content[0].text)
+        if not isinstance(result, list):
+            return []
+        for item in result:
+            if item.get("correspond_a") in (None, "null", ""):
+                item["correspond_a"] = None
+            if item.get("type_comptable") in (None, "null", ""):
+                item["type_comptable"] = None
+        return result
+
+    def decouper_liasse_document(
+        self,
+        nom_fichier: str,
+        contenu_texte: str,
+    ) -> dict:
+        """Haiku identifie les frontières de documents dans une liasse PDF/Word."""
+        prompt = f"""Tu es expert-comptable. Le fichier "{nom_fichier}" semble être une liasse regroupant plusieurs documents.
+
+Contenu extrait :
+{contenu_texte[:7000]}
+
+Identifie s'il s'agit bien d'une liasse de documents distincts, et si oui, liste chaque document.
+
+Réponds UNIQUEMENT avec ce JSON valide :
+{{
+  "est_liasse": true,
+  "nb_documents": 1,
+  "description_globale": "Description synthétique du contenu de la liasse",
+  "documents": [
+    {{
+      "titre": "Titre ou type du document",
+      "type": "facture|releve_bancaire|bulletin_paie|contrat|declaration_fiscale|rapport|autre",
+      "reference": "numéro/référence si détecté ou null",
+      "description": "Ce que contient ce document en 1 phrase",
+      "debut_approximatif": "début du document (ex: 'Début du fichier' ou 'Après la facture X')",
+      "fin_approximatif": "fin approximative"
+    }}
+  ]
+}}
+
+Si ce n'est pas une liasse (document unique), réponds avec est_liasse: false et nb_documents: 1."""
+
+        resp = self._client.messages.create(
+            model=MODEL_SIMPLE,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_SIMPLE, "decouper_liasse_document",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+
+        result = self._parse_json(resp.content[0].text)
+        if not isinstance(result, dict):
+            return {"est_liasse": False, "nb_documents": 1, "documents": [], "description_globale": ""}
+        return result
+
+    # ─── Évaluation Contrôle Interne ──────────────────────────────────────────
+
+    def evaluer_controle_interne(
+        self,
+        cycle: str,
+        reponses: list[dict],  # [{question_id, question, reponse, commentaire, risque_si_non}]
+        contexte_projet: dict,
+    ) -> dict:
+        """Haiku synthétise l'évaluation du CI pour un cycle à partir des réponses QCI."""
+        nb_oui = sum(1 for r in reponses if r.get("reponse") == "oui")
+        nb_non = sum(1 for r in reponses if r.get("reponse") == "non")
+        nb_na  = sum(1 for r in reponses if r.get("reponse") == "na")
+        total  = nb_oui + nb_non
+        score  = round(nb_oui / total, 2) if total > 0 else 0.0
+
+        niveau = "élevé"
+        if score >= 0.70:
+            niveau = "faible"
+        elif score >= 0.40:
+            niveau = "moyen"
+
+        reponses_txt = ""
+        for r in reponses:
+            reponses_txt += f"\n- [{r.get('reponse', '?').upper()}] {r.get('question', r.get('question_id', ''))}"
+            if r.get("reponse") == "non" and r.get("risque_si_non"):
+                reponses_txt += f"\n  → Risque : {r['risque_si_non']}"
+            if r.get("commentaire"):
+                reponses_txt += f"\n  → Commentaire auditeur : {r['commentaire']}"
+
+        prompt = f"""Tu es auditeur senior. Tu évalues le contrôle interne du cycle {cycle.upper()} d'une entité dans le cadre d'un audit contractuel (Djibouti, référentiel NEP 315).
+
+Entité : {contexte_projet.get('client', 'N/A')} — Exercice {contexte_projet.get('exercice', 'N/A')}
+
+Score QCI : {nb_oui}/{total} (score = {score:.0%}) → Risque CI : {niveau.upper()}
+
+Réponses au questionnaire :{reponses_txt}
+
+Rédige une évaluation professionnelle du contrôle interne. Identifie les forces, les faiblesses significatives et leur implication sur les travaux d'audit.
+
+Réponds UNIQUEMENT avec ce JSON valide :
+{{
+  "synthese": "Paragraphe de synthèse en 3-4 phrases — niveau de risque, raison principale, implication sur les travaux",
+  "forces": ["Force 1", "Force 2"],
+  "faiblesses": [
+    "Faiblesse significative 1 (mention du risque associé)",
+    "Faiblesse significative 2"
+  ],
+  "recommandations": [
+    "Recommandation pour l'auditeur : ajuster les tests sur X en raison de Y",
+    "Recommandation 2"
+  ],
+  "niveau_risque": "{niveau}",
+  "score": {score}
+}}"""
+
+        resp = self._client.messages.create(
+            model=MODEL_SIMPLE,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_SIMPLE, "evaluer_controle_interne",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+
+        result = self._parse_json(resp.content[0].text)
+        if not isinstance(result, dict):
+            return {
+                "synthese": f"Évaluation automatique : score {score:.0%}, risque {niveau}.",
+                "forces": [], "faiblesses": [], "recommandations": [],
+                "niveau_risque": niveau, "score": score,
+            }
+        result.setdefault("niveau_risque", niveau)
+        result.setdefault("score", score)
+        return result
+
     def interpreter_exception(
         self,
         exception: dict,

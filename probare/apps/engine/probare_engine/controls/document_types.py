@@ -31,7 +31,7 @@ TYPES_DOCUMENT: dict[str, TypeDoc] = {
         id="releve_bancaire",
         label="Relevé bancaire",
         description="Relevé de compte bancaire pour rapprochement avec le solde comptable.",
-        requis=False,
+        requis=True,  # NEP 330 : diligence requise en trésorerie
         cycle="tresorerie",
     ),
     "annexe": TypeDoc(
@@ -67,8 +67,8 @@ DOCUMENTS_PAR_CYCLE: dict[str, list[dict]] = {
         {
             "type": "releve_bancaire",
             "label": "Relevé bancaire",
-            "requis": False,
-            "description": "Optionnel — permet le rapprochement bancaire (TRESOR-RAPPROCH).",
+            "requis": True,
+            "description": "Requis — rapprochement bancaire obligatoire (NEP 330, TRESOR-RAPPROCH).",
         },
     ],
     "achats": [

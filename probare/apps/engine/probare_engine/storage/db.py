@@ -214,8 +214,46 @@ class ProjectDB:
             issu_ia INTEGER DEFAULT 0,
             cree_le TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS qci_reponse (
+            id TEXT PRIMARY KEY,
+            projet_id TEXT NOT NULL REFERENCES projet(id),
+            cycle TEXT NOT NULL,
+            question_id TEXT NOT NULL,
+            reponse TEXT CHECK(reponse IN ('oui', 'non', 'na')),
+            commentaire TEXT,
+            repondu_le TEXT,
+            UNIQUE(projet_id, cycle, question_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS qci_evaluation (
+            id TEXT PRIMARY KEY,
+            projet_id TEXT NOT NULL,
+            cycle TEXT NOT NULL,
+            score REAL,
+            niveau_risque TEXT,
+            synthese_ia TEXT,
+            forces TEXT,
+            faiblesses TEXT,
+            recommandations TEXT,
+            evalue_le TEXT,
+            UNIQUE(projet_id, cycle)
+        );
         """)
         self.conn.commit()
+
+        # Migrations d'état pipeline
+        try:
+            self.conn.execute(
+                "UPDATE projet SET etat_courant='travaux_substantifs' WHERE etat_courant='controles'"
+            )
+            # "extraction" bloqué → retour à ingestion pour que l'auditeur repasse l'étape
+            self.conn.execute(
+                "UPDATE projet SET etat_courant='ingestion' WHERE etat_courant='extraction'"
+            )
+            self.conn.commit()
+        except Exception:
+            pass
 
         # Migrations idempotentes : colonnes ajoutées après la v1 initiale
         migrations = [
@@ -230,6 +268,11 @@ class ProjectDB:
             ("projet", "client_id", "TEXT"),
             ("projet", "archive", "INTEGER DEFAULT 0"),
             ("planification", "note_synthese", "TEXT"),
+            ("fichier_source", "description_ia", "TEXT"),
+            ("fichier_source", "nature_ia", "TEXT"),
+            ("fichier_source", "correspond_a", "TEXT"),
+            ("fichier_source", "statut_checklist", "TEXT"),
+            ("fichier_source", "onglet", "TEXT"),
         ]
         for table, col, typedef in migrations:
             try:
@@ -321,15 +364,36 @@ class ProjectDB:
     def save_fichier_source(self, data: dict) -> dict:
         self.conn.execute(
             """INSERT OR REPLACE INTO fichier_source
-               (id,projet_id,nom,chemin_relatif,type,type_document,hash,importe_le)
-               VALUES (?,?,?,?,?,?,?,?)""",
+               (id,projet_id,nom,chemin_relatif,type,type_document,hash,importe_le,
+                description_ia,nature_ia,correspond_a,statut_checklist,onglet)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (data["id"], data["projet_id"], data["nom"],
              data.get("chemin_relatif"), data.get("type"),
              data.get("type_document"), data.get("hash"),
-             data.get("importe_le", _now()))
+             data.get("importe_le", _now()),
+             data.get("description_ia"), data.get("nature_ia"),
+             data.get("correspond_a"), data.get("statut_checklist"),
+             data.get("onglet"))
         )
         self.conn.commit()
         return data
+
+    def update_fichier_ia(self, fichier_id: str, data: dict) -> None:
+        allowed = {"description_ia", "nature_ia", "correspond_a", "statut_checklist", "type_document"}
+        fields = {k: v for k, v in data.items() if k in allowed}
+        if not fields:
+            return
+        set_clause = ", ".join(f"{k}=?" for k in fields)
+        self.conn.execute(
+            f"UPDATE fichier_source SET {set_clause} WHERE id=?",
+            list(fields.values()) + [fichier_id],
+        )
+        self.conn.commit()
+
+    def delete_fichier_source(self, fichier_id: str) -> None:
+        self.conn.execute("DELETE FROM donnee_sourcee WHERE fichier_source_id=?", (fichier_id,))
+        self.conn.execute("DELETE FROM fichier_source WHERE id=?", (fichier_id,))
+        self.conn.commit()
 
     def list_fichiers_source(self, projet_id: str) -> list[dict]:
         rows = self.conn.execute(
@@ -451,6 +515,71 @@ class ProjectDB:
             "SELECT * FROM fichier_source WHERE projet_id=?", (projet_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # --- QCI ---
+
+    def save_qci_reponse(self, projet_id: str, cycle: str, question_id: str, reponse: str, commentaire: str = "") -> dict:
+        rid = str(__import__("uuid").uuid4())
+        now = _now()
+        self.conn.execute(
+            """INSERT INTO qci_reponse (id, projet_id, cycle, question_id, reponse, commentaire, repondu_le)
+               VALUES (?,?,?,?,?,?,?)
+               ON CONFLICT(projet_id, cycle, question_id) DO UPDATE SET
+                 reponse=excluded.reponse,
+                 commentaire=excluded.commentaire,
+                 repondu_le=excluded.repondu_le""",
+            (rid, projet_id, cycle, question_id, reponse, commentaire, now)
+        )
+        self.conn.commit()
+        return {"projet_id": projet_id, "cycle": cycle, "question_id": question_id,
+                "reponse": reponse, "commentaire": commentaire}
+
+    def list_qci_reponses(self, projet_id: str, cycle: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM qci_reponse WHERE projet_id=? AND cycle=?",
+            (projet_id, cycle)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def save_qci_evaluation(self, projet_id: str, cycle: str, data: dict) -> dict:
+        eid = str(__import__("uuid").uuid4())
+        now = _now()
+        self.conn.execute(
+            """INSERT INTO qci_evaluation
+               (id, projet_id, cycle, score, niveau_risque, synthese_ia, forces, faiblesses, recommandations, evalue_le)
+               VALUES (?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(projet_id, cycle) DO UPDATE SET
+                 score=excluded.score, niveau_risque=excluded.niveau_risque,
+                 synthese_ia=excluded.synthese_ia, forces=excluded.forces,
+                 faiblesses=excluded.faiblesses, recommandations=excluded.recommandations,
+                 evalue_le=excluded.evalue_le""",
+            (eid, projet_id, cycle,
+             data.get("score"), data.get("niveau_risque"),
+             data.get("synthese_ia"),
+             json.dumps(data.get("forces", []), ensure_ascii=False),
+             json.dumps(data.get("faiblesses", []), ensure_ascii=False),
+             json.dumps(data.get("recommandations", []), ensure_ascii=False),
+             now)
+        )
+        self.conn.commit()
+        return {**data, "projet_id": projet_id, "cycle": cycle}
+
+    def get_qci_evaluations(self, projet_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM qci_evaluation WHERE projet_id=?", (projet_id,)
+        ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            for field in ("forces", "faiblesses", "recommandations"):
+                val = d.get(field)
+                if val and isinstance(val, str):
+                    try:
+                        d[field] = json.loads(val)
+                    except Exception:
+                        d[field] = []
+            result.append(d)
+        return result
 
     # --- Données sourcées ---
 

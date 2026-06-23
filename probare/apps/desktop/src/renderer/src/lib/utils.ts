@@ -30,18 +30,25 @@ export function truncate(s: string, n = 80): string {
 }
 
 export const ETATS_PIPELINE = [
-  { id: 'cadrage', label: 'Cadrage', description: 'Paramètres de mission' },
-  { id: 'ingestion', label: 'Ingestion', description: 'Import des fichiers' },
-  { id: 'extraction', label: 'Extraction', description: 'Traitement des données' },
-  { id: 'planification', label: 'Planification', description: 'Analyse & cartographie des risques' },
-  { id: 'controles', label: 'Contrôles', description: 'Tests déterministes' },
-  { id: 'revue', label: 'Revue', description: 'Traitement des exceptions' },
-  { id: 'generation', label: 'Génération', description: 'Dossier de travail' },
-  { id: 'opinion', label: 'Opinion', description: 'Validation finale' },
+  { id: 'cadrage',             label: 'Cadrage',             description: 'Paramètres de mission' },
+  { id: 'evaluation_ci',       label: 'Contrôle interne',    description: 'Évaluation du dispositif de contrôle interne' },
+  { id: 'ingestion',           label: 'Ingestion',           description: 'Import des fichiers' },
+  { id: 'planification',       label: 'Planification',       description: 'Analyse & cartographie des risques' },
+  { id: 'travaux_substantifs', label: 'Travaux substantifs', description: 'Procédures analytiques & contrôles de détail' },
+  { id: 'revue',               label: 'Revue',               description: 'Traitement des exceptions' },
+  { id: 'generation',          label: 'Génération',          description: 'Dossier de travail' },
+  { id: 'opinion',             label: 'Opinion',             description: 'Validation finale' },
 ] as const
 
 export type EtatPipeline = typeof ETATS_PIPELINE[number]['id']
 
+// Compatibilité : anciens projets en "controles" → équivalent "travaux_substantifs"
+const ETAT_ALIAS: Record<string, string> = {
+  controles:  'travaux_substantifs',
+  extraction: 'ingestion',
+}
+
 export function getEtatIndex(etat: string): number {
-  return ETATS_PIPELINE.findIndex((e) => e.id === etat)
+  const resolved = ETAT_ALIAS[etat] ?? etat
+  return ETATS_PIPELINE.findIndex((e) => e.id === resolved)
 }
