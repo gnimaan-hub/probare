@@ -3,14 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   AlertTriangle, CheckCircle, Wand2, Send, ArrowRight, X,
-  ChevronDown, ChevronRight, RefreshCw, Lightbulb, ClipboardList,
+  ChevronDown, ChevronRight, RefreshCw, Lightbulb, ClipboardList, FileText,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
-import { useProjetStore, type Exception } from '../stores/projetStore'
+import { useProjetStore, type Exception, type FichierSource } from '../stores/projetStore'
 import { useSyncProjet } from '../hooks/useProjet'
 import { formatDate } from '../lib/utils'
 
@@ -149,14 +149,34 @@ function IAPanel({
   )
 }
 
+function SourceFilesBadges({ fichierIds, fichiers }: { fichierIds?: string[], fichiers: FichierSource[] }) {
+  if (!fichierIds || fichierIds.length === 0) return null
+  const noms = fichierIds
+    .map((id) => fichiers.find((f) => f.id === id)?.nom)
+    .filter(Boolean) as string[]
+  if (noms.length === 0) return null
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+      <FileText className="w-3 h-3 text-slate-400 flex-shrink-0" />
+      {noms.map((nom) => (
+        <span key={nom} className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono" title={nom}>
+          {nom.length > 28 ? nom.slice(0, 25) + '…' : nom}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 function ExceptionCard({
   exc,
+  fichiers,
   onTrancher,
   onValiderDecisionIA,
   onRelancerIA,
   relancing,
 }: {
   exc: Exception
+  fichiers: FichierSource[]
   onTrancher: (exc: Exception) => void
   onValiderDecisionIA: (exc: Exception) => void
   onRelancerIA: (exc: Exception) => void
@@ -196,6 +216,7 @@ function ExceptionCard({
             </code>
           </div>
           <p className="text-sm text-slate-600 leading-relaxed">{exc.description}</p>
+          <SourceFilesBadges fichierIds={exc.fichiers_sources} fichiers={fichiers} />
         </div>
         {isTranchee && <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />}
       </div>
@@ -424,7 +445,7 @@ export function Exceptions() {
   const navigate = useNavigate()
   const { get, post } = useApi()
   const toast = useToast()
-  const { projetActif, setProjetActif, exceptions, setExceptions } = useProjetStore()
+  const { projetActif, setProjetActif, exceptions, setExceptions, fichiers, setFichiers } = useProjetStore()
   useSyncProjet()
 
   const [pendingTrancher, setPendingTrancher] = useState<Exception | null>(null)
@@ -437,6 +458,9 @@ export function Exceptions() {
     get(`/projets/${projetId}/exceptions`)
       .then((d) => setExceptions(d.exceptions || []))
       .catch((e) => toast.error(e.message))
+    get(`/projets/${projetId}/fichiers`)
+      .then((d) => setFichiers(d.fichiers || []))
+      .catch(() => {/* fichiers non critiques pour cette page */})
   }, [projetId])
 
   const handleRelancerIA = async (exc: Exception) => {
@@ -569,6 +593,7 @@ export function Exceptions() {
                 <ExceptionCard
                   key={exc.id}
                   exc={exc}
+                  fichiers={fichiers}
                   onTrancher={setPendingTrancher}
                   onValiderDecisionIA={handleValiderDecisionIA}
                   onRelancerIA={handleRelancerIA}

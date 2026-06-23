@@ -198,6 +198,17 @@ def _get_donnees_segmentees(db, projet_id: str):
     return donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve
 
 
+def _resoudre_fichiers_sources(exceptions: list[dict], donnees_all: list) -> None:
+    """Pour chaque exception, résout sources (DonneeSourcee.id) → fichiers_sources (fichier_source_id)."""
+    lookup = {d.id: d.fichier_source_id for d in donnees_all}
+    for exc in exceptions:
+        src_ids = exc.pop("sources", [])
+        fichier_ids = list(dict.fromkeys(
+            lookup[sid] for sid in (src_ids or []) if sid in lookup
+        ))
+        exc["fichiers_sources"] = fichier_ids
+
+
 def _preconditions_check(
     controle_ref: str,
     ids_gl: set,
@@ -1101,6 +1112,7 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
                   "Impossible d'extraire les soldes du grand livre ou du relevé.")
 
     # Persistance
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
     for r in resultats_total:
         db.save_resultat(r)
     for e in exceptions_total:
@@ -1263,6 +1275,7 @@ def run_controles_achats(projet_id: str, body: dict = {}):
             else:
                 _skip("ACHAT-VARIATION", "Balance N-1 non renseignée (configurez-la dans Planification → Variations).")
 
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
     for r in resultats_total:
         db.save_resultat(r)
     for e in exceptions_total:
@@ -1427,6 +1440,7 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
             else:
                 _skip("VENTE-VARIATION", "Balance N-1 non renseignée (configurez-la dans Planification → Variations).")
 
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
     for r in resultats_total:
         db.save_resultat(r)
     for e in exceptions_total:

@@ -68,15 +68,9 @@ Réponds UNIQUEMENT avec un JSON valide de la forme :
         self._log(MODEL_SIMPLE, "mapper_colonnes",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "mapping" in result:
+            return result
         return {"mapping": {}, "confiance": 0.0, "notes": "Réponse non parseable."}
 
     # ─── Ingestion intelligente ────────────────────────────────────────────────
@@ -377,17 +371,11 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "interpreter_exception",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "explication" in result:
+            return result
         return {
-            "explication": text,
+            "explication": resp.content[0].text[:500],
             "hypotheses": [],
             "diligences": [],
             "decision_proposee": "",
@@ -439,17 +427,11 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "analyser_document_annexe",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "resume" in result:
+            return result
         return {
-            "resume": text[:500],
+            "resume": resp.content[0].text[:500],
             "points_cles": [],
             "alertes": [],
         }
@@ -500,18 +482,12 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_SIMPLE, "cataloguer_document",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "type_detecte" in result:
+            return result
         return {
             "type_detecte": "autre",
-            "description": text[:300],
+            "description": resp.content[0].text[:300],
             "parties": [],
             "dates": [],
             "montants_cles": [],
@@ -589,17 +565,10 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_ESCALADE, "extraire_donnees_comptables",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                result = json.loads(text[start:end])
-                result["nb_lignes"] = len(result.get("lignes", []))
-                return result
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "lignes" in result:
+            result["nb_lignes"] = len(result.get("lignes", []))
+            return result
         return {"type_sortie": "grand_livre", "lignes": [], "nb_lignes": 0}
 
     def verifier_extraction_donnees(
@@ -672,19 +641,13 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "verifier_extraction_donnees",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "score_global" in result:
+            return result
         return {
             "score_global": 0.5,
             "lignes_verifiees": [],
-            "resume_verification": text[:300],
+            "resume_verification": resp.content[0].text[:300],
         }
 
     def interpreter_variations_analytiques(
@@ -736,17 +699,11 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "interpreter_variations_analytiques",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "synthese" in result:
+            return result
         return {
-            "synthese": text[:800],
+            "synthese": resp.content[0].text[:800],
             "zones_risque": [],
             "facteurs_contextuels": "",
             "alertes": [],
@@ -817,16 +774,9 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "proposer_risques",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                result = json.loads(text[start:end])
-                return result.get("risques", [])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict):
+            return result.get("risques", [])
         return []
 
     def reformuler_risque(self, risque: dict) -> dict:
@@ -868,16 +818,8 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_SIMPLE, "reformuler_risque",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
-        return {}
+        result = self._parse_json(resp.content[0].text)
+        return result if isinstance(result, dict) else {}
 
     def generer_note_synthese(
         self,
@@ -961,15 +903,9 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "generer_note_synthese",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "sections" in result:
+            return result
         return {"titre": "Note de synthèse", "sections": [], "conclusion": ""}
 
     def generer_programme_travail(
@@ -1025,16 +961,9 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "generer_programme_travail",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                result = json.loads(text[start:end])
-                return result.get("items", [])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict):
+            return result.get("items", [])
         return []
 
     def rediger_feuille_travail(
@@ -1073,20 +1002,12 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "rediger_feuille_travail",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        text = resp.content[0].text.strip()
-        # Supprimer les blocs markdown ```json ... ``` si présents
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", text).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "contenu" in result:
+            return result
         return {
             "titre": f"Feuille de travail — {cycle}",
-            "contenu": text,
+            "contenu": resp.content[0].text,
             "nep_refs": [],
             "conclusion": "sans_reserve",
         }

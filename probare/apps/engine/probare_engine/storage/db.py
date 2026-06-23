@@ -273,6 +273,7 @@ class ProjectDB:
             ("fichier_source", "correspond_a", "TEXT"),
             ("fichier_source", "statut_checklist", "TEXT"),
             ("fichier_source", "onglet", "TEXT"),
+            ("exception", "fichiers_sources", "TEXT"),
         ]
         for table, col, typedef in migrations:
             try:
@@ -282,7 +283,7 @@ class ProjectDB:
                 pass  # colonne déjà présente
 
     def _deserialize_exception(self, d: dict) -> dict:
-        for field in ("hypotheses", "diligences"):
+        for field in ("hypotheses", "diligences", "fichiers_sources"):
             val = d.get(field)
             if val and isinstance(val, str):
                 try:
@@ -650,12 +651,14 @@ class ProjectDB:
     def save_exception(self, data: dict) -> dict:
         hyp = data.get("hypotheses")
         dil = data.get("diligences")
+        fich = data.get("fichiers_sources")
         self.conn.execute(
             """INSERT OR REPLACE INTO exception
                (id,projet_id,controle_ref,nep_ref,severite,description,
                 statut,decision_humaine,decideur,interpretation_llm,
-                hypotheses,diligences,decision_proposee,urgence,ia_analysee,horodatage)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                hypotheses,diligences,decision_proposee,urgence,ia_analysee,
+                fichiers_sources,horodatage)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (data["id"], data["projet_id"], data.get("controle_ref"),
              data.get("nep_ref"), data.get("severite"),
              data.get("description"), data.get("statut", "ouverte"),
@@ -666,6 +669,7 @@ class ProjectDB:
              data.get("decision_proposee"),
              data.get("urgence"),
              int(data.get("ia_analysee", 0)),
+             json.dumps(fich) if isinstance(fich, list) else fich,
              data.get("horodatage", _now()))
         )
         self.conn.commit()

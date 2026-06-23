@@ -59,6 +59,7 @@ def _result_exception(projet_id: str, controle_ref: str, valeur: Any,
         "severite": severite,
         "description": details,
         "statut": "ouverte",
+        "sources": sources,
         "horodatage": _now(),
     }
     return res, exc
