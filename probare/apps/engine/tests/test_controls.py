@@ -24,6 +24,8 @@ from probare_engine.controls.engine import (
     controle_ratio_charges_sociales,
     controle_mensualite_paie,
     controle_tva_coherence,
+    controle_mouvement_provisions,
+    controle_coherence_resultat,
     _group_rows,
     _filter_accounts,
 )
@@ -1333,3 +1335,156 @@ class TestScenarioPayeComplete:
         grouped = _rows(self.donnees)
         res, exc = controle_ratio_charges_sociales(PID, grouped)
         assert exc is None  # 3200/8000 = 40% → dans la fourchette
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CYCLE CAPITAUX PROPRES ET PROVISIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestMouvementProvisions:
+    def test_dotation_sans_charge_exception(self):
+        """15x crédité mais 68x absent → exception."""
+        donnees = _make_row("151000", 2, credit=50000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_mouvement_provisions(PID, grouped)
+        assert exc is not None
+        assert exc["controle_ref"] == "CP-PROVISION-MOUVEMENT"
+        assert "sans aucune" in exc["description"]
+
+    def test_dotation_avec_charge_suffisante_ok(self):
+        """15x crédité ET 68x débité en proportion suffisante."""
+        donnees = (
+            _make_row("151000", 2, credit=50000.0) +
+            _make_row("681000", 3, debit=50000.0)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_mouvement_provisions(PID, grouped)
+        assert exc is None
+        assert "cohérent" in res["details"]
+
+    def test_ratio_trop_faible_exception(self):
+        """Charges 68x très inférieures aux dotations 15x → exception."""
+        donnees = (
+            _make_row("151000", 2, credit=100000.0) +
+            _make_row("681000", 3, debit=5000.0)  # ratio = 5% < seuil 20%
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_mouvement_provisions(PID, grouped, seuil_ratio=0.20)
+        assert exc is not None
+        assert float(res["valeur"]) == pytest.approx(0.05)
+
+    def test_aucun_compte_15x_ok(self):
+        """Pas de provision → OK (contrôle non applicable)."""
+        donnees = _make_row("101000", 2, credit=100000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_mouvement_provisions(PID, grouped)
+        assert exc is None
+        assert "Aucun" in res["details"]
+
+    def test_aucune_dotation_periode_ok(self):
+        """Compte 15x présent mais sans crédit sur la période."""
+        donnees = _make_row("151000", 2, debit=5000.0)  # reprise seulement
+        grouped = _rows(donnees)
+        res, exc = controle_mouvement_provisions(PID, grouped)
+        assert exc is None
+
+
+class TestCoherenceResultat:
+    def test_benefice_seul_ok(self):
+        """Seul le compte 120 est non nul → cohérent."""
+        donnees = _make_row("120000", 2, credit=80000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_coherence_resultat(PID, grouped)
+        assert exc is None
+        assert "bénéficiaire" in res["details"]
+
+    def test_deficit_seul_ok(self):
+        """Seul le compte 129 est non nul → cohérent."""
+        donnees = _make_row("129000", 2, debit=30000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_coherence_resultat(PID, grouped)
+        assert exc is None
+        assert "déficitaire" in res["details"]
+
+    def test_120_et_129_non_nuls_exception(self):
+        """Les deux comptes non nuls simultanément → exception."""
+        donnees = (
+            _make_row("120000", 2, credit=50000.0) +
+            _make_row("129000", 3, debit=10000.0)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_coherence_resultat(PID, grouped)
+        assert exc is not None
+        assert exc["controle_ref"] == "CP-RESULTAT-COHERENCE"
+        assert "120" in exc["description"] and "129" in exc["description"]
+
+    def test_aucun_compte_resultat_ok(self):
+        """Pas de compte 120/129 dans les données → OK."""
+        donnees = _make_row("101000", 2, credit=100000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_coherence_resultat(PID, grouped)
+        assert exc is None
+        assert "Aucun" in res["details"]
+
+    def test_solde_nul_120_avec_129_nul_ok(self):
+        """Comptes 120 et 129 à zéro → OK."""
+        donnees = (
+            _make_row("120000", 2, solde=0.005) +  # sous tolerance
+            _make_row("129000", 3, solde=0.005)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_coherence_resultat(PID, grouped)
+        assert exc is None
+
+
+class TestSoldesAnomauxCapitauxPropres:
+    def test_capital_crediteur_ok(self):
+        """Capital (101) créditeur → normal."""
+        donnees = _make_row("101000", 2, credit=500000.0)
+        grouped = _rows(donnees)
+        ress, excs = controle_soldes_anormaux(
+            PID, "CP-SOLDE-ANORMAL", grouped, ("10", "11", "12", "13"), "credit",
+        )
+        assert not excs
+
+    def test_capital_debiteur_exception(self):
+        """Capital (101) débiteur → capitaux propres négatifs → exception."""
+        donnees = _make_row("101000", 2, debit=200000.0)
+        grouped = _rows(donnees)
+        ress, excs = controle_soldes_anormaux(
+            PID, "CP-SOLDE-ANORMAL", grouped, ("10", "11", "12", "13"), "credit",
+        )
+        assert len(excs) == 1
+        assert "débiteur anormal" in excs[0]["description"]
+
+
+class TestScenarioCapitauxPropresComplet:
+    """Scénario complet : capitaux propres sains vs problématiques."""
+
+    def setup_method(self):
+        self.donnees_ok = (
+            _make_row("101000", 2, credit=500000.0) +  # capital
+            _make_row("106000", 3, credit=100000.0) +  # réserves
+            _make_row("120000", 4, credit=80000.0) +   # résultat bénéficiaire
+            _make_row("151000", 5, credit=20000.0) +   # provision pour risques
+            _make_row("681000", 6, debit=20000.0)      # charge de dotation
+        )
+        self.donnees_ko = (
+            _make_row("120000", 2, credit=50000.0) +  # bénéfice ET
+            _make_row("129000", 3, debit=30000.0) +   # déficit → anomalie
+            _make_row("151000", 4, credit=100000.0)   # provision sans charge
+        )
+
+    def test_scenario_ok(self):
+        grouped = _rows(self.donnees_ok)
+        _, exc_res = controle_coherence_resultat(PID, grouped)
+        _, exc_prov = controle_mouvement_provisions(PID, grouped)
+        assert exc_res is None
+        assert exc_prov is None
+
+    def test_scenario_ko_deux_anomalies(self):
+        grouped = _rows(self.donnees_ko)
+        _, exc_res = controle_coherence_resultat(PID, grouped)
+        _, exc_prov = controle_mouvement_provisions(PID, grouped)
+        assert exc_res is not None  # 120 et 129 tous deux non nuls
+        assert exc_prov is not None  # provision sans charge 68x

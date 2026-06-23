@@ -36,6 +36,8 @@ from ..controls.engine import (
     controle_ratio_charges_sociales,
     controle_mensualite_paie,
     controle_tva_coherence,
+    controle_mouvement_provisions,
+    controle_coherence_resultat,
     # Utilitaires
     _group_rows,
     _filter_accounts,
@@ -1918,6 +1920,120 @@ def run_controles_impots(projet_id: str, body: dict = {}):
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_impots",
+        "nb_resultats": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "nb_ignores": len(ignores),
+    })
+    _auto_interpreter(db, projet_id, projet, exceptions_total)
+
+    return {
+        "nb_controles": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "resultats": resultats_total,
+        "exceptions": db.list_exceptions(projet_id),
+        "controles_ignores": ignores,
+    }
+
+
+# ─── Cycle Capitaux propres et provisions ─────────────────────────────────────
+
+@router.post("/projets/{projet_id}/controles/capitaux-propres")
+def run_controles_capitaux_propres(projet_id: str, body: dict = {}):
+    """Lance les 5 contrôles déterministes du cycle capitaux propres et provisions."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+
+    cycles_couverts = projet.get("cycles_couverts") or []
+    if "capitaux_propres" not in cycles_couverts:
+        return {"nb_controles": 0, "nb_exceptions": 0, "resultats": [],
+                "exceptions": [], "cycle_ignore": True,
+                "message": "Cycle capitaux propres non sélectionné au cadrage."}
+
+    donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve = \
+        _get_donnees_segmentees(db, projet_id)
+    if not donnees_all:
+        raise HTTPException(400, "Aucune donnée importée.")
+
+    seuil = float(projet.get("seuil_signification") or 0)
+    ci = _seuils_ci(db, projet_id, "capitaux_propres")
+    ci_facteur = ci["facteur"]
+    resultats_total, exceptions_total, ignores = [], [], []
+
+    PREFIXES_CP = ("10", "11", "12", "13")
+    PREFIXES_PROV = ("15",)
+    PREFIXES_ALL = PREFIXES_CP + PREFIXES_PROV
+
+    rows_pour_solde = rows_balance if rows_balance else (rows_gl if rows_gl else [])
+    rows_pour_mvt = rows_gl if rows_gl else (rows_balance if rows_balance else [])
+
+    def _skip(ref: str, raison: str):
+        ignores.append({"controle_ref": ref, "raison": raison})
+
+    def _check(ref: str) -> bool:
+        ok, msg = _preconditions_check(ref, ids_gl, ids_balance, ids_releve)
+        if not ok:
+            _skip(ref, msg)
+        return ok
+
+    # ── 1. CP-GL-COHER ──
+    if _check("CP-GL-COHER"):
+        ress, excs = controle_coherence_cycle(
+            projet_id, "CP-GL-COHER", rows_gl, rows_balance, PREFIXES_ALL,
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 2. CP-RESULTAT-COHERENCE ──
+    if _check("CP-RESULTAT-COHERENCE"):
+        res, exc = controle_coherence_resultat(projet_id, rows_pour_solde)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 3. CP-SOLDE-ANORMAL : capitaux propres (10x-13x) doivent être créditeurs ──
+    if _check("CP-SOLDE-ANORMAL"):
+        ress, excs = controle_soldes_anormaux(
+            projet_id, "CP-SOLDE-ANORMAL",
+            rows_pour_solde, PREFIXES_CP, sens_normal="credit",
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 4. CP-PROVISION-MOUVEMENT ──
+    if _check("CP-PROVISION-MOUVEMENT"):
+        res, exc = controle_mouvement_provisions(projet_id, rows_pour_mvt)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 5. CP-VARIATION ──
+    if seuil > 0 and _check("CP-VARIATION"):
+        soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_CP)
+        if soldes_n:
+            plan_cp = db.get_or_create_planification(projet_id)
+            n1_id_cp = plan_cp.get("balance_n1_fichier_id")
+            if n1_id_cp:
+                donnees_n1_cp = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_cp)]
+                rows_n1_cp = _group_rows(donnees_n1_cp) if donnees_n1_cp else []
+                soldes_n1_cp = _aggreger_soldes_nets(rows_n1_cp, PREFIXES_CP)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_cp, seuil * ci_facteur, "CP-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("CP-VARIATION", "Balance N-1 non renseignée.")
+
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
+    for r in resultats_total:
+        db.save_resultat(r)
+    for e in exceptions_total:
+        db.save_exception(e)
+
+    db.log(projet_id, "transition_etat", {
+        "action": "controles_capitaux_propres",
         "nb_resultats": len(resultats_total),
         "nb_exceptions": len(exceptions_total),
         "nb_ignores": len(ignores),

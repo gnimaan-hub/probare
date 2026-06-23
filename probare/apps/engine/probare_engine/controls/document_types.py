@@ -155,6 +155,20 @@ DOCUMENTS_PAR_CYCLE: dict[str, list[dict]] = {
             "description": "Résumé par compte avec soldes finaux.",
         },
     ],
+    "capitaux_propres": [
+        {
+            "type": "grand_livre",
+            "label": "Grand livre comptable",
+            "requis": True,
+            "description": "Doit contenir les comptes 10x-15x (capital, réserves, résultat, provisions).",
+        },
+        {
+            "type": "balance",
+            "label": "Balance des comptes",
+            "requis": True,
+            "description": "Résumé par compte avec soldes finaux.",
+        },
+    ],
 }
 
 
@@ -218,6 +232,12 @@ PRECONDITIONS_CONTROLES: dict[str, list[str]] = {
     "TAXE-TVA-COHERENCE":   ["balance"],
     "TAXE-SOLDE-ANORMAL":   ["balance"],
     "TAXE-CUT-OFF":         ["grand_livre"],
+    # Capitaux propres et provisions
+    "CP-GL-COHER":           ["grand_livre", "balance"],
+    "CP-VARIATION":          ["balance"],
+    "CP-PROVISION-MOUVEMENT":["grand_livre"],
+    "CP-RESULTAT-COHERENCE": ["balance"],
+    "CP-SOLDE-ANORMAL":      ["balance"],
 }
 
 

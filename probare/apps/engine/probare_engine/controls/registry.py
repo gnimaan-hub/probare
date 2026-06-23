@@ -609,5 +609,75 @@ enregistrer(ControleDefinition(
 ))
 
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CYCLE CAPITAUX PROPRES ET PROVISIONS (comptes 10x-15x) — 5 contrôles
+# ═══════════════════════════════════════════════════════════════════════════════
+
+enregistrer(ControleDefinition(
+    ref="CP-GL-COHER",
+    libelle="Cohérence grand livre / balance — Capitaux propres",
+    nep_ref="NEP 500",
+    cycle="capitaux_propres",
+    description=(
+        "Vérifie que les mouvements du grand livre pour les comptes de capitaux propres "
+        "(10x-15x) correspondent aux soldes de la balance."
+    ),
+    severite_defaut="critique",
+))
+
+enregistrer(ControleDefinition(
+    ref="CP-VARIATION",
+    libelle="Variations N/N-1 — Capitaux propres",
+    nep_ref="NEP 520",
+    cycle="capitaux_propres",
+    description=(
+        "Identifie les variations des capitaux propres (10x-13x) dépassant le seuil de "
+        "signification. Une variation importante signale des distributions, augmentations "
+        "de capital ou affectations de résultat à documenter."
+    ),
+    severite_defaut="mineure",
+))
+
+enregistrer(ControleDefinition(
+    ref="CP-PROVISION-MOUVEMENT",
+    libelle="Mouvements de provisions pour risques sans charge (15x / 68x)",
+    nep_ref="NEP 500",
+    cycle="capitaux_propres",
+    description=(
+        "Détecte des dotations aux provisions pour risques et charges (crédit 15x) sans "
+        "charge de dotation correspondante en 68x. "
+        "Risque de provision sans justification comptable ou de provision fictive."
+    ),
+    severite_defaut="significative",
+))
+
+enregistrer(ControleDefinition(
+    ref="CP-RESULTAT-COHERENCE",
+    libelle="Cohérence des comptes de résultat (120 / 129)",
+    nep_ref="NEP 500",
+    cycle="capitaux_propres",
+    description=(
+        "Vérifie que les comptes 120 (résultat bénéficiaire) et 129 (résultat déficitaire) "
+        "ne sont pas tous deux non nuls simultanément. "
+        "Une entité ne peut avoir à la fois un résultat bénéficiaire et déficitaire."
+    ),
+    severite_defaut="critique",
+))
+
+enregistrer(ControleDefinition(
+    ref="CP-SOLDE-ANORMAL",
+    libelle="Capitaux propres négatifs — Soldes débiteurs anormaux",
+    nep_ref="NEP 500",
+    cycle="capitaux_propres",
+    description=(
+        "Détecte les comptes de capitaux propres (10x-13x) présentant un solde débiteur net. "
+        "Des capitaux propres négatifs ou un capital débiteur signalent un risque important "
+        "pour la continuité d'exploitation."
+    ),
+    severite_defaut="critique",
+))
+
+
 def get_controles_par_cycle(cycle: str) -> list[ControleDefinition]:
     return [c for c in REGISTRE.values() if c.cycle == cycle]

@@ -1193,6 +1193,148 @@ def controle_tva_coherence(
     ), None
 
 
+def controle_mouvement_provisions(
+    projet_id: str,
+    rows: list[RowDict],
+    seuil_ratio: float = 0.20,
+) -> tuple[dict, dict | None]:
+    """
+    CP-PROVISION-MOUVEMENT : détecte des crédits sur provisions pour risques (15x)
+    sans charge de dotation correspondante en 68x dans le grand livre.
+    """
+    rows_prov = _filter_accounts(rows, ("15",))
+    rows_charges_prov = _filter_accounts(rows, ("68",))
+
+    if not rows_prov:
+        return _result_ok(projet_id, "CP-PROVISION-MOUVEMENT", 0,
+                          "Aucun compte de provisions pour risques (15x) détecté.", []), None
+
+    total_dotation_prov = 0.0
+    sources_prov = []
+    for row in rows_prov:
+        c = row.get("compte")
+        cr = _get_amount(row, "credit")
+        if cr > 0:
+            total_dotation_prov += cr
+            if c:
+                sources_prov.append(c.id)
+
+    if total_dotation_prov <= 0:
+        return _result_ok(projet_id, "CP-PROVISION-MOUVEMENT", 0,
+                          "Aucune dotation aux provisions (crédit 15x) sur l'exercice.", []), None
+
+    total_charges_dot = 0.0
+    sources_charges = []
+    for row in rows_charges_prov:
+        c = row.get("compte")
+        d = _get_amount(row, "debit")
+        if d > 0:
+            total_charges_dot += d
+            if c:
+                sources_charges.append(c.id)
+
+    sources = (sources_prov + sources_charges)[:30]
+
+    if total_charges_dot <= 0:
+        res, exc = _result_exception(
+            projet_id, "CP-PROVISION-MOUVEMENT", total_dotation_prov,
+            f"Dotations provisions (crédit 15x) : {total_dotation_prov:.2f} sans aucune "
+            f"charge de dotation (débit 68x). Risque de provision sans justification comptable.",
+            sources_prov[:20],
+        )
+        return res, exc
+
+    ratio = total_charges_dot / total_dotation_prov
+
+    if ratio < seuil_ratio:
+        res, exc = _result_exception(
+            projet_id, "CP-PROVISION-MOUVEMENT", ratio,
+            f"Dotations provisions 15x : {total_dotation_prov:.2f}, "
+            f"Charges 68x : {total_charges_dot:.2f}. Ratio = {ratio*100:.1f}% < seuil={seuil_ratio*100:.0f}%. "
+            f"Les dotations aux provisions semblent insuffisamment justifiées par les charges 68x.",
+            sources,
+        )
+        return res, exc
+
+    return _result_ok(
+        projet_id, "CP-PROVISION-MOUVEMENT", ratio,
+        f"Dotations provisions (15x) : {total_dotation_prov:.2f}, "
+        f"Charges dotation (68x) : {total_charges_dot:.2f} — ratio {ratio*100:.1f}% cohérent.",
+        sources[:10],
+    ), None
+
+
+def controle_coherence_resultat(
+    projet_id: str,
+    rows: list[RowDict],
+    tolerance: float = 0.01,
+) -> tuple[dict, dict | None]:
+    """
+    CP-RESULTAT-COHERENCE : vérifie que 120 (bénéfice) et 129 (déficit)
+    ne sont pas tous deux non nuls simultanément dans la balance.
+    """
+    rows_120 = _filter_accounts(rows, ("120",))
+    rows_129 = _filter_accounts(rows, ("129",))
+
+    if not rows_120 and not rows_129:
+        return _result_ok(projet_id, "CP-RESULTAT-COHERENCE", 0,
+                          "Aucun compte de résultat (120/129) détecté.", []), None
+
+    solde_120 = 0.0
+    sources_120 = []
+    for row in rows_120:
+        c = row.get("compte")
+        s = _get_amount(row, "solde")
+        if s == 0:
+            s = _get_amount(row, "credit") - _get_amount(row, "debit")
+        solde_120 += s
+        if c:
+            sources_120.append(c.id)
+
+    solde_129 = 0.0
+    sources_129 = []
+    for row in rows_129:
+        c = row.get("compte")
+        s = _get_amount(row, "solde")
+        if s == 0:
+            s = _get_amount(row, "debit") - _get_amount(row, "credit")
+        solde_129 += s
+        if c:
+            sources_129.append(c.id)
+
+    sources = (sources_120 + sources_129)[:20]
+
+    if solde_120 > tolerance and solde_129 > tolerance:
+        res, exc = _result_exception(
+            projet_id, "CP-RESULTAT-COHERENCE", solde_120 + solde_129,
+            f"Compte 120 (bénéfice : {solde_120:.2f}) et compte 129 (déficit : {solde_129:.2f}) "
+            f"tous deux non nuls. Une entité ne peut avoir simultanément un résultat bénéficiaire "
+            f"et déficitaire — erreur comptable ou mauvaise affectation du résultat.",
+            sources,
+        )
+        return res, exc
+
+    if solde_120 > tolerance:
+        return _result_ok(
+            projet_id, "CP-RESULTAT-COHERENCE", solde_120,
+            f"Résultat bénéficiaire : {solde_120:.2f} (compte 120) — cohérent.",
+            sources_120[:10],
+        ), None
+
+    if solde_129 > tolerance:
+        return _result_ok(
+            projet_id, "CP-RESULTAT-COHERENCE", solde_129,
+            f"Résultat déficitaire : {solde_129:.2f} (compte 129) — cohérent.",
+            sources_129[:10],
+        ), None
+
+    return _result_ok(
+        projet_id, "CP-RESULTAT-COHERENCE", 0,
+        "Aucun solde significatif dans les comptes de résultat (120/129).",
+        sources,
+    ), None
+
+
 def controle_creances_echues(
     projet_id: str,
     rows: list[RowDict],
