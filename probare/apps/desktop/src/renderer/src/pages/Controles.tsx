@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   CheckCircle, XCircle, Play, ArrowRight, ChevronDown, ChevronRight,
-  Shield, Wand2, ShoppingCart, TrendingUp
+  Shield, Wand2, ShoppingCart, TrendingUp, Landmark, Package, Users, Receipt, PieChart
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
@@ -16,7 +16,7 @@ import { formatDate } from '../lib/utils'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Cycle = 'tresorerie' | 'achats' | 'ventes'
+type Cycle = 'tresorerie' | 'achats' | 'ventes' | 'immobilisations' | 'stocks' | 'paie' | 'impots' | 'capitaux_propres'
 
 const CYCLES: { id: Cycle; label: string; icon: any; nep: string; accounts: string }[] = [
   {
@@ -39,6 +39,41 @@ const CYCLES: { id: Cycle; label: string; icon: any; nep: string; accounts: stri
     icon: TrendingUp,
     nep: 'NEP 500, 330, 520',
     accounts: 'Comptes 41x + 70x-73x',
+  },
+  {
+    id: 'immobilisations',
+    label: 'Immobilisations',
+    icon: Landmark,
+    nep: 'NEP 500, 330, 520',
+    accounts: 'Comptes 2xx',
+  },
+  {
+    id: 'stocks',
+    label: 'Stocks',
+    icon: Package,
+    nep: 'NEP 500, 330, 520',
+    accounts: 'Comptes 3xx',
+  },
+  {
+    id: 'paie',
+    label: 'Paie / Personnel',
+    icon: Users,
+    nep: 'NEP 500, 330, 520',
+    accounts: 'Comptes 42x + 64x',
+  },
+  {
+    id: 'impots',
+    label: 'Impôts & Taxes',
+    icon: Receipt,
+    nep: 'NEP 500, 330, 520',
+    accounts: 'Comptes 44x + 63x',
+  },
+  {
+    id: 'capitaux_propres',
+    label: 'Capitaux propres',
+    icon: PieChart,
+    nep: 'NEP 500, 330, 520',
+    accounts: 'Comptes 10x-15x',
   },
 ]
 
@@ -155,7 +190,7 @@ function CyclePanel({
     setRunning(true)
     setIaAnalysees(0)
     try {
-      const result = await post(`/projets/${projetId}/controles/${cycle.id}`, {})
+      const result = await post(`/projets/${projetId}/controles/${cycle.id.replace(/_/g, '-')}`, {})
       setResultats(result.resultats || [])
       setExceptions(result.exceptions || [])
       const nbIA = (result.exceptions || []).filter((e: any) => e.ia_analysee).length
@@ -304,7 +339,7 @@ export function Controles() {
       let totalControles = 0
       let totalExceptions = 0
       for (const c of cyclesMission) {
-        const result = await post(`/projets/${projetId}/controles/${c.id}`, {})
+        const result = await post(`/projets/${projetId}/controles/${c.id.replace(/_/g, '-')}`, {})
         totalControles += result.nb_controles || 0
         totalExceptions += result.nb_exceptions || 0
       }
