@@ -2,16 +2,27 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  FileText, Download, Wand2, CheckCircle, AlertTriangle, FileSpreadsheet, RefreshCw
+  FileText, Wand2, CheckCircle, AlertTriangle, FileSpreadsheet,
+  RefreshCw, ChevronDown, ChevronUp, Layers,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
-import { EmptyState } from '../components/ui/EmptyState'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore } from '../stores/projetStore'
 import { useSyncProjet } from '../hooks/useProjet'
 import { formatDate } from '../lib/utils'
+
+const CYCLE_LABELS: Record<string, string> = {
+  tresorerie: 'Trésorerie',
+  achats: 'Achats-Fournisseurs',
+  ventes: 'Ventes-Clients',
+  immobilisations: 'Immobilisations',
+  stocks: 'Stocks',
+  paie: 'Paie / Personnel',
+  impots: 'Impôts & Taxes',
+  capitaux_propres: 'Capitaux propres',
+}
 
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -32,44 +43,64 @@ export function Rapport() {
   const [feuilles, setFeuilles] = useState<any[]>([])
   const [exceptions, setExceptions] = useState<any[]>([])
   const [resultats, setResultats] = useState<any[]>([])
-  const [generatingFeuille, setGeneratingFeuille] = useState(false)
+  const [generatingCycle, setGeneratingCycle] = useState<string | null>(null)
+  const [generatingAll, setGeneratingAll] = useState(false)
   const [exportingDocx, setExportingDocx] = useState(false)
   const [exportingXlsx, setExportingXlsx] = useState(false)
+  const [expandedCycle, setExpandedCycle] = useState<string | null>(null)
+
+  const cycles: string[] = Array.isArray(projetActif?.cycles_couverts)
+    ? projetActif.cycles_couverts
+    : ['tresorerie', 'achats', 'ventes']
 
   const loadData = async () => {
-    if (!projetId) return null
+    if (!projetId) return
     const [fData, eData, rData] = await Promise.all([
       get(`/projets/${projetId}/feuilles`),
       get(`/projets/${projetId}/exceptions`),
       get(`/projets/${projetId}/controles`),
     ])
-    const f = fData.feuilles || []
-    setFeuilles(f)
+    setFeuilles(fData.feuilles || [])
     setExceptions(eData.exceptions || [])
     setResultats(rData.resultats || [])
-    return f
   }
 
-  useEffect(() => {
-    loadData().then(async (f) => {
-      // Auto-générer la feuille si on vient d'entrer en phase generation et qu'il n'y en a pas encore
-      if (projetActif?.etat_courant === 'generation' && f && f.length === 0) {
-        await handleGenererFeuille()
-      }
-    })
-  }, [projetId])
+  useEffect(() => { loadData() }, [projetId])
 
-  const handleGenererFeuille = async () => {
+  const handleGenererCycle = async (cycle: string) => {
     if (!projetId) return
-    setGeneratingFeuille(true)
+    setGeneratingCycle(cycle)
+    setExpandedCycle(cycle)
     try {
-      await post(`/projets/${projetId}/generer-feuille`, { cycle: 'tresorerie' })
-      toast.success("Feuille de travail redigee par l'IA.")
+      await post(`/projets/${projetId}/generer-feuille`, { cycle })
+      toast.success(`Feuille ${CYCLE_LABELS[cycle] ?? cycle} rédigée.`)
       await loadData()
     } catch (e: any) {
       toast.error(e.message)
     } finally {
-      setGeneratingFeuille(false)
+      setGeneratingCycle(null)
+    }
+  }
+
+  const handleGenererTout = async () => {
+    if (!projetId) return
+    setGeneratingAll(true)
+    let ok = 0
+    for (const cycle of cycles) {
+      setGeneratingCycle(cycle)
+      setExpandedCycle(cycle)
+      try {
+        await post(`/projets/${projetId}/generer-feuille`, { cycle })
+        ok++
+      } catch (e: any) {
+        toast.error(`${CYCLE_LABELS[cycle] ?? cycle} : ${e.message}`)
+      }
+    }
+    setGeneratingCycle(null)
+    setGeneratingAll(false)
+    if (ok > 0) {
+      toast.success(`${ok} feuille${ok > 1 ? 's' : ''} rédigée${ok > 1 ? 's' : ''}.`)
+      await loadData()
     }
   }
 
@@ -80,8 +111,6 @@ export function Rapport() {
       const { blob, filename } = await downloadBlob(`/projets/${projetId}/exporter-dossier`)
       saveBlob(blob, filename)
       toast.success('Dossier de travail exporté.')
-
-      // Passer en opinion si pas encore fait
       if (projetActif?.etat_courant === 'generation') {
         const updated = await post(`/projets/${projetId}/transition`, { vers: 'opinion', acteur: 'utilisateur' })
         setProjetActif(updated)
@@ -110,6 +139,8 @@ export function Rapport() {
   const nbOuvertes = exceptions.filter((e) => e.statut === 'ouverte').length
   const etatCourant = projetActif?.etat_courant || ''
   const peutGenerer = ['generation', 'revue'].includes(etatCourant) && nbOuvertes === 0
+  const feuillesByCycle = (cycle: string) => feuilles.filter((f) => f.cycle === cycle)
+  const cyclesDone = cycles.filter((c) => feuillesByCycle(c).length > 0).length
 
   return (
     <div className="flex flex-col h-full">
@@ -125,6 +156,7 @@ export function Rapport() {
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-3xl mx-auto space-y-5">
+
           {/* Avertissement exceptions ouvertes */}
           {nbOuvertes > 0 && (
             <motion.div
@@ -144,57 +176,94 @@ export function Rapport() {
             </motion.div>
           )}
 
-          {/* Feuilles de travail */}
+          {/* Feuilles de travail — par cycle */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="font-semibold text-slate-900">Feuilles de travail</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Rédigées par l'IA à partir des résultats calculés.</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {cyclesDone} / {cycles.length} cycle{cycles.length !== 1 ? 's' : ''} — rédigées par l'IA.
+                </p>
               </div>
               <button
-                onClick={handleGenererFeuille}
-                disabled={generatingFeuille || !peutGenerer}
+                onClick={handleGenererTout}
+                disabled={generatingAll || generatingCycle !== null || !peutGenerer}
                 className="btn-secondary text-sm"
               >
-                {generatingFeuille ? <Spinner size="sm" /> : <Wand2 className="w-4 h-4" />}
-                Rédiger avec l'IA
+                {generatingAll ? <Spinner size="sm" /> : <Layers className="w-4 h-4" />}
+                Tout générer
               </button>
             </div>
 
-            {feuilles.length === 0 ? (
-              <div className="py-8 text-center text-sm text-slate-400">
-                Aucune feuille de travail générée.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {feuilles.map((ft) => (
-                  <motion.div
-                    key={ft.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="bg-slate-50 rounded-xl p-4"
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <FileText className="w-4 h-4 text-primary-600" />
-                      <span className="text-sm font-semibold text-slate-800">
-                        Cycle {ft.cycle} — {ft.nep_ref}
+            <div className="space-y-2">
+              {cycles.map((cycle) => {
+                const fts = feuillesByCycle(cycle)
+                const hasFeuille = fts.length > 0
+                const isGenerating = generatingCycle === cycle
+                const isExpanded = expandedCycle === cycle
+                const latest = fts[fts.length - 1]
+
+                return (
+                  <div key={cycle} className="border border-border rounded-xl overflow-hidden">
+                    {/* En-tête cycle */}
+                    <div className="flex items-center gap-3 px-4 py-3 bg-slate-50">
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${hasFeuille ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                      <span className="text-sm font-medium text-slate-800 flex-1">
+                        {CYCLE_LABELS[cycle] ?? cycle}
                       </span>
-                      <code className="ml-auto text-xs bg-white border border-border px-2 py-0.5 rounded">
-                        {formatDate(ft.genere_le)}
-                      </code>
+                      {hasFeuille && (
+                        <span className="text-xs text-slate-400">{formatDate(latest.genere_le)}</span>
+                      )}
+                      <button
+                        onClick={() => handleGenererCycle(cycle)}
+                        disabled={isGenerating || generatingAll || !peutGenerer}
+                        className="btn-ghost text-xs py-1 px-2"
+                        title={hasFeuille ? 'Regénérer' : 'Générer'}
+                      >
+                        {isGenerating ? <Spinner size="sm" /> : <Wand2 className="w-3.5 h-3.5" />}
+                        {hasFeuille ? 'Regénérer' : 'Générer'}
+                      </button>
+                      {hasFeuille && (
+                        <button
+                          onClick={() => setExpandedCycle(isExpanded ? null : cycle)}
+                          className="btn-ghost text-xs p-1"
+                        >
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+                      )}
                     </div>
-                    <p className="text-xs text-slate-600 leading-relaxed line-clamp-4 whitespace-pre-wrap">
-                      {ft.contenu_redige}
-                    </p>
-                    {ft.sources && ft.sources.length > 0 && (
-                      <div className="mt-2 text-xs text-slate-400">
-                        Sources : {ft.sources.length} résultat(s) de contrôle(s)
-                      </div>
-                    )}
-                  </motion.div>
-                ))}
-              </div>
-            )}
+
+                    {/* Contenu feuille */}
+                    <AnimatePresence>
+                      {isExpanded && latest && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="px-4 py-3 border-t border-border">
+                            <div className="flex items-center gap-2 mb-2">
+                              <FileText className="w-3.5 h-3.5 text-primary-600" />
+                              <span className="text-xs font-medium text-slate-600">{latest.nep_ref}</span>
+                              {latest.sources && latest.sources.length > 0 && (
+                                <span className="ml-auto text-xs text-slate-400">
+                                  {latest.sources.length} source{latest.sources.length !== 1 ? 's' : ''}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto">
+                              {latest.contenu_redige}
+                            </p>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )
+              })}
+            </div>
           </motion.div>
 
           {/* Statistiques */}
