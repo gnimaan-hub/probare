@@ -96,6 +96,7 @@ export function Journal() {
   const { projetActif } = useProjetStore()
   const [journal, setJournal] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const [filtre, setFiltre] = useState<'tous' | 'transition_etat' | 'appel_llm' | 'action_humaine'>('tous')
 
   const load = async () => {
     if (!projetId) return
@@ -115,6 +116,7 @@ export function Journal() {
   const nbTransitions = journal.filter(e => e.type === 'transition_etat').length
   const nbLlm = journal.filter(e => e.type === 'appel_llm').length
   const nbHumain = journal.filter(e => e.type === 'action_humaine').length
+  const journalFiltre = filtre === 'tous' ? journal : journal.filter(e => e.type === filtre)
 
   return (
     <div className="flex flex-col h-full">
@@ -132,18 +134,34 @@ export function Journal() {
         <div className="max-w-3xl mx-auto space-y-4">
           {journal.length > 0 && (
             <div className="grid grid-cols-3 gap-3">
-              <div className="bg-white border border-border rounded-xl p-3 text-center">
+              <button
+                onClick={() => setFiltre(filtre === 'transition_etat' ? 'tous' : 'transition_etat')}
+                className={`rounded-xl p-3 text-center border transition-all ${filtre === 'transition_etat' ? 'border-primary-300 bg-primary-50' : 'bg-white border-border hover:border-slate-300'}`}
+              >
                 <div className="text-lg font-bold text-primary-700">{nbTransitions}</div>
                 <div className="text-xs text-slate-500">Transitions</div>
-              </div>
-              <div className="bg-white border border-border rounded-xl p-3 text-center">
+              </button>
+              <button
+                onClick={() => setFiltre(filtre === 'appel_llm' ? 'tous' : 'appel_llm')}
+                className={`rounded-xl p-3 text-center border transition-all ${filtre === 'appel_llm' ? 'border-violet-300 bg-violet-50' : 'bg-white border-border hover:border-slate-300'}`}
+              >
                 <div className="text-lg font-bold text-violet-700">{nbLlm}</div>
                 <div className="text-xs text-slate-500">Appels IA</div>
-              </div>
-              <div className="bg-white border border-border rounded-xl p-3 text-center">
+              </button>
+              <button
+                onClick={() => setFiltre(filtre === 'action_humaine' ? 'tous' : 'action_humaine')}
+                className={`rounded-xl p-3 text-center border transition-all ${filtre === 'action_humaine' ? 'border-emerald-300 bg-emerald-50' : 'bg-white border-border hover:border-slate-300'}`}
+              >
                 <div className="text-lg font-bold text-emerald-700">{nbHumain}</div>
                 <div className="text-xs text-slate-500">Actions auditeur</div>
-              </div>
+              </button>
+            </div>
+          )}
+
+          {journal.length === 200 && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+              <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+              Affichage limité aux 200 dernières entrées. Les entrées plus anciennes sont en base.
             </div>
           )}
 
@@ -153,9 +171,13 @@ export function Journal() {
               title="Journal vide"
               description="Les actions seront enregistrées ici au fur et à mesure de la mission."
             />
+          ) : journalFiltre.length === 0 ? (
+            <div className="text-center py-8 text-sm text-slate-400">
+              Aucune entrée de ce type.
+            </div>
           ) : (
             <div className="space-y-2">
-              {journal.map((entry, i) => (
+              {journalFiltre.map((entry, i) => (
                 <JournalEntry key={entry.id} entry={entry} index={i} />
               ))}
             </div>

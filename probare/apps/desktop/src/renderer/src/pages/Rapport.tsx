@@ -388,7 +388,7 @@ export function Rapport() {
                           <OriginBadge source="ia" />
                         </div>
                         <textarea
-                          className="input text-xs leading-relaxed w-full"
+                          className="input-field text-xs leading-relaxed w-full"
                           rows={6}
                           value={narrativeAuditeur}
                           onChange={(e) => setNarrativeAuditeur(e.target.value)}
@@ -447,7 +447,7 @@ export function Rapport() {
                 {exportingDocx ? <Spinner size="sm" /> : <FileText className="w-5 h-5" />}
                 <div className="text-left">
                   <div className="text-sm font-semibold">Dossier de travail</div>
-                  <div className="text-xs opacity-75">Format .docx — NEP 230</div>
+                  <div className="text-xs opacity-75">.docx — feuilles de travail complètes</div>
                 </div>
               </button>
 
@@ -458,8 +458,8 @@ export function Rapport() {
               >
                 {exportingPdf ? <Spinner size="sm" /> : <FileDown className="w-5 h-5" />}
                 <div className="text-left">
-                  <div className="text-sm font-semibold">Rapport d'audit</div>
-                  <div className="text-xs opacity-75">Format .pdf — NEP 230</div>
+                  <div className="text-sm font-semibold">Rapport de synthèse</div>
+                  <div className="text-xs opacity-75">.pdf — version imprimable</div>
                 </div>
               </button>
 

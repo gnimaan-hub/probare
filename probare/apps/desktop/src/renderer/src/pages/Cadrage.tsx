@@ -290,6 +290,7 @@ export function Cadrage() {
                       const isAuto = !form.nom || form.nom === `Audit ${form.exercice} ${form.client}`.trim()
                       setForm((f) => ({ ...f, exercice, nom: isAuto ? autoNom : f.nom }))
                     }} disabled={locked} />
+                  <p className="text-xs text-slate-400 mt-1">4 chiffres — ex. 2025</p>
                 </div>
               </div>
               <div>
@@ -376,6 +377,15 @@ export function Cadrage() {
 
             {form.cycles_couverts.length === 0 && (
               <p className="text-xs text-red-500 mt-3">Sélectionnez au moins un cycle.</p>
+            )}
+            {form.cycles_couverts.some((id) => CYCLES_DISPONIBLES.find((c) => c.id === id)?.controles === false) && (
+              <div className="mt-3">
+                <InfoBanner icon={Info} color="amber">
+                  Certains cycles sélectionnés (Immobilisations, Stocks, Paie, Impôts, Capitaux propres)
+                  n'ont pas encore de contrôles automatisés — seul le questionnaire de contrôle interne (QCI)
+                  sera disponible pour ces cycles dans cette version.
+                </InfoBanner>
+              </div>
             )}
           </motion.div>
 

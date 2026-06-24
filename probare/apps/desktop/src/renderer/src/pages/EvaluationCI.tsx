@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -388,6 +388,8 @@ export function EvaluationCI() {
   const [evaluating, setEvaluating] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
   const [transitioning, setTransitioning] = useState(false)
+  const [nep315Visible, setNep315Visible] = useState(true)
+  const pendingRef = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
   // Cycle actif
   const cycles = Object.keys(qciData)
@@ -411,8 +413,6 @@ export function EvaluationCI() {
   useEffect(() => { loadQci() }, [loadQci])
 
   // ── Gestion réponses (debounce save) ──────────────────────────────────────
-
-  const pendingRef = { current: new Map<string, ReturnType<typeof setTimeout>>() }
 
   const handleReponse = (cycle: string, questionId: string, reponse: 'oui' | 'non' | 'na', commentaire: string) => {
     // Mise à jour locale immédiate
@@ -553,17 +553,41 @@ export function EvaluationCI() {
       />
 
       <div className="flex-1 overflow-y-auto">
-        {/* Bandeau informatif */}
-        <div className="bg-blue-50 border-b border-blue-100 px-6 py-3">
-          <div className="flex items-start gap-2 max-w-3xl mx-auto">
-            <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-blue-700 leading-relaxed">
-              <strong>NEP 315 — Connaissance de l'entité et de son environnement.</strong>{' '}
-              Ce questionnaire évalue le dispositif de contrôle interne par cycle.
-              Les résultats alimentent directement le programme de travail : un risque CI élevé
-              implique d'étendre les procédures analytiques et de prévoir des contrôles de détail renforcés.
-            </p>
+        {/* Bandeau lecture seule */}
+        {locked && (
+          <div className="bg-slate-50 border-b border-slate-200 px-6 py-2.5">
+            <div className="flex items-center gap-2 max-w-3xl mx-auto">
+              <Info className="w-4 h-4 text-slate-400 flex-shrink-0" />
+              <p className="text-xs text-slate-500">
+                Mode lecture seule — les contrôles ont été lancés, le questionnaire est figé.
+              </p>
+            </div>
           </div>
+        )}
+
+        {/* Bandeau NEP 315 collapsible */}
+        <div className="bg-blue-50 border-b border-blue-100 px-6">
+          <button
+            onClick={() => setNep315Visible(v => !v)}
+            className="flex items-center gap-2 max-w-3xl mx-auto w-full py-2.5 text-left"
+          >
+            <Info className="w-4 h-4 text-blue-500 flex-shrink-0" />
+            <span className="text-xs text-blue-700 font-medium flex-1">NEP 315 — Évaluation du contrôle interne</span>
+            {nep315Visible
+              ? <ChevronDown className="w-3.5 h-3.5 text-blue-400" />
+              : <ChevronRight className="w-3.5 h-3.5 text-blue-400" />
+            }
+          </button>
+          {nep315Visible && (
+            <div className="max-w-3xl mx-auto pb-3">
+              <p className="text-xs text-blue-700 leading-relaxed">
+                Ce questionnaire évalue le dispositif de contrôle interne par cycle.
+                Les résultats alimentent directement le programme de travail : un risque CI élevé
+                implique d'étendre les procédures analytiques et de prévoir des contrôles de détail renforcés.
+                L'évaluation IA est disponible après 3 réponses minimum par cycle.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Onglets cycles */}

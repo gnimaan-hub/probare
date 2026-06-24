@@ -274,7 +274,7 @@ export function DossiersPermanents() {
         </div>
 
         {/* Barre de recherche */}
-        {clients.length > 3 && (
+        {clients.length > 0 && (
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input

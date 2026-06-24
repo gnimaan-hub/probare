@@ -563,9 +563,9 @@ export function Ingestion() {
         <div className="max-w-2xl mx-auto space-y-5">
 
           {locked && (
-            <div className="flex items-start gap-2.5 p-3 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-800 text-xs">
-              <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-              <p>Les contrôles ont été lancés. La liste des documents est figée.</p>
+            <div className="flex items-start gap-2.5 p-3 rounded-lg border bg-slate-50 border-slate-200 text-slate-600 text-xs">
+              <Info className="w-4 h-4 mt-0.5 flex-shrink-0 text-slate-400" />
+              <p>Mode lecture seule — les contrôles ont été lancés, la liste des documents est figée.</p>
             </div>
           )}
 

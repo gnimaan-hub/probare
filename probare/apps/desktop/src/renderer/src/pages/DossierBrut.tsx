@@ -216,10 +216,10 @@ function DocCard({
             <button
               onClick={() => onImporter(doc.id)}
               disabled={!!loading}
-              title="Importer sans vérification"
-              className="text-xs px-2 py-1 rounded-lg bg-slate-50 text-slate-500 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+              title="Importer sans passer par la vérification IA"
+              className="text-xs px-2.5 py-1 rounded-lg bg-slate-50 text-slate-500 hover:bg-slate-100 disabled:opacity-50 transition-colors"
             >
-              ↓
+              Passer
             </button>
           )}
           {/* Importé */}
@@ -251,7 +251,7 @@ function DocCard({
               {cat && (
                 <div className="space-y-1.5">
                   <p className="font-semibold text-slate-600 uppercase tracking-wider text-[10px]">
-                    Catalogue (Haiku)
+                    Catalogue IA
                   </p>
                   {cat.parties && cat.parties.length > 0 && (
                     <p className="text-slate-600">
@@ -275,7 +275,7 @@ function DocCard({
               {ext?.verification && (
                 <div className="space-y-1.5">
                   <p className="font-semibold text-violet-600 uppercase tracking-wider text-[10px]">
-                    Vérification (Sonnet) — score {Math.round((ext.verification.score_global ?? 0) * 100)}%
+                    Vérification IA — score {Math.round((ext.verification.score_global ?? 0) * 100)}%
                   </p>
                   <p className="text-slate-600">{ext.verification.resume_verification}</p>
                   {ext.verification.lignes_verifiees && ext.verification.lignes_verifiees.some((l) => l.anomalie) && (
@@ -295,7 +295,7 @@ function DocCard({
               {ext && ext.lignes && ext.lignes.length > 0 && (
                 <div className="space-y-1.5">
                   <p className="font-semibold text-slate-600 uppercase tracking-wider text-[10px]">
-                    Extraction (Opus) — {ext.nb_lignes} ligne{(ext.nb_lignes ?? 0) !== 1 ? 's' : ''} · {ext.type_sortie}
+                    Extraction structurée — {ext.nb_lignes} ligne{(ext.nb_lignes ?? 0) !== 1 ? 's' : ''} · {ext.type_sortie}
                   </p>
                   <div className="overflow-x-auto">
                     <table className="text-[10px] w-full border-collapse">
@@ -591,7 +591,7 @@ export function DossierBrut() {
     <div className="flex flex-col h-full">
       <Header
         title="Dossier brut"
-        subtitle={`${docs.length} document(s) — pipeline IA : Haiku → Sonnet`}
+        subtitle={`${docs.length} document(s) — pipeline IA 4 étapes`}
         actions={
           <div className="flex items-center gap-2">
             <button
@@ -648,11 +648,11 @@ export function DossierBrut() {
           <div className="flex items-center gap-3">
             <PipelineStep step={1} label="Dépôt" active={nbUploade > 0} done={docs.length > 0 && nbUploade === 0} />
             <div className="h-px flex-1 bg-border" />
-            <PipelineStep step={2} label="Catalogue (Haiku)" active={nbCatalogue > 0} done={pipelineStep >= 2} />
+            <PipelineStep step={2} label="Catalogue IA" active={nbCatalogue > 0} done={pipelineStep >= 2} />
             <div className="h-px flex-1 bg-border" />
-            <PipelineStep step={3} label="Extraction (Opus)" active={nbExtrait > 0} done={pipelineStep >= 3} />
+            <PipelineStep step={3} label="Extraction structurée" active={nbExtrait > 0} done={pipelineStep >= 3} />
             <div className="h-px flex-1 bg-border" />
-            <PipelineStep step={4} label="Vérification (Sonnet)" active={nbVerifie > 0} done={pipelineStep >= 4} />
+            <PipelineStep step={4} label="Vérification IA" active={nbVerifie > 0} done={pipelineStep >= 4} />
             <div className="h-px flex-1 bg-border" />
             <PipelineStep step={5} label="Import mission" active={nbImporte > 0} done={nbImporte > 0 && nbVerifie === 0 && nbExtrait === 0} />
           </div>
@@ -677,10 +677,10 @@ export function DossierBrut() {
             <p className="font-semibold">Comment ça fonctionne ?</p>
             <p>
               <span className="font-medium">1. Déposez</span> vos documents bruts (factures, relevés, contrats, attestations…).
-              {' '}<span className="font-medium">2. Haiku</span> catalogue chaque fichier (type, parties, dates, montants clés).
-              {' '}<span className="font-medium">3. Opus</span> extrait les écritures comptables structurées.
-              {' '}<span className="font-medium">4. Sonnet</span> vérifie ligne par ligne l'extraction contre le source.
-              {' '}<span className="font-medium">5. Importez</span> — les données vérifiées entrent dans Probare avec leur DonneeSourcee complète.
+              {' '}<span className="font-medium">2. Catalogue IA</span> — identifie le type, les parties, les dates et montants clés.
+              {' '}<span className="font-medium">3. Extraction structurée</span> — extrait les écritures comptables ligne par ligne.
+              {' '}<span className="font-medium">4. Vérification IA</span> — contrôle l'extraction contre le document source.
+              {' '}<span className="font-medium">5. Importez</span> — les données vérifiées entrent dans Probare avec leur traçabilité complète.
             </p>
           </div>
         </div>

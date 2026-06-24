@@ -48,31 +48,42 @@ function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (da
       >
         <h2 className="text-lg font-semibold text-slate-900 mb-4">Nouveau sondage</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 leading-relaxed">
+            <strong>NEP 530 — Sondages statistiques.</strong> Probare calcule la taille d'échantillon
+            selon la formule de Neyman, puis sélectionne aléatoirement les éléments à vérifier.
+          </div>
           <div>
-            <label className="label">Cycle</label>
-            <select className="input" value={cycle} onChange={(e) => setCycle(e.target.value)}>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Cycle</label>
+            <select className="input-field" value={cycle} onChange={(e) => setCycle(e.target.value)}>
               {CYCLES.map((c) => (
                 <option key={c.id} value={c.id}>{c.label}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="label">Libellé</label>
-            <input className="input" value={libelle} onChange={(e) => setLibelle(e.target.value)}
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Libellé</label>
+            <input className="input-field" value={libelle} onChange={(e) => setLibelle(e.target.value)}
               placeholder="Ex : Vérification factures fournisseurs N" required />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Taux d'erreur toléré (%)</label>
-              <input type="number" className="input" min={1} max={20} value={taux}
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Taux d'erreur toléré (%)
+                <span className="ml-1 text-slate-400 font-normal" title="Pourcentage maximal d'anomalies acceptable dans la population. 5 % est la norme en audit.">?</span>
+              </label>
+              <input type="number" className="input-field" min={1} max={20} value={taux}
                 onChange={(e) => setTaux(Number(e.target.value))} />
+              <p className="text-xs text-slate-400 mt-1">5 % recommandé (norme audit)</p>
             </div>
             <div>
-              <label className="label">Niveau de confiance</label>
-              <select className="input" value={confiance} onChange={(e) => setConfiance(Number(e.target.value))}>
-                <option value={90}>90 %</option>
-                <option value={95}>95 %</option>
-                <option value={99}>99 %</option>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Niveau de confiance
+                <span className="ml-1 text-slate-400 font-normal" title="Probabilité que l'échantillon soit représentatif. 95 % est le standard en audit légal.">?</span>
+              </label>
+              <select className="input-field" value={confiance} onChange={(e) => setConfiance(Number(e.target.value))}>
+                <option value={90}>90 % — risque modéré</option>
+                <option value={95}>95 % — standard audit</option>
+                <option value={99}>99 % — risque très faible</option>
               </select>
             </div>
           </div>
