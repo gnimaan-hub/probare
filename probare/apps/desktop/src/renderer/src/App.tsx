@@ -9,6 +9,7 @@ import { Controles } from './pages/Controles'
 import { EvaluationCI } from './pages/EvaluationCI'
 import { Exceptions } from './pages/Exceptions'
 import { Rapport } from './pages/Rapport'
+import { Sondages } from './pages/Sondages'
 import { Journal } from './pages/Journal'
 import { DossierBrut } from './pages/DossierBrut'
 import { Planification } from './pages/Planification'
@@ -109,6 +110,7 @@ export default function App() {
         <Route path="/projet/:projetId/controles" element={<Controles />} />
         <Route path="/projet/:projetId/exceptions" element={<Exceptions />} />
         <Route path="/projet/:projetId/rapport" element={<Rapport />} />
+        <Route path="/projet/:projetId/sondages" element={<Sondages />} />
         <Route path="/projet/:projetId/journal" element={<Journal />} />
         <Route path="/projet/:projetId/dossier-brut" element={<DossierBrut />} />
         <Route path="/projet/:projetId/planification" element={<Planification />} />

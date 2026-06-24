@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  FileText, Download, Wand2, CheckCircle, AlertTriangle, FileSpreadsheet, RefreshCw
+  FileText, Wand2, CheckCircle, AlertTriangle, FileSpreadsheet, RefreshCw, FileDown,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
+import { OriginBadge } from '../components/ui/OriginBadge'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore } from '../stores/projetStore'
@@ -24,7 +25,7 @@ function saveBlob(blob: Blob, filename: string) {
 
 export function Rapport() {
   const { projetId } = useParams<{ projetId: string }>()
-  const { get, post, downloadBlob } = useApi()
+  const { get, post, patch, downloadBlob } = useApi()
   const toast = useToast()
   const { projetActif, setProjetActif } = useProjetStore()
   useSyncProjet()
@@ -35,18 +36,28 @@ export function Rapport() {
   const [generatingFeuille, setGeneratingFeuille] = useState(false)
   const [exportingDocx, setExportingDocx] = useState(false)
   const [exportingXlsx, setExportingXlsx] = useState(false)
+  const [exportingPdf, setExportingPdf] = useState(false)
+  const [opinion, setOpinion] = useState<any>(null)
+  const [formingOpinion, setFormingOpinion] = useState(false)
+  const [narrativeAuditeur, setNarrativeAuditeur] = useState('')
+  const [validatingOpinion, setValidatingOpinion] = useState(false)
 
   const loadData = async () => {
     if (!projetId) return null
-    const [fData, eData, rData] = await Promise.all([
+    const [fData, eData, rData, oData] = await Promise.all([
       get(`/projets/${projetId}/feuilles`),
       get(`/projets/${projetId}/exceptions`),
       get(`/projets/${projetId}/controles`),
+      get(`/projets/${projetId}/opinion`),
     ])
     const f = fData.feuilles || []
     setFeuilles(f)
     setExceptions(eData.exceptions || [])
     setResultats(rData.resultats || [])
+    const op = oData.opinion || null
+    setOpinion(op)
+    if (op?.narrative_auditeur) setNarrativeAuditeur(op.narrative_auditeur)
+    else if (op?.narrative_ia) setNarrativeAuditeur(op.narrative_ia)
     return f
   }
 
@@ -104,6 +115,53 @@ export function Rapport() {
       toast.error(e.message)
     } finally {
       setExportingXlsx(false)
+    }
+  }
+
+  const handleExporterPdf = async () => {
+    if (!projetId) return
+    setExportingPdf(true)
+    try {
+      const { blob, filename } = await downloadBlob(`/projets/${projetId}/exporter-dossier-pdf`, 'GET')
+      saveBlob(blob, filename)
+      toast.success('Rapport PDF exporté.')
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setExportingPdf(false)
+    }
+  }
+
+  const handleFormerOpinion = async () => {
+    if (!projetId) return
+    setFormingOpinion(true)
+    try {
+      const data = await post(`/projets/${projetId}/opinion/former`, {})
+      setOpinion(data.opinion)
+      setNarrativeAuditeur(data.opinion?.narrative_ia || '')
+      toast.success("Opinion formée par l'IA.")
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setFormingOpinion(false)
+    }
+  }
+
+  const handleValiderOpinion = async () => {
+    if (!projetId) return
+    setValidatingOpinion(true)
+    try {
+      const data = await patch(`/projets/${projetId}/opinion`, {
+        narrative_auditeur: narrativeAuditeur,
+        validee: 1,
+        validee_par: 'auditeur',
+      })
+      setOpinion(data.opinion)
+      toast.success('Opinion validée.')
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setValidatingOpinion(false)
     }
   }
 
@@ -179,6 +237,7 @@ export function Rapport() {
                       <span className="text-sm font-semibold text-slate-800">
                         Cycle {ft.cycle} — {ft.nep_ref}
                       </span>
+                      <OriginBadge source="ia" />
                       <code className="ml-auto text-xs bg-white border border-border px-2 py-0.5 rounded">
                         {formatDate(ft.genere_le)}
                       </code>
@@ -227,6 +286,125 @@ export function Rapport() {
             </motion.div>
           )}
 
+          {/* Opinion */}
+          {peutGenerer && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08 }}
+              className="card p-5"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h2 className="font-semibold text-slate-900">Formation de l'opinion</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">NEP 450 — Agrégation des anomalies + rédaction IA.</p>
+                </div>
+                <button
+                  onClick={handleFormerOpinion}
+                  disabled={formingOpinion}
+                  className="btn-secondary text-sm"
+                >
+                  {formingOpinion ? <Spinner size="sm" /> : <Wand2 className="w-4 h-4" />}
+                  {opinion ? 'Recalculer' : "Former l'opinion"}
+                </button>
+              </div>
+
+              {opinion && (() => {
+                const agg = opinion.agregation_json || {}
+                const TYPE_COLORS: Record<string, string> = {
+                  propre: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                  propre_avec_observation: 'bg-amber-100 text-amber-800 border-amber-200',
+                  reserve: 'bg-orange-100 text-orange-800 border-orange-200',
+                  refus: 'bg-red-100 text-red-800 border-red-200',
+                  incomplete: 'bg-slate-100 text-slate-600 border-slate-200',
+                }
+                const TYPE_LABELS: Record<string, string> = {
+                  propre: 'Opinion sans réserve',
+                  propre_avec_observation: 'Opinion sans réserve avec observation',
+                  reserve: 'Opinion avec réserve',
+                  refus: 'Refus de certifier',
+                  incomplete: 'Exceptions ouvertes — formation impossible',
+                }
+                const colorClass = TYPE_COLORS[opinion.type_opinion] || TYPE_COLORS.incomplete
+                const label = TYPE_LABELS[opinion.type_opinion] || opinion.type_opinion
+                return (
+                  <div className="space-y-4">
+                    {/* Type d'opinion */}
+                    <div className="flex items-center gap-3">
+                      <div className={`px-3 py-1.5 rounded-lg border text-sm font-bold ${colorClass}`}>
+                        {label}
+                      </div>
+                      <OriginBadge source="calcule" />
+                    </div>
+
+                    {/* Agrégation */}
+                    <div className="grid grid-cols-4 gap-2 text-center">
+                      <div className="bg-slate-50 rounded-lg p-2">
+                        <div className="text-base font-bold text-slate-900">{agg.nb_total ?? 0}</div>
+                        <div className="text-[10px] text-slate-500">Total</div>
+                      </div>
+                      <div className="bg-red-50 rounded-lg p-2">
+                        <div className="text-base font-bold text-red-700">{agg.nb_critiques ?? 0}</div>
+                        <div className="text-[10px] text-red-500">Critiques</div>
+                      </div>
+                      <div className="bg-amber-50 rounded-lg p-2">
+                        <div className="text-base font-bold text-amber-700">{agg.nb_significatives ?? 0}</div>
+                        <div className="text-[10px] text-amber-500">Significatives</div>
+                      </div>
+                      <div className={`rounded-lg p-2 ${agg.depasse_seuil ? 'bg-red-50' : 'bg-emerald-50'}`}>
+                        <div className={`text-base font-bold ${agg.depasse_seuil ? 'text-red-700' : 'text-emerald-700'}`}>
+                          {agg.depasse_seuil ? 'Dépasse' : 'Sous'}
+                        </div>
+                        <div className={`text-[10px] ${agg.depasse_seuil ? 'text-red-500' : 'text-emerald-500'}`}>Seuil</div>
+                      </div>
+                    </div>
+
+                    {/* Narrative IA */}
+                    {opinion.narrative_ia && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="text-xs font-semibold text-slate-700">Narrative proposée</span>
+                          <OriginBadge source="ia" />
+                        </div>
+                        <textarea
+                          className="input text-xs leading-relaxed w-full"
+                          rows={6}
+                          value={narrativeAuditeur}
+                          onChange={(e) => setNarrativeAuditeur(e.target.value)}
+                          placeholder="Modifiez le texte de l'opinion si nécessaire..."
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Modifiez le texte ci-dessus si nécessaire, puis validez.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Validation */}
+                    {opinion.narrative_ia && (
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={handleValiderOpinion}
+                          disabled={validatingOpinion || !narrativeAuditeur}
+                          className="btn-primary flex-1"
+                        >
+                          {validatingOpinion ? <Spinner size="sm" /> : <CheckCircle className="w-4 h-4" />}
+                          Valider l'opinion
+                        </button>
+                        {opinion.validee === 1 && (
+                          <div className="flex items-center gap-1.5 text-xs text-emerald-700">
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            <span>Validée</span>
+                            <OriginBadge source="saisie" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+            </motion.div>
+          )}
+
           {/* Export */}
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -236,7 +414,7 @@ export function Rapport() {
           >
             <h2 className="font-semibold text-slate-900 mb-1">Export des livrables</h2>
             <p className="text-xs text-slate-500 mb-4">
-              Chaque chiffre est tracé jusqu'à sa source. La génération échoue si un chiffre non sourcé est détecté.
+              Chaque chiffre est tracé jusqu'à sa source (NEP 230). La génération échoue si un chiffre non sourcé est détecté.
             </p>
 
             <div className="grid grid-cols-2 gap-3">
@@ -253,9 +431,21 @@ export function Rapport() {
               </button>
 
               <button
+                onClick={handleExporterPdf}
+                disabled={exportingPdf || !peutGenerer}
+                className="btn-secondary justify-center py-3"
+              >
+                {exportingPdf ? <Spinner size="sm" /> : <FileDown className="w-5 h-5" />}
+                <div className="text-left">
+                  <div className="text-sm font-semibold">Rapport d'audit</div>
+                  <div className="text-xs opacity-75">Format .pdf — NEP 230</div>
+                </div>
+              </button>
+
+              <button
                 onClick={handleExporterExceptions}
                 disabled={exportingXlsx}
-                className="btn-secondary justify-center py-3"
+                className="btn-secondary justify-center py-3 col-span-2"
               >
                 {exportingXlsx ? <Spinner size="sm" /> : <FileSpreadsheet className="w-5 h-5" />}
                 <div className="text-left">

@@ -2213,6 +2213,38 @@ def exporter_dossier(projet_id: str):
     )
 
 
+@router.get("/projets/{projet_id}/exporter-dossier-pdf")
+def exporter_dossier_pdf(projet_id: str):
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    if db.has_open_exceptions(projet_id):
+        raise HTTPException(400, "Exceptions ouvertes non tranchées.")
+
+    resultats = db.list_resultats(projet_id)
+    exceptions = db.list_exceptions(projet_id)
+    feuilles = db.list_feuilles(projet_id)
+
+    output_dir = DATA_DIR / projet_id / "exports"
+    output_path = output_dir / f"dossier_travail_{projet_id[:8]}.pdf"
+
+    try:
+        from ..reporting.pdf_export import generer_dossier_travail_pdf
+        generer_dossier_travail_pdf(projet, resultats, exceptions, feuilles, output_path)
+    except ImportError as e:
+        raise HTTPException(501, f"Export PDF non disponible : {e}")
+    except Exception as e:
+        raise HTTPException(500, f"Erreur génération PDF : {e}")
+
+    db.log(projet_id, "action_humaine", {"action": "export_dossier_pdf", "fichier": str(output_path)})
+    return FileResponse(
+        str(output_path),
+        media_type="application/pdf",
+        filename=f"dossier_travail_{projet_id[:8]}.pdf",
+    )
+
+
 @router.post("/projets/{projet_id}/exporter-exceptions")
 def exporter_exceptions(projet_id: str):
     db = _get_db(projet_id)
@@ -3657,8 +3689,9 @@ def create_sondage(projet_id: str, body: SondageCreateBody):
         for r in population_rows
     )
     calcul = calculer_taille_echantillon(population, body.taux_erreur_tolere, body.niveau_confiance)
-    import time
-    seed = int(time.time()) % 1000000
+    import hashlib as _hashlib
+    _seed_str = f"{projet_id}-{body.cycle}-{body.libelle or ''}"
+    seed = int(_hashlib.sha256(_seed_str.encode()).hexdigest()[:8], 16) % (2 ** 31)
     data = {
         "projet_id": projet_id,
         "cycle": body.cycle,
@@ -3759,3 +3792,71 @@ def delete_sondage(projet_id: str, sondage_id: str):
     db.delete_sondage(sondage_id)
     db.log(projet_id, "action_humaine", {"action": "supprimer_sondage", "id": sondage_id})
     return {"deleted": True}
+
+
+# ─── Opinion ─────────────────────────────────────────────────────────────────
+
+@router.get("/projets/{projet_id}/opinion")
+def get_opinion(projet_id: str):
+    db = _get_db(projet_id)
+    opinion = db.get_opinion(projet_id)
+    return {"opinion": opinion}
+
+
+@router.post("/projets/{projet_id}/opinion/former")
+def former_opinion(projet_id: str):
+    """Agrège les anomalies (Python) + génère la narrative (IA)."""
+    from ..controls.opinion import agreger_anomalies, determiner_type_opinion
+    db = _get_db(projet_id)
+    projet, _ = _llm_guard(db, projet_id)
+    exceptions = db.list_exceptions(projet_id)
+    seuil = float(projet.get("seuil_signification") or 0)
+    agregation = agreger_anomalies(exceptions, seuil)
+    type_opinion = determiner_type_opinion(agregation)
+    ctx = {
+        "client": projet.get("client"),
+        "exercice": projet.get("exercice"),
+        "nature_mission": projet.get("nature_mission", "contractuelle"),
+    }
+    try:
+        from ..llm.claude import ClaudeClient
+        llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+        narrative_data = llm.generer_narrative_opinion(type_opinion, agregation, ctx)
+    except Exception as e:
+        narrative_data = {"narrative": f"[LLM indisponible : {e}]", "justification_courte": ""}
+    opinion = db.save_or_update_opinion(projet_id, {
+        "type_opinion": type_opinion,
+        "agregation_json": agregation,
+        "narrative_ia": narrative_data.get("narrative", ""),
+        "justification_courte": narrative_data.get("justification_courte", ""),
+        "narrative_auditeur": None,
+        "validee": 0,
+    })
+    db.log(projet_id, "appel_llm", {"action": "former_opinion", "type_opinion": type_opinion})
+    return {"opinion": opinion, "agregation": agregation}
+
+
+@router.patch("/projets/{projet_id}/opinion")
+def valider_opinion(projet_id: str, body: dict):
+    """L'auditeur valide ou modifie la narrative d'opinion."""
+    db = _get_db(projet_id)
+    existing = db.get_opinion(projet_id)
+    if not existing:
+        raise HTTPException(404, "Aucune opinion formée. Appelez d'abord /opinion/former.")
+    update_data = {
+        "type_opinion": existing.get("type_opinion"),
+        "agregation_json": existing.get("agregation_json"),
+        "narrative_ia": existing.get("narrative_ia"),
+        "justification_courte": existing.get("justification_courte"),
+        "narrative_auditeur": body.get("narrative_auditeur", existing.get("narrative_auditeur")),
+        "validee": int(body.get("validee", 0)),
+        "validee_par": body.get("validee_par", existing.get("validee_par")),
+        "validee_le": body.get("validee_le", existing.get("validee_le")),
+    }
+    opinion = db.save_or_update_opinion(projet_id, update_data)
+    db.log(projet_id, "action_humaine", {
+        "action": "valider_opinion",
+        "validee": update_data["validee"],
+        "validee_par": update_data["validee_par"],
+    })
+    return {"opinion": opinion}

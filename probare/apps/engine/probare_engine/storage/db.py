@@ -300,6 +300,21 @@ class ProjectDB:
             montant_anomalie REAL DEFAULT 0.0,
             commentaire TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS opinion (
+            id TEXT PRIMARY KEY,
+            projet_id TEXT NOT NULL UNIQUE REFERENCES projet(id),
+            type_opinion TEXT,
+            agregation_json TEXT,
+            narrative_ia TEXT,
+            justification_courte TEXT,
+            narrative_auditeur TEXT,
+            validee INTEGER DEFAULT 0,
+            validee_par TEXT,
+            validee_le TEXT,
+            cree_le TEXT,
+            modifie_le TEXT
+        );
         """)
         self.conn.commit()
 
@@ -337,6 +352,7 @@ class ProjectDB:
             ("exception", "fichiers_sources", "TEXT"),
             ("circularisation", "date_relance", "TEXT"),
             ("sondage", "seed", "INTEGER"),
+            ("opinion", "justification_courte", "TEXT"),
         ]
         for table, col, typedef in migrations:
             try:
@@ -1231,6 +1247,59 @@ class ProjectDB:
             (projet_id, type_, json.dumps(payload, default=str), _now())
         )
         self.conn.commit()
+
+    # --- Opinion ---
+
+    def save_or_update_opinion(self, projet_id: str, data: dict) -> dict:
+        now = _now()
+        row = self.conn.execute(
+            "SELECT id FROM opinion WHERE projet_id=?", (projet_id,)
+        ).fetchone()
+        agregation = data.get("agregation_json")
+        if isinstance(agregation, dict):
+            agregation = json.dumps(agregation, ensure_ascii=False)
+        if row:
+            self.conn.execute(
+                """UPDATE opinion SET type_opinion=?, agregation_json=?, narrative_ia=?,
+                   justification_courte=?, narrative_auditeur=?, validee=?, validee_par=?,
+                   validee_le=?, modifie_le=? WHERE projet_id=?""",
+                (data.get("type_opinion"), agregation,
+                 data.get("narrative_ia"), data.get("justification_courte"),
+                 data.get("narrative_auditeur"),
+                 int(data.get("validee", 0)), data.get("validee_par"),
+                 data.get("validee_le"), now, projet_id)
+            )
+        else:
+            oid = str(__import__("uuid").uuid4())
+            self.conn.execute(
+                """INSERT INTO opinion
+                   (id, projet_id, type_opinion, agregation_json, narrative_ia,
+                    justification_courte, narrative_auditeur, validee, validee_par,
+                    validee_le, cree_le, modifie_le)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (oid, projet_id, data.get("type_opinion"), agregation,
+                 data.get("narrative_ia"), data.get("justification_courte"),
+                 data.get("narrative_auditeur"),
+                 int(data.get("validee", 0)), data.get("validee_par"),
+                 data.get("validee_le"), now, now)
+            )
+        self.conn.commit()
+        return self.get_opinion(projet_id)
+
+    def get_opinion(self, projet_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM opinion WHERE projet_id=?", (projet_id,)
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        val = d.get("agregation_json")
+        if val and isinstance(val, str):
+            try:
+                d["agregation_json"] = json.loads(val)
+            except Exception:
+                d["agregation_json"] = {}
+        return d
 
     def get_journal(self, projet_id: str, limit: int = 100) -> list[dict]:
         rows = self.conn.execute(

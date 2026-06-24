@@ -8,6 +8,7 @@ import {
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
+import { OriginBadge } from '../components/ui/OriginBadge'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore, type Exception, type FichierSource } from '../stores/projetStore'
@@ -214,6 +215,7 @@ function ExceptionCard({
             <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">
               {exc.nep_ref}
             </code>
+            <OriginBadge source="calcule" />
           </div>
           <p className="text-sm text-slate-600 leading-relaxed">{exc.description}</p>
           <SourceFilesBadges fichierIds={exc.fichiers_sources} fichiers={fichiers} />
@@ -231,8 +233,9 @@ function ExceptionCard({
       {/* Décision IA proposée (si disponible) */}
       {!isTranchee && exc.decision_proposee && (
         <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 mb-3">
-          <div className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wider mb-1.5">
-            Décision proposée par l'IA
+          <div className="flex items-center gap-2 text-[10px] font-semibold text-indigo-600 uppercase tracking-wider mb-1.5">
+            Décision proposée
+            <OriginBadge source="ia" />
           </div>
           <p className="text-xs text-indigo-900 leading-relaxed italic">
             {exc.decision_proposee}
@@ -254,7 +257,10 @@ function ExceptionCard({
           )}
           {exc.decision_humaine && (
             <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
-              <div className="text-xs font-semibold text-emerald-700 mb-1">Décision de l'auditeur</div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 mb-1">
+                Décision de l'auditeur
+                <OriginBadge source="saisie" />
+              </div>
               <p className="text-xs text-emerald-800">{exc.decision_humaine}</p>
               <p className="text-xs text-emerald-600 mt-1">
                 Par {exc.decideur} · {formatDate(exc.horodatage)}

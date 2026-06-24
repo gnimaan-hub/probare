@@ -10,6 +10,7 @@ import {
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
+import { OriginBadge } from '../components/ui/OriginBadge'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore, type ResultatControle } from '../stores/projetStore'
@@ -110,6 +111,7 @@ function ResultatRow({ resultat, index }: { resultat: ResultatControle; index: n
             <span className={`badge ${isOk ? 'badge-ok' : 'badge-exception'}`}>
               {isOk ? 'OK' : 'Exception'}
             </span>
+            <OriginBadge source="calcule" />
           </div>
           <p className="text-xs text-slate-500 mt-0.5 truncate">{resultat.details}</p>
         </div>

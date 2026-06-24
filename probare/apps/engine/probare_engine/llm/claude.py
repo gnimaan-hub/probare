@@ -1131,6 +1131,71 @@ Réponds UNIQUEMENT avec un JSON :
             "impact_opinion": "",
         }
 
+    def generer_narrative_opinion(
+        self,
+        type_opinion: str,
+        agregation: dict,
+        contexte_projet: dict,
+    ) -> dict:
+        """Rédige la narrative d'opinion à la 1ère personne de l'auditeur.
+
+        Le type d'opinion est calculé par Python (opinion.py). Le LLM rédige
+        uniquement le paragraphe narratif — il ne choisit ni ne calcule rien.
+        """
+        from ..controls.opinion import TYPE_OPINION_LABELS
+        label_opinion = TYPE_OPINION_LABELS.get(type_opinion, type_opinion)
+
+        prompt = f"""Tu es auditeur légal agréé. Le moteur de contrôle déterministe a calculé le type d'opinion suivant pour cette mission.
+
+Type d'opinion calculé (Python, non modifiable) : {label_opinion}
+
+Données agrégées (calculées par Python — ne les recalcule pas) :
+- Nombre total d'exceptions : {agregation.get("nb_total", 0)}
+- Exceptions critiques : {agregation.get("nb_critiques", 0)}
+- Exceptions significatives : {agregation.get("nb_significatives", 0)}
+- Exceptions mineures : {agregation.get("nb_mineures", 0)}
+- Cumul montant anomalies : {agregation.get("cumul_montant", 0)} FDJ
+- Seuil de signification : {agregation.get("seuil_signification", 0)} FDJ
+- Dépasse le seuil : {"Oui" if agregation.get("depasse_seuil") else "Non"}
+
+Contexte de la mission :
+- Client : {contexte_projet.get("client", "N/A")}
+- Exercice : {contexte_projet.get("exercice", "N/A")}
+- Nature : {contexte_projet.get("nature_mission", "contractuelle")}
+
+Ta mission :
+Rédige la narrative d'opinion en français professionnel, à la première personne de l'auditeur.
+Le texte doit :
+1. Rappeler brièvement les travaux effectués
+2. Énoncer l'opinion (le type est fixé, tu l'assumes pleinement)
+3. Justifier l'opinion par les faits chiffrés fournis ci-dessus (ne invente aucun chiffre)
+4. Si réserve ou refus : mentionner les fondements (exceptions critiques/significatives)
+5. Si propre ou propre_avec_observation : confirmer la régularité et sincérité
+
+Règle absolue : tu ne cites que les chiffres reçus ci-dessus. Tu ne calcules rien.
+
+Réponds UNIQUEMENT avec un JSON valide :
+{{
+  "narrative": "Paragraphe complet de l'opinion, rédigé à la première personne (6-10 phrases).",
+  "justification_courte": "Résumé de la justification en 1-2 phrases."
+}}"""
+
+        resp = self._client.messages.create(
+            model=MODEL_DEFAULT,
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_DEFAULT, "generer_narrative_opinion",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "narrative" in result:
+            return result
+        return {
+            "narrative": resp.content[0].text[:1000],
+            "justification_courte": "",
+        }
+
     def rediger_feuille_travail(
         self,
         cycle: str,
