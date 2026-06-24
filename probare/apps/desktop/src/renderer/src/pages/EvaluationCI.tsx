@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ShieldCheck, ArrowRight, CheckCircle, XCircle, MinusCircle,
   Sparkles, AlertTriangle, ChevronDown, ChevronRight, Info,
-  Shield, ShoppingCart, TrendingUp, Loader2
+  Shield, ShoppingCart, TrendingUp, Loader2,
+  Landmark, Package, Users, Receipt, PieChart
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
@@ -52,9 +53,14 @@ interface CycleQCI {
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const CYCLE_META: Record<string, { label: string; icon: any; color: string }> = {
-  tresorerie: { label: 'Trésorerie', icon: Shield, color: 'blue' },
-  achats:     { label: 'Achats-Fournisseurs', icon: ShoppingCart, color: 'orange' },
-  ventes:     { label: 'Ventes-Clients', icon: TrendingUp, color: 'emerald' },
+  tresorerie:      { label: 'Trésorerie',         icon: Shield,       color: 'blue' },
+  achats:          { label: 'Achats-Fournisseurs', icon: ShoppingCart, color: 'orange' },
+  ventes:          { label: 'Ventes-Clients',      icon: TrendingUp,   color: 'emerald' },
+  immobilisations: { label: 'Immobilisations',     icon: Landmark,     color: 'slate' },
+  stocks:          { label: 'Stocks',              icon: Package,      color: 'amber' },
+  paie:            { label: 'Paie / Personnel',    icon: Users,        color: 'violet' },
+  impots:          { label: 'Impôts & Taxes',      icon: Receipt,      color: 'rose' },
+  capitaux_propres:{ label: 'Capitaux propres',    icon: PieChart,     color: 'indigo' },
 }
 
 const NIVEAU_CONFIG: Record<string, { bg: string; text: string; border: string; label: string }> = {

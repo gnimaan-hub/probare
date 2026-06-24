@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Save, ArrowRight, Info, CheckCircle, Shield, ShoppingCart, TrendingUp, FolderOpen } from 'lucide-react'
+import { Save, ArrowRight, Info, CheckCircle, Shield, ShoppingCart, TrendingUp, FolderOpen, Landmark, Package, Users, Receipt, PieChart } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { useApi } from '../hooks/useApi'
@@ -31,6 +31,41 @@ const CYCLES_DISPONIBLES = [
     label: 'Ventes-Clients',
     icon: TrendingUp,
     description: 'Comptes 41x + 70x-73x — Clients et produits',
+    docs: 'Grand livre + Balance',
+  },
+  {
+    id: 'immobilisations',
+    label: 'Immobilisations',
+    icon: Landmark,
+    description: 'Comptes 2xx — Immobilisations corporelles, incorporelles et amortissements',
+    docs: 'Grand livre + Balance',
+  },
+  {
+    id: 'stocks',
+    label: 'Stocks',
+    icon: Package,
+    description: 'Comptes 3xx — Stocks, en-cours et marchandises',
+    docs: 'Grand livre + Balance',
+  },
+  {
+    id: 'paie',
+    label: 'Paie / Personnel',
+    icon: Users,
+    description: 'Comptes 42x + 64x — Dettes sociales et charges de personnel',
+    docs: 'Grand livre + Balance',
+  },
+  {
+    id: 'impots',
+    label: 'Impôts & Taxes',
+    icon: Receipt,
+    description: 'Comptes 44x + 63x — TVA, impôts et taxes',
+    docs: 'Grand livre + Balance',
+  },
+  {
+    id: 'capitaux_propres',
+    label: 'Capitaux propres',
+    icon: PieChart,
+    description: 'Comptes 10x-15x — Capital, réserves, résultat et provisions',
     docs: 'Grand livre + Balance',
   },
 ]

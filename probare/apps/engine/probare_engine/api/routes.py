@@ -21,7 +21,7 @@ from ..controls.engine import (
     controle_variations,
     controle_rapprochement_bancaire,
     controle_soldes_anormaux_tresorerie,
-    # Partagés (nouveaux)
+    # Partagés
     controle_coherence_cycle,
     controle_soldes_anormaux,
     controle_montants_ronds,
@@ -30,6 +30,14 @@ from ..controls.engine import (
     controle_concentration_compte,
     controle_ratio_avoirs,
     controle_creances_echues,
+    # Nouveaux cycles
+    controle_amortissement_manquant,
+    controle_amort_excedent,
+    controle_ratio_charges_sociales,
+    controle_mensualite_paie,
+    controle_tva_coherence,
+    controle_mouvement_provisions,
+    controle_coherence_resultat,
     # Utilitaires
     _group_rows,
     _filter_accounts,
@@ -54,6 +62,7 @@ CLIENTS_DB_PATH = GLOBAL_DIR / "clients.db"
 
 _db_cache: dict[str, ProjectDB] = {}
 _clients_db_instance = None
+_DB_CACHE_MAX = 20
 
 
 def _get_clients_db():
@@ -67,6 +76,13 @@ def _get_clients_db():
 
 def _get_db(projet_id: str) -> ProjectDB:
     if projet_id not in _db_cache:
+        if len(_db_cache) >= _DB_CACHE_MAX:
+            oldest_key = next(iter(_db_cache))
+            try:
+                _db_cache[oldest_key].close()
+            except Exception:
+                pass
+            del _db_cache[oldest_key]
         db_path = DATA_DIR / projet_id / "audit.db"
         db = ProjectDB(db_path)
         db.connect()
@@ -105,9 +121,35 @@ def _to_donnee(d: dict) -> DonneeSourcee:
     return DonneeSourcee(**{**d, "valeur": _parse_valeur(d["valeur"], d["type"])})
 
 
+def _llm_guard(db: ProjectDB, projet_id: str) -> tuple[dict, "Anonymizer"]:
+    """
+    Garde obligatoire avant tout appel LLM.
+    Vérifie la clé API et le consentement client.
+    Retourne (projet, anonymizer) ou lève HTTPException.
+    """
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise HTTPException(503, "Clé API Claude non configurée dans l'environnement.")
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    if not projet.get("consentement_client"):
+        raise HTTPException(
+            403,
+            "Consentement client requis avant tout traitement IA. "
+            "Activez-le dans les paramètres du projet (étape Cadrage)."
+        )
+    return projet, Anonymizer()
+
+
 def _auto_interpreter(db, projet_id: str, projet: dict, exceptions: list[dict]) -> None:
     """Lance l'interprétation IA automatique de toutes les exceptions."""
     if not exceptions or not os.environ.get("ANTHROPIC_API_KEY"):
+        return
+    if not projet.get("consentement_client"):
+        db.log(projet_id, "avertissement_llm", {
+            "action": "auto_interpretation",
+            "raison": "consentement_client non accordé — interprétation IA ignorée",
+        })
         return
     try:
         from ..llm.claude import ClaudeClient
@@ -162,6 +204,17 @@ def _get_donnees_segmentees(db, projet_id: str):
     rows_gl = _group_rows(donnees_gl) if donnees_gl else []
 
     return donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve
+
+
+def _resoudre_fichiers_sources(exceptions: list[dict], donnees_all: list) -> None:
+    """Pour chaque exception, résout sources (DonneeSourcee.id) → fichiers_sources (fichier_source_id)."""
+    lookup = {d.id: d.fichier_source_id for d in donnees_all}
+    for exc in exceptions:
+        src_ids = exc.pop("sources", [])
+        fichier_ids = list(dict.fromkeys(
+            lookup[sid] for sid in (src_ids or []) if sid in lookup
+        ))
+        exc["fichiers_sources"] = fichier_ids
 
 
 def _preconditions_check(
@@ -411,7 +464,7 @@ async def upload_fichier(
     # Analyse IA du document (Haiku, synchrone)
     analyse_ia: dict | None = None
     db.update_fichier_ia(fichier_id, {"statut_checklist": "analyse_en_cours"})
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if os.environ.get("ANTHROPIC_API_KEY") and projet.get("consentement_client"):
         try:
             from ..ingestion.dossier_brut import lire_contenu_pour_llm
             from ..llm.claude import ClaudeClient
@@ -519,7 +572,8 @@ def get_onglets_excel(projet_id: str, fichier_id: str):
         onglets_info.append({"nom": sheet_name, "colonnes": colonnes, "apercu": apercu})
 
     analyse_onglets = []
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    db_projet = db.get_projet(projet_id)
+    if os.environ.get("ANTHROPIC_API_KEY") and db_projet and db_projet.get("consentement_client"):
         try:
             from ..llm.claude import ClaudeClient
             docs_attendus = _get_documents_attendus(projet_id, db)
@@ -564,7 +618,8 @@ def importer_onglet(projet_id: str, fichier_id: str, body: ImporterOngletBody):
         raise HTTPException(400, f"Erreur de lecture de l'onglet : {e}")
 
     analyse: dict = {}
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    _proj_onglet = db.get_projet(projet_id)
+    if os.environ.get("ANTHROPIC_API_KEY") and _proj_onglet and _proj_onglet.get("consentement_client"):
         try:
             df = pd.read_excel(str(chemin), sheet_name=body.sheet_name, nrows=10, dtype=str)
             apercu = df.to_csv(index=False)[:3000]
@@ -642,8 +697,7 @@ def decouper_liasse(projet_id: str, fichier_id: str):
 
     if not texte or len(texte) < 100:
         raise HTTPException(400, "Contenu insuffisant pour analyser la liasse.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _projet_liasse, _ = _llm_guard(db, projet_id)
 
     from ..llm.claude import ClaudeClient
     llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
@@ -767,7 +821,7 @@ def evaluer_qci(projet_id: str, cycle: str):
 
     score_info = calculer_niveau_risque(reponses_avec_rep)
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if not os.environ.get("ANTHROPIC_API_KEY") or not projet.get("consentement_client"):
         evaluation = {
             "synthese": f"Score QCI : {score_info['score']:.0%} — Risque {score_info['niveau'].upper()}.",
             "forces": [], "faiblesses": [], "recommandations": [],
@@ -776,8 +830,12 @@ def evaluer_qci(projet_id: str, cycle: str):
         }
     else:
         from ..llm.claude import ClaudeClient
+        anon_qci = Anonymizer()
+        entites_qci = [v for v in [projet.get("client"), projet.get("nif")] if v]
+        ctx_qci = {k: v for k, v in projet.items() if k not in ("client", "nif")}
+        ctx_qci["client"] = anon_qci.pseudonymiser(projet.get("client") or "", entites_qci) if entites_qci else projet.get("client")
         llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
-        evaluation = llm.evaluer_controle_interne(cycle, reponses_enrichies, projet)
+        evaluation = llm.evaluer_controle_interne(cycle, reponses_enrichies, ctx_qci)
 
     evaluation["score"] = score_info["score"]
     evaluation["niveau_risque"] = score_info["niveau"]
@@ -811,8 +869,7 @@ async def analyser_annexe(projet_id: str, annexe_id: str):
     if not annexe or annexe["projet_id"] != projet_id:
         raise HTTPException(404, "Document annexe introuvable.")
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     # Lire le contenu texte du fichier (Excel/CSV → texte brut)
     chemin = DATA_DIR / annexe["chemin_relatif"]
@@ -856,9 +913,7 @@ async def analyser_annexe(projet_id: str, annexe_id: str):
 @router.post("/projets/{projet_id}/mapper-colonnes")
 async def mapper_colonnes(projet_id: str, body: dict):
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    _llm_guard(db, projet_id)
     try:
         from ..llm.claude import ClaudeClient
         def log_llm(t, p): db.log(projet_id, t, p)
@@ -1007,16 +1062,25 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
         if exc:
             exceptions_total.append(exc)
 
-    # ── 7. TRESOR-VARIATION : variations N/N-1 (si seuil défini) ──
+    # ── 7. TRESOR-VARIATION : variations N/N-1 (si seuil défini et N-1 disponible) ──
     if seuil > 0 and _check("TRESOR-VARIATION"):
         rows_pour_solde = rows_balance if rows_balance else rows_gl
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, ("5",))
         if soldes_n:
-            ress, excs = controle_variations(
-                projet_id, soldes_n, {}, seuil * ci_facteur, "TRESOR-VARIATION",
-            )
-            resultats_total.extend(ress)
-            exceptions_total.extend(excs)
+            plan_var = db.get_or_create_planification(projet_id)
+            n1_id = plan_var.get("balance_n1_fichier_id")
+            if n1_id:
+                donnees_n1_raw = db.get_donnees_by_fichier(n1_id)
+                donnees_n1 = [_to_donnee(d) for d in donnees_n1_raw]
+                rows_n1 = _group_rows(donnees_n1) if donnees_n1 else []
+                soldes_n1 = _aggreger_soldes_nets(rows_n1, ("5",))
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1, seuil * ci_facteur, "TRESOR-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("TRESOR-VARIATION", "Balance N-1 non renseignée (configurez-la dans Planification → Variations).")
 
     # ── 8. TRESOR-RAPPROCH : rapprochement bancaire (si relevé importé) ──
     if _check("TRESOR-RAPPROCH"):
@@ -1056,6 +1120,7 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
                   "Impossible d'extraire les soldes du grand livre ou du relevé.")
 
     # Persistance
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
     for r in resultats_total:
         db.save_resultat(r)
     for e in exceptions_total:
@@ -1204,12 +1269,21 @@ def run_controles_achats(projet_id: str, body: dict = {}):
     if seuil > 0 and _check("ACHAT-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_ACHATS)
         if soldes_n:
-            ress, excs = controle_variations(
-                projet_id, soldes_n, {}, seuil * ci_facteur, "ACHAT-VARIATION",
-            )
-            resultats_total.extend(ress)
-            exceptions_total.extend(excs)
+            plan_var_a = db.get_or_create_planification(projet_id)
+            n1_id_a = plan_var_a.get("balance_n1_fichier_id")
+            if n1_id_a:
+                donnees_n1_a = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_a)]
+                rows_n1_a = _group_rows(donnees_n1_a) if donnees_n1_a else []
+                soldes_n1_a = _aggreger_soldes_nets(rows_n1_a, PREFIXES_ACHATS)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_a, seuil * ci_facteur, "ACHAT-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("ACHAT-VARIATION", "Balance N-1 non renseignée (configurez-la dans Planification → Variations).")
 
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
     for r in resultats_total:
         db.save_resultat(r)
     for e in exceptions_total:
@@ -1360,12 +1434,21 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
     if seuil > 0 and _check("VENTE-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_VENTES)
         if soldes_n:
-            ress, excs = controle_variations(
-                projet_id, soldes_n, {}, seuil * ci_facteur, "VENTE-VARIATION",
-            )
-            resultats_total.extend(ress)
-            exceptions_total.extend(excs)
+            plan_var_v = db.get_or_create_planification(projet_id)
+            n1_id_v = plan_var_v.get("balance_n1_fichier_id")
+            if n1_id_v:
+                donnees_n1_v = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_v)]
+                rows_n1_v = _group_rows(donnees_n1_v) if donnees_n1_v else []
+                soldes_n1_v = _aggreger_soldes_nets(rows_n1_v, PREFIXES_VENTES)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_v, seuil * ci_facteur, "VENTE-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("VENTE-VARIATION", "Balance N-1 non renseignée (configurez-la dans Planification → Variations).")
 
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
     for r in resultats_total:
         db.save_resultat(r)
     for e in exceptions_total:
@@ -1385,6 +1468,583 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
         "nb_exceptions": len(exceptions_total),
         "resultats": resultats_total,
         "exceptions": exceptions_enrichies,
+        "controles_ignores": ignores,
+    }
+
+
+# ─── Cycle Immobilisations ────────────────────────────────────────────────────
+
+@router.post("/projets/{projet_id}/controles/immobilisations")
+def run_controles_immobilisations(projet_id: str, body: dict = {}):
+    """Lance les 5 contrôles déterministes du cycle immobilisations."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+
+    cycles_couverts = projet.get("cycles_couverts") or []
+    if "immobilisations" not in cycles_couverts:
+        return {"nb_controles": 0, "nb_exceptions": 0, "resultats": [],
+                "exceptions": [], "cycle_ignore": True,
+                "message": "Cycle immobilisations non sélectionné au cadrage."}
+
+    donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve = \
+        _get_donnees_segmentees(db, projet_id)
+    if not donnees_all:
+        raise HTTPException(400, "Aucune donnée importée.")
+
+    seuil = float(projet.get("seuil_signification") or 0)
+    exercice = projet.get("exercice")
+    ci = _seuils_ci(db, projet_id, "immobilisations")
+    ci_facteur = ci["facteur"]
+    resultats_total, exceptions_total, ignores = [], [], []
+
+    PREFIXES_IMO_BRUT = ("20", "21", "22", "23", "24", "25", "26", "27")
+    PREFIXES_IMO_ALL = PREFIXES_IMO_BRUT + ("28",)
+
+    rows_pour_solde = rows_balance if rows_balance else (rows_gl if rows_gl else [])
+    rows_pour_mvt = rows_gl if rows_gl else (rows_balance if rows_balance else [])
+
+    def _skip(ref: str, raison: str):
+        ignores.append({"controle_ref": ref, "raison": raison})
+
+    def _check(ref: str) -> bool:
+        ok, msg = _preconditions_check(ref, ids_gl, ids_balance, ids_releve)
+        if not ok:
+            _skip(ref, msg)
+        return ok
+
+    # ── 1. IMO-GL-COHER ──
+    if _check("IMO-GL-COHER"):
+        ress, excs = controle_coherence_cycle(
+            projet_id, "IMO-GL-COHER", rows_gl, rows_balance, PREFIXES_IMO_ALL,
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 2. IMO-AMORTISSEMENT ──
+    if _check("IMO-AMORTISSEMENT"):
+        res, exc = controle_amortissement_manquant(projet_id, rows_pour_solde)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 3. IMO-AMORT-EXCEDENT ──
+    if _check("IMO-AMORT-EXCEDENT"):
+        res, exc = controle_amort_excedent(projet_id, rows_pour_solde)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 4. IMO-SOLDE-ANORMAL ──
+    if _check("IMO-SOLDE-ANORMAL"):
+        ress, excs = controle_soldes_anormaux(
+            projet_id, "IMO-SOLDE-ANORMAL",
+            rows_pour_solde, PREFIXES_IMO_BRUT, sens_normal="debit",
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 5. IMO-VARIATION ──
+    if seuil > 0 and _check("IMO-VARIATION"):
+        soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_IMO_ALL)
+        if soldes_n:
+            plan_imo = db.get_or_create_planification(projet_id)
+            n1_id_imo = plan_imo.get("balance_n1_fichier_id")
+            if n1_id_imo:
+                donnees_n1_imo = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_imo)]
+                rows_n1_imo = _group_rows(donnees_n1_imo) if donnees_n1_imo else []
+                soldes_n1_imo = _aggreger_soldes_nets(rows_n1_imo, PREFIXES_IMO_ALL)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_imo, seuil * ci_facteur, "IMO-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("IMO-VARIATION", "Balance N-1 non renseignée.")
+
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
+    for r in resultats_total:
+        db.save_resultat(r)
+    for e in exceptions_total:
+        db.save_exception(e)
+
+    db.log(projet_id, "transition_etat", {
+        "action": "controles_immobilisations",
+        "nb_resultats": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "nb_ignores": len(ignores),
+    })
+    _auto_interpreter(db, projet_id, projet, exceptions_total)
+
+    return {
+        "nb_controles": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "resultats": resultats_total,
+        "exceptions": db.list_exceptions(projet_id),
+        "controles_ignores": ignores,
+    }
+
+
+# ─── Cycle Stocks ─────────────────────────────────────────────────────────────
+
+@router.post("/projets/{projet_id}/controles/stocks")
+def run_controles_stocks(projet_id: str, body: dict = {}):
+    """Lance les 5 contrôles déterministes du cycle stocks."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+
+    cycles_couverts = projet.get("cycles_couverts") or []
+    if "stocks" not in cycles_couverts:
+        return {"nb_controles": 0, "nb_exceptions": 0, "resultats": [],
+                "exceptions": [], "cycle_ignore": True,
+                "message": "Cycle stocks non sélectionné au cadrage."}
+
+    donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve = \
+        _get_donnees_segmentees(db, projet_id)
+    if not donnees_all:
+        raise HTTPException(400, "Aucune donnée importée.")
+
+    seuil = float(projet.get("seuil_signification") or 0)
+    exercice = projet.get("exercice")
+    ci = _seuils_ci(db, projet_id, "stocks")
+    ci_facteur = ci["facteur"]
+    resultats_total, exceptions_total, ignores = [], [], []
+
+    PREFIXES_STOCK = ("3",)
+
+    rows_pour_solde = rows_balance if rows_balance else (rows_gl if rows_gl else [])
+    rows_pour_mvt = rows_gl if rows_gl else (rows_balance if rows_balance else [])
+
+    def _skip(ref: str, raison: str):
+        ignores.append({"controle_ref": ref, "raison": raison})
+
+    def _check(ref: str) -> bool:
+        ok, msg = _preconditions_check(ref, ids_gl, ids_balance, ids_releve)
+        if not ok:
+            _skip(ref, msg)
+        return ok
+
+    # ── 1. STOCK-GL-COHER ──
+    if _check("STOCK-GL-COHER"):
+        ress, excs = controle_coherence_cycle(
+            projet_id, "STOCK-GL-COHER", rows_gl, rows_balance, PREFIXES_STOCK,
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 2. STOCK-SOLDE-ANORMAL ──
+    if _check("STOCK-SOLDE-ANORMAL"):
+        ress, excs = controle_soldes_anormaux(
+            projet_id, "STOCK-SOLDE-ANORMAL",
+            rows_pour_solde, PREFIXES_STOCK, sens_normal="debit",
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 3. STOCK-ROUND ──
+    if _check("STOCK-ROUND"):
+        res, exc = controle_montants_ronds(
+            projet_id, "STOCK-ROUND", rows_pour_mvt, PREFIXES_STOCK,
+        )
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 4. STOCK-CUT-OFF ──
+    if _check("STOCK-CUT-OFF"):
+        res, exc = controle_cut_off(
+            projet_id, "STOCK-CUT-OFF", rows_pour_mvt, PREFIXES_STOCK, exercice,
+        )
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 5. STOCK-VARIATION ──
+    if seuil > 0 and _check("STOCK-VARIATION"):
+        soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_STOCK)
+        if soldes_n:
+            plan_stk = db.get_or_create_planification(projet_id)
+            n1_id_stk = plan_stk.get("balance_n1_fichier_id")
+            if n1_id_stk:
+                donnees_n1_stk = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_stk)]
+                rows_n1_stk = _group_rows(donnees_n1_stk) if donnees_n1_stk else []
+                soldes_n1_stk = _aggreger_soldes_nets(rows_n1_stk, PREFIXES_STOCK)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_stk, seuil * ci_facteur, "STOCK-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("STOCK-VARIATION", "Balance N-1 non renseignée.")
+
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
+    for r in resultats_total:
+        db.save_resultat(r)
+    for e in exceptions_total:
+        db.save_exception(e)
+
+    db.log(projet_id, "transition_etat", {
+        "action": "controles_stocks",
+        "nb_resultats": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "nb_ignores": len(ignores),
+    })
+    _auto_interpreter(db, projet_id, projet, exceptions_total)
+
+    return {
+        "nb_controles": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "resultats": resultats_total,
+        "exceptions": db.list_exceptions(projet_id),
+        "controles_ignores": ignores,
+    }
+
+
+# ─── Cycle Paie / Personnel ───────────────────────────────────────────────────
+
+@router.post("/projets/{projet_id}/controles/paie")
+def run_controles_paie(projet_id: str, body: dict = {}):
+    """Lance les 5 contrôles déterministes du cycle paie/personnel."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+
+    cycles_couverts = projet.get("cycles_couverts") or []
+    if "paie" not in cycles_couverts:
+        return {"nb_controles": 0, "nb_exceptions": 0, "resultats": [],
+                "exceptions": [], "cycle_ignore": True,
+                "message": "Cycle paie/personnel non sélectionné au cadrage."}
+
+    donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve = \
+        _get_donnees_segmentees(db, projet_id)
+    if not donnees_all:
+        raise HTTPException(400, "Aucune donnée importée.")
+
+    seuil = float(projet.get("seuil_signification") or 0)
+    exercice = projet.get("exercice")
+    ci = _seuils_ci(db, projet_id, "paie")
+    ci_facteur = ci["facteur"]
+    resultats_total, exceptions_total, ignores = [], [], []
+
+    PREFIXES_CHARGES = ("64",)
+    PREFIXES_DETTES = ("42",)
+    PREFIXES_CYCLE = PREFIXES_CHARGES + PREFIXES_DETTES
+
+    rows_pour_solde = rows_balance if rows_balance else (rows_gl if rows_gl else [])
+    rows_pour_mvt = rows_gl if rows_gl else (rows_balance if rows_balance else [])
+
+    def _skip(ref: str, raison: str):
+        ignores.append({"controle_ref": ref, "raison": raison})
+
+    def _check(ref: str) -> bool:
+        ok, msg = _preconditions_check(ref, ids_gl, ids_balance, ids_releve)
+        if not ok:
+            _skip(ref, msg)
+        return ok
+
+    # ── 1. PAIE-GL-COHER ──
+    if _check("PAIE-GL-COHER"):
+        ress, excs = controle_coherence_cycle(
+            projet_id, "PAIE-GL-COHER", rows_gl, rows_balance, PREFIXES_CYCLE,
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 2. PAIE-SOLDE-ANORMAL ──
+    if _check("PAIE-SOLDE-ANORMAL"):
+        ress, excs = controle_soldes_anormaux(
+            projet_id, "PAIE-SOLDE-ANORMAL",
+            rows_pour_solde, PREFIXES_DETTES, sens_normal="credit",
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 3. PAIE-RATIO-SOCIAL ──
+    if _check("PAIE-RATIO-SOCIAL"):
+        res, exc = controle_ratio_charges_sociales(projet_id, rows_pour_mvt)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 4. PAIE-MENSUALITE ──
+    if _check("PAIE-MENSUALITE"):
+        res, exc = controle_mensualite_paie(projet_id, rows_pour_mvt, exercice)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 5. PAIE-VARIATION ──
+    if seuil > 0 and _check("PAIE-VARIATION"):
+        soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_CHARGES)
+        if soldes_n:
+            plan_paie = db.get_or_create_planification(projet_id)
+            n1_id_paie = plan_paie.get("balance_n1_fichier_id")
+            if n1_id_paie:
+                donnees_n1_paie = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_paie)]
+                rows_n1_paie = _group_rows(donnees_n1_paie) if donnees_n1_paie else []
+                soldes_n1_paie = _aggreger_soldes_nets(rows_n1_paie, PREFIXES_CHARGES)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_paie, seuil * ci_facteur, "PAIE-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("PAIE-VARIATION", "Balance N-1 non renseignée.")
+
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
+    for r in resultats_total:
+        db.save_resultat(r)
+    for e in exceptions_total:
+        db.save_exception(e)
+
+    db.log(projet_id, "transition_etat", {
+        "action": "controles_paie",
+        "nb_resultats": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "nb_ignores": len(ignores),
+    })
+    _auto_interpreter(db, projet_id, projet, exceptions_total)
+
+    return {
+        "nb_controles": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "resultats": resultats_total,
+        "exceptions": db.list_exceptions(projet_id),
+        "controles_ignores": ignores,
+    }
+
+
+# ─── Cycle Impôts / Taxes ─────────────────────────────────────────────────────
+
+@router.post("/projets/{projet_id}/controles/impots")
+def run_controles_impots(projet_id: str, body: dict = {}):
+    """Lance les 5 contrôles déterministes du cycle impôts/taxes."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+
+    cycles_couverts = projet.get("cycles_couverts") or []
+    if "impots" not in cycles_couverts:
+        return {"nb_controles": 0, "nb_exceptions": 0, "resultats": [],
+                "exceptions": [], "cycle_ignore": True,
+                "message": "Cycle impôts/taxes non sélectionné au cadrage."}
+
+    donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve = \
+        _get_donnees_segmentees(db, projet_id)
+    if not donnees_all:
+        raise HTTPException(400, "Aucune donnée importée.")
+
+    seuil = float(projet.get("seuil_signification") or 0)
+    exercice = projet.get("exercice")
+    ci = _seuils_ci(db, projet_id, "impots")
+    ci_facteur = ci["facteur"]
+    resultats_total, exceptions_total, ignores = [], [], []
+
+    PREFIXES_TVA = ("44",)
+    PREFIXES_CHARGES_FISC = ("63",)
+    PREFIXES_CYCLE = PREFIXES_TVA + PREFIXES_CHARGES_FISC
+
+    rows_pour_solde = rows_balance if rows_balance else (rows_gl if rows_gl else [])
+    rows_pour_mvt = rows_gl if rows_gl else (rows_balance if rows_balance else [])
+
+    def _skip(ref: str, raison: str):
+        ignores.append({"controle_ref": ref, "raison": raison})
+
+    def _check(ref: str) -> bool:
+        ok, msg = _preconditions_check(ref, ids_gl, ids_balance, ids_releve)
+        if not ok:
+            _skip(ref, msg)
+        return ok
+
+    # ── 1. TAXE-GL-COHER ──
+    if _check("TAXE-GL-COHER"):
+        ress, excs = controle_coherence_cycle(
+            projet_id, "TAXE-GL-COHER", rows_gl, rows_balance, PREFIXES_CYCLE,
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 2. TAXE-TVA-COHERENCE ──
+    if _check("TAXE-TVA-COHERENCE"):
+        res, exc = controle_tva_coherence(projet_id, rows_pour_solde)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 3. TAXE-SOLDE-ANORMAL : TVA collectée (4457x) doit être créditrice ──
+    if _check("TAXE-SOLDE-ANORMAL"):
+        ress, excs = controle_soldes_anormaux(
+            projet_id, "TAXE-SOLDE-ANORMAL",
+            rows_pour_solde, ("4457",), sens_normal="credit",
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 4. TAXE-CUT-OFF ──
+    if _check("TAXE-CUT-OFF"):
+        res, exc = controle_cut_off(
+            projet_id, "TAXE-CUT-OFF", rows_pour_mvt, PREFIXES_CHARGES_FISC, exercice,
+        )
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 5. TAXE-VARIATION ──
+    if seuil > 0 and _check("TAXE-VARIATION"):
+        soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_CHARGES_FISC)
+        if soldes_n:
+            plan_taxe = db.get_or_create_planification(projet_id)
+            n1_id_taxe = plan_taxe.get("balance_n1_fichier_id")
+            if n1_id_taxe:
+                donnees_n1_taxe = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_taxe)]
+                rows_n1_taxe = _group_rows(donnees_n1_taxe) if donnees_n1_taxe else []
+                soldes_n1_taxe = _aggreger_soldes_nets(rows_n1_taxe, PREFIXES_CHARGES_FISC)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_taxe, seuil * ci_facteur, "TAXE-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("TAXE-VARIATION", "Balance N-1 non renseignée.")
+
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
+    for r in resultats_total:
+        db.save_resultat(r)
+    for e in exceptions_total:
+        db.save_exception(e)
+
+    db.log(projet_id, "transition_etat", {
+        "action": "controles_impots",
+        "nb_resultats": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "nb_ignores": len(ignores),
+    })
+    _auto_interpreter(db, projet_id, projet, exceptions_total)
+
+    return {
+        "nb_controles": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "resultats": resultats_total,
+        "exceptions": db.list_exceptions(projet_id),
+        "controles_ignores": ignores,
+    }
+
+
+# ─── Cycle Capitaux propres et provisions ─────────────────────────────────────
+
+@router.post("/projets/{projet_id}/controles/capitaux-propres")
+def run_controles_capitaux_propres(projet_id: str, body: dict = {}):
+    """Lance les 5 contrôles déterministes du cycle capitaux propres et provisions."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+
+    cycles_couverts = projet.get("cycles_couverts") or []
+    if "capitaux_propres" not in cycles_couverts:
+        return {"nb_controles": 0, "nb_exceptions": 0, "resultats": [],
+                "exceptions": [], "cycle_ignore": True,
+                "message": "Cycle capitaux propres non sélectionné au cadrage."}
+
+    donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve = \
+        _get_donnees_segmentees(db, projet_id)
+    if not donnees_all:
+        raise HTTPException(400, "Aucune donnée importée.")
+
+    seuil = float(projet.get("seuil_signification") or 0)
+    ci = _seuils_ci(db, projet_id, "capitaux_propres")
+    ci_facteur = ci["facteur"]
+    resultats_total, exceptions_total, ignores = [], [], []
+
+    PREFIXES_CP = ("10", "11", "12", "13")
+    PREFIXES_PROV = ("15",)
+    PREFIXES_ALL = PREFIXES_CP + PREFIXES_PROV
+
+    rows_pour_solde = rows_balance if rows_balance else (rows_gl if rows_gl else [])
+    rows_pour_mvt = rows_gl if rows_gl else (rows_balance if rows_balance else [])
+
+    def _skip(ref: str, raison: str):
+        ignores.append({"controle_ref": ref, "raison": raison})
+
+    def _check(ref: str) -> bool:
+        ok, msg = _preconditions_check(ref, ids_gl, ids_balance, ids_releve)
+        if not ok:
+            _skip(ref, msg)
+        return ok
+
+    # ── 1. CP-GL-COHER ──
+    if _check("CP-GL-COHER"):
+        ress, excs = controle_coherence_cycle(
+            projet_id, "CP-GL-COHER", rows_gl, rows_balance, PREFIXES_ALL,
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 2. CP-RESULTAT-COHERENCE ──
+    if _check("CP-RESULTAT-COHERENCE"):
+        res, exc = controle_coherence_resultat(projet_id, rows_pour_solde)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 3. CP-SOLDE-ANORMAL : capitaux propres (10x-13x) doivent être créditeurs ──
+    if _check("CP-SOLDE-ANORMAL"):
+        ress, excs = controle_soldes_anormaux(
+            projet_id, "CP-SOLDE-ANORMAL",
+            rows_pour_solde, PREFIXES_CP, sens_normal="credit",
+        )
+        resultats_total.extend(ress)
+        exceptions_total.extend(excs)
+
+    # ── 4. CP-PROVISION-MOUVEMENT ──
+    if _check("CP-PROVISION-MOUVEMENT"):
+        res, exc = controle_mouvement_provisions(projet_id, rows_pour_mvt)
+        resultats_total.append(res)
+        if exc:
+            exceptions_total.append(exc)
+
+    # ── 5. CP-VARIATION ──
+    if seuil > 0 and _check("CP-VARIATION"):
+        soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_CP)
+        if soldes_n:
+            plan_cp = db.get_or_create_planification(projet_id)
+            n1_id_cp = plan_cp.get("balance_n1_fichier_id")
+            if n1_id_cp:
+                donnees_n1_cp = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id_cp)]
+                rows_n1_cp = _group_rows(donnees_n1_cp) if donnees_n1_cp else []
+                soldes_n1_cp = _aggreger_soldes_nets(rows_n1_cp, PREFIXES_CP)
+                ress, excs = controle_variations(
+                    projet_id, soldes_n, soldes_n1_cp, seuil * ci_facteur, "CP-VARIATION",
+                )
+                resultats_total.extend(ress)
+                exceptions_total.extend(excs)
+            else:
+                _skip("CP-VARIATION", "Balance N-1 non renseignée.")
+
+    _resoudre_fichiers_sources(exceptions_total, donnees_all)
+    for r in resultats_total:
+        db.save_resultat(r)
+    for e in exceptions_total:
+        db.save_exception(e)
+
+    db.log(projet_id, "transition_etat", {
+        "action": "controles_capitaux_propres",
+        "nb_resultats": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "nb_ignores": len(ignores),
+    })
+    _auto_interpreter(db, projet_id, projet, exceptions_total)
+
+    return {
+        "nb_controles": len(resultats_total),
+        "nb_exceptions": len(exceptions_total),
+        "resultats": resultats_total,
+        "exceptions": db.list_exceptions(projet_id),
         "controles_ignores": ignores,
     }
 
@@ -1448,15 +2108,12 @@ def trancher_exception(projet_id: str, exception_id: str, body: TrancheeBody):
 def interpreter_exception(projet_id: str, exception_id: str):
     """(Re)lance l'interprétation IA d'une exception."""
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    projet, anon = _llm_guard(db, projet_id)
 
     exc = db.get_exception(exception_id)
     if not exc:
         raise HTTPException(404, "Exception introuvable.")
 
-    anon = Anonymizer()
     entites_sensibles = [v for v in [projet.get("client"), projet.get("nif")] if v]
     exc_anon = anon.pseudonymiser_dict(exc, ["description"], entites_sensibles)
     ctx = {"exercice": projet.get("exercice"), "seuil": projet.get("seuil_signification")}
@@ -1481,9 +2138,7 @@ def interpreter_exception(projet_id: str, exception_id: str):
 @router.post("/projets/{projet_id}/generer-feuille")
 def generer_feuille(projet_id: str, body: dict = {}):
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    projet, _ = _llm_guard(db, projet_id)
     if db.has_open_exceptions(projet_id):
         raise HTTPException(400, "Exceptions ouvertes non tranchées.")
 
@@ -1646,8 +2301,7 @@ async def cataloguer_document_brut(projet_id: str, doc_id: str):
     doc = db.get_document_brut(doc_id)
     if not doc or doc["projet_id"] != projet_id:
         raise HTTPException(404, "Document introuvable.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     chemin = DATA_DIR / doc["chemin_relatif"]
     if not chemin.exists():
@@ -1683,10 +2337,7 @@ async def cataloguer_document_brut(projet_id: str, doc_id: str):
 async def cataloguer_tous_documents_bruts(projet_id: str):
     """Haiku — catalogue tous les documents en statut 'uploade'."""
     db = _get_db(projet_id)
-    if not db.get_projet(projet_id):
-        raise HTTPException(404, "Projet introuvable.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     docs = [d for d in db.list_documents_bruts(projet_id) if d["statut"] == "uploade"]
     if not docs:
@@ -1738,8 +2389,7 @@ async def extraire_document_brut(projet_id: str, doc_id: str):
         raise HTTPException(404, "Document introuvable.")
     if doc["statut"] not in ("catalogue", "extrait"):
         raise HTTPException(400, "Cataloguez ce document avant d'extraire.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     chemin = DATA_DIR / doc["chemin_relatif"]
     if not chemin.exists():
@@ -1781,10 +2431,7 @@ async def extraire_document_brut(projet_id: str, doc_id: str):
 async def extraire_tous_documents_bruts(projet_id: str):
     """Sonnet — extrait tous les documents en statut 'catalogue'."""
     db = _get_db(projet_id)
-    if not db.get_projet(projet_id):
-        raise HTTPException(404, "Projet introuvable.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     docs = [d for d in db.list_documents_bruts(projet_id)
             if d["statut"] in ("catalogue",)]
@@ -1839,8 +2486,7 @@ async def verifier_document_brut(projet_id: str, doc_id: str):
         raise HTTPException(404, "Document introuvable.")
     if doc["statut"] not in ("extrait", "verifie"):
         raise HTTPException(400, "Extrayez d'abord ce document avant de le vérifier.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     extraction = doc.get("extraction_json")
     if not extraction or not extraction.get("lignes"):
@@ -1889,10 +2535,7 @@ async def verifier_document_brut(projet_id: str, doc_id: str):
 async def verifier_tous_documents_bruts(projet_id: str):
     """Sonnet — vérifie tous les documents en statut 'extrait'."""
     db = _get_db(projet_id)
-    if not db.get_projet(projet_id):
-        raise HTTPException(404, "Projet introuvable.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Clé API non configurée.")
+    _llm_guard(db, projet_id)
 
     docs = [d for d in db.list_documents_bruts(projet_id) if d["statut"] == "extrait"]
     if not docs:
@@ -2464,9 +3107,7 @@ def interpreter_variations(projet_id: str):
     """Sonnet interprète les variations analytiques significatives (PLA-03)."""
     from ..llm.claude import ClaudeClient
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    projet, anon_var = _llm_guard(db, projet_id)
     plan = db.get_or_create_planification(projet_id)
     variations = plan.get("variations_json") or []
     if not variations:
@@ -2476,9 +3117,10 @@ def interpreter_variations(projet_id: str):
     fiche = {k: plan.get(k) for k in (
         "forme_juridique", "activites_principales", "marches_principaux", "systeme_information"
     )}
+    entites_var = [v for v in [projet.get("client"), projet.get("nif")] if v]
     contexte = {
         "exercice": projet.get("exercice"),
-        "client": projet.get("client"),
+        "client": anon_var.pseudonymiser(projet.get("client") or "", entites_var) if entites_var else projet.get("client"),
         "seuil_signification": projet.get("seuil_signification"),
     }
 
@@ -2571,9 +3213,7 @@ def proposer_risques(projet_id: str):
     """Sonnet propose une cartographie de risques depuis la fiche entité + variations (PLA-06 + PLA-07)."""
     from ..llm.claude import ClaudeClient
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    projet, _ = _llm_guard(db, projet_id)
     plan = db.get_or_create_planification(projet_id)
     fiche = {k: plan.get(k) for k in (
         "forme_juridique", "date_creation_entreprise", "activites_principales",
@@ -2644,6 +3284,7 @@ def reformuler_risque(projet_id: str, risque_id: str):
     """Haiku reformule un risque manuel pour l'homogénéiser avec les risques IA."""
     from ..llm.claude import ClaudeClient
     db = _get_db(projet_id)
+    _llm_guard(db, projet_id)
     risque = db.get_risque(risque_id)
     if not risque:
         raise HTTPException(404, "Risque introuvable.")
@@ -2686,9 +3327,7 @@ def generer_programme(projet_id: str):
     from ..llm.claude import ClaudeClient
     from ..controls.registry import REGISTRE
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    projet, _ = _llm_guard(db, projet_id)
 
     risques_valides = [r for r in db.list_risques(projet_id) if r.get("valide_auditeur")]
     if not risques_valides:
@@ -2756,9 +3395,7 @@ def generer_synthese(projet_id: str):
     """Sonnet génère la note de synthèse de planification qui justifie le programme de travail."""
     from ..llm.claude import ClaudeClient
     db = _get_db(projet_id)
-    projet = db.get_projet(projet_id)
-    if not projet:
-        raise HTTPException(404, "Projet introuvable.")
+    projet, _ = _llm_guard(db, projet_id)
 
     plan = db.get_or_create_planification(projet_id)
     risques_valides = [r for r in db.list_risques(projet_id) if r.get("valide_auditeur")]
@@ -2823,3 +3460,302 @@ def telecharger_note_planification(projet_id: str):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         filename=filename,
     )
+
+
+# ─── Circularisation (NEP 505) ────────────────────────────────────────────────
+
+class CircularisationBody(BaseModel):
+    cycle: str
+    compte: str
+    libelle: str | None = None
+    solde_comptable: float | None = None
+    sources: list[str] = []
+    type_circularisation: str = "client"
+
+
+@router.get("/projets/{projet_id}/circularisation")
+def list_circularisations(projet_id: str, cycle: str | None = None):
+    db = _get_db(projet_id)
+    items = db.list_circularisations(projet_id, cycle)
+    return {"circularisations": items}
+
+
+@router.post("/projets/{projet_id}/circularisation/proposer")
+def proposer_tiers_circularisation(projet_id: str, body: dict):
+    """Propose les N tiers à circulariser pour un cycle donné."""
+    from ..controls.circularisation import proposer_tiers
+    cycle = body.get("cycle", "ventes")
+    n = int(body.get("n", 10))
+    prefixes = body.get("prefixes") or _cycle_prefixes(cycle)
+    db = _get_db(projet_id)
+    donnees_raw = db.get_donnees_by_projet(projet_id)
+    donnees = [_to_donnee(d) for d in donnees_raw]
+    rows = _group_rows(donnees) if donnees else []
+    tiers = proposer_tiers(rows, prefixes, n)
+    return {"tiers": tiers}
+
+
+@router.post("/projets/{projet_id}/circularisation")
+def create_circularisation(projet_id: str, body: CircularisationBody):
+    db = _get_db(projet_id)
+    data = body.model_dump()
+    data["projet_id"] = projet_id
+    data["statut"] = "propose"
+    item = db.save_circularisation(data)
+    db.log(projet_id, "action_humaine", {"action": "creer_circularisation", "id": item["id"]})
+    return {"circularisation": item}
+
+
+@router.patch("/projets/{projet_id}/circularisation/{circ_id}")
+def update_circularisation(projet_id: str, circ_id: str, body: dict):
+    db = _get_db(projet_id)
+    item = db.update_circularisation(circ_id, body)
+    if not item:
+        raise HTTPException(404, "Circularisation introuvable.")
+    db.log(projet_id, "action_humaine", {"action": "maj_circularisation", "id": circ_id,
+                                          "statut": body.get("statut")})
+    return {"circularisation": item}
+
+
+@router.delete("/projets/{projet_id}/circularisation/{circ_id}")
+def delete_circularisation(projet_id: str, circ_id: str):
+    db = _get_db(projet_id)
+    db.delete_circularisation(circ_id)
+    db.log(projet_id, "action_humaine", {"action": "supprimer_circularisation", "id": circ_id})
+    return {"deleted": True}
+
+
+@router.post("/projets/{projet_id}/circularisation/{circ_id}/generer-lettre")
+def generer_lettre_circularisation(projet_id: str, circ_id: str):
+    db = _get_db(projet_id)
+    projet, _ = _llm_guard(db, projet_id)
+    circ = db.get_circularisation(circ_id)
+    if not circ:
+        raise HTTPException(404, "Circularisation introuvable.")
+    from ..llm.claude import ClaudeClient
+    ctx = {"exercice": projet.get("exercice"), "seuil_signification": projet.get("seuil_signification")}
+    try:
+        llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+        lettre = llm.generer_lettre_circularisation(
+            tiers={**circ, "solde_comptable": circ.get("solde_comptable")},
+            contexte_projet=ctx,
+            type_circularisation=circ.get("type_circularisation", "client"),
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Erreur LLM : {e}")
+    item = db.update_circularisation(circ_id, {
+        "lettre_ia": json.dumps(lettre, ensure_ascii=False),
+        "statut": "envoye",
+    })
+    db.log(projet_id, "appel_llm", {"action": "generer_lettre_circularisation", "id": circ_id})
+    return {"circularisation": item, "lettre": lettre}
+
+
+@router.post("/projets/{projet_id}/circularisation/{circ_id}/enregistrer-reponse")
+def enregistrer_reponse_circularisation(projet_id: str, circ_id: str, body: dict):
+    """Enregistre le solde confirmé par le tiers et calcule l'écart (Python)."""
+    from ..controls.circularisation import calculer_ecart
+    db = _get_db(projet_id)
+    circ = db.get_circularisation(circ_id)
+    if not circ:
+        raise HTTPException(404, "Circularisation introuvable.")
+    solde_confirme = float(body.get("solde_confirme", 0.0))
+    solde_comptable = float(circ.get("solde_comptable") or 0.0)
+    ecart_data = calculer_ecart(solde_comptable, solde_confirme)
+    item = db.update_circularisation(circ_id, {
+        "solde_confirme": solde_confirme,
+        "reponse_brute": body.get("reponse_brute", ""),
+        "date_reponse": body.get("date_reponse") or _now(),
+        "statut": "reponse_recue",
+        **ecart_data,
+    })
+    db.log(projet_id, "action_humaine", {"action": "enregistrer_reponse_circularisation",
+                                          "id": circ_id, "ecart": ecart_data["ecart"]})
+    return {"circularisation": item, "ecart": ecart_data}
+
+
+@router.post("/projets/{projet_id}/circularisation/{circ_id}/analyser")
+def analyser_reponse_circularisation(projet_id: str, circ_id: str):
+    db = _get_db(projet_id)
+    projet, _ = _llm_guard(db, projet_id)
+    circ = db.get_circularisation(circ_id)
+    if not circ:
+        raise HTTPException(404, "Circularisation introuvable.")
+    if circ.get("statut") not in ("reponse_recue", "clos"):
+        raise HTTPException(400, "Enregistrez d'abord la réponse du tiers.")
+    from ..controls.circularisation import calculer_ecart
+    from ..llm.claude import ClaudeClient
+    ecart_data = calculer_ecart(
+        float(circ.get("solde_comptable") or 0.0),
+        float(circ.get("solde_confirme") or 0.0),
+    )
+    ctx = {"exercice": projet.get("exercice"), "seuil_signification": projet.get("seuil_signification")}
+    try:
+        llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+        analyse = llm.analyser_reponse_circularisation(
+            tiers=circ, ecart=ecart_data,
+            reponse_brute=circ.get("reponse_brute") or "",
+            contexte_projet=ctx,
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Erreur LLM : {e}")
+    item = db.update_circularisation(circ_id, {
+        "analyse_ia": json.dumps(analyse, ensure_ascii=False),
+        "statut": "clos",
+    })
+    db.log(projet_id, "appel_llm", {"action": "analyser_reponse_circularisation", "id": circ_id})
+    return {"circularisation": item, "analyse": analyse}
+
+
+# ─── Sondages sur pièces (NEP 530) ───────────────────────────────────────────
+
+def _cycle_prefixes(cycle: str) -> list[str]:
+    """Retourne les préfixes de compte standard pour un cycle."""
+    _MAP = {
+        "tresorerie": ["51", "52", "53", "54", "58"],
+        "achats": ["40", "60", "61", "62"],
+        "ventes": ["41", "70", "71", "72"],
+        "immobilisations": ["20", "21", "22", "23", "28"],
+        "stocks": ["31", "32", "33", "34", "35", "37", "38"],
+        "paie": ["42", "43", "64"],
+        "impots": ["44", "63"],
+        "capitaux_propres": ["10", "11", "12", "13", "14", "15", "16"],
+    }
+    return _MAP.get(cycle, [])
+
+
+class SondageCreateBody(BaseModel):
+    cycle: str
+    libelle: str
+    prefixes: list[str] = []
+    taux_erreur_tolere: float = 0.05
+    niveau_confiance: int = 95
+
+
+@router.get("/projets/{projet_id}/sondages")
+def list_sondages(projet_id: str, cycle: str | None = None):
+    db = _get_db(projet_id)
+    items = db.list_sondages(projet_id, cycle)
+    for s in items:
+        s["elements"] = db.list_sondage_elements(s["id"])
+    return {"sondages": items}
+
+
+@router.post("/projets/{projet_id}/sondages")
+def create_sondage(projet_id: str, body: SondageCreateBody):
+    """Crée un sondage et calcule la taille d'échantillon recommandée (Python)."""
+    from ..controls.sondages import calculer_taille_echantillon
+    db = _get_db(projet_id)
+    prefixes = body.prefixes or _cycle_prefixes(body.cycle)
+    donnees_raw = db.get_donnees_by_projet(projet_id)
+    donnees = [_to_donnee(d) for d in donnees_raw]
+    rows = _group_rows(donnees) if donnees else []
+    population_rows = _filter_accounts(rows, tuple(prefixes)) if prefixes else rows
+    population = len(population_rows)
+    montant_population = sum(
+        abs(_get_amount(r, "solde") or (_get_amount(r, "debit") - _get_amount(r, "credit")))
+        for r in population_rows
+    )
+    calcul = calculer_taille_echantillon(population, body.taux_erreur_tolere, body.niveau_confiance)
+    import time
+    seed = int(time.time()) % 1000000
+    data = {
+        "projet_id": projet_id,
+        "cycle": body.cycle,
+        "libelle": body.libelle,
+        "prefixes": prefixes,
+        "population": population,
+        "taille_echantillon": calcul["taille_recommandee"],
+        "taux_erreur_tolere": body.taux_erreur_tolere,
+        "niveau_confiance": body.niveau_confiance,
+        "montant_population": round(montant_population, 2),
+        "seed": seed,
+        "statut": "en_cours",
+    }
+    sondage = db.save_sondage(data)
+    db.log(projet_id, "action_humaine", {"action": "creer_sondage", "id": sondage["id"],
+                                          "population": population, "taille": calcul["taille_recommandee"]})
+    return {"sondage": sondage, "calcul": calcul}
+
+
+@router.post("/projets/{projet_id}/sondages/{sondage_id}/selectionner")
+def selectionner_echantillon(projet_id: str, sondage_id: str, body: dict | None = None):
+    """Sélectionne l'échantillon (Python pur — déterministe par seed)."""
+    from ..controls.sondages import selectionner_echantillon as _selectionner
+    db = _get_db(projet_id)
+    sondage = db.get_sondage(sondage_id)
+    if not sondage:
+        raise HTTPException(404, "Sondage introuvable.")
+    prefixes = sondage.get("prefixes") or []
+    n = int(sondage.get("taille_echantillon") or 10)
+    seed = sondage.get("seed")
+    if body and body.get("taille_echantillon"):
+        n = int(body["taille_echantillon"])
+        db.update_sondage(sondage_id, {"taille_echantillon": n})
+    donnees_raw = db.get_donnees_by_projet(projet_id)
+    donnees = [_to_donnee(d) for d in donnees_raw]
+    rows = _group_rows(donnees) if donnees else []
+    elements = _selectionner(rows, prefixes, n, seed)
+    db.delete_sondage_elements(sondage_id)
+    for elt in elements:
+        db.save_sondage_element({**elt, "sondage_id": sondage_id, "projet_id": projet_id})
+    saved = db.list_sondage_elements(sondage_id)
+    db.log(projet_id, "action_humaine", {"action": "selectionner_echantillon",
+                                          "sondage_id": sondage_id, "n": len(saved)})
+    return {"elements": saved, "sondage": db.get_sondage(sondage_id)}
+
+
+@router.patch("/projets/{projet_id}/sondages/{sondage_id}/elements/{element_id}")
+def update_sondage_element(projet_id: str, sondage_id: str, element_id: str, body: dict):
+    """Marque un élément comme anomalie ou non — les stats sont recalculées côté Python."""
+    db = _get_db(projet_id)
+    elt = db.update_sondage_element(element_id, body)
+    if not elt:
+        raise HTTPException(404, "Élément introuvable.")
+    sondage = db.recalculer_sondage_stats(sondage_id)
+    db.log(projet_id, "action_humaine", {"action": "maj_element_sondage", "element_id": element_id,
+                                          "est_anomalie": body.get("est_anomalie")})
+    return {"element": elt, "sondage": sondage}
+
+
+@router.post("/projets/{projet_id}/sondages/{sondage_id}/conclure")
+def conclure_sondage(projet_id: str, sondage_id: str):
+    """Calcule la projection d'erreur (Python) et demande la conclusion à l'IA."""
+    from ..controls.sondages import projeter_erreur
+    db = _get_db(projet_id)
+    projet, _ = _llm_guard(db, projet_id)
+    sondage = db.get_sondage(sondage_id)
+    if not sondage:
+        raise HTTPException(404, "Sondage introuvable.")
+    elements = db.list_sondage_elements(sondage_id)
+    nb = int(sondage.get("nb_anomalies") or 0)
+    montant_anomalies = float(sondage.get("montant_anomalies") or 0.0)
+    taille = int(sondage.get("taille_echantillon") or len(elements))
+    montant_pop = float(sondage.get("montant_population") or 0.0)
+    projection = projeter_erreur(nb, montant_anomalies, montant_pop, taille)
+    db.update_sondage(sondage_id, {
+        "taux_anomalie": projection["taux_anomalie"],
+        "montant_projete": projection["montant_projete_population"],
+    })
+    from ..llm.claude import ClaudeClient
+    ctx = {"exercice": projet.get("exercice"), "seuil_signification": projet.get("seuil_signification")}
+    anomalies = [e for e in elements if e.get("est_anomalie")]
+    try:
+        llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+        conclusion = llm.conclure_sondage(sondage, projection, anomalies, ctx)
+    except Exception as e:
+        raise HTTPException(500, f"Erreur LLM : {e}")
+    sondage = db.update_sondage(sondage_id, {
+        "conclusion_ia": json.dumps(conclusion, ensure_ascii=False),
+        "statut": "conclu",
+    })
+    db.log(projet_id, "appel_llm", {"action": "conclure_sondage", "id": sondage_id})
+    return {"sondage": sondage, "projection": projection, "conclusion": conclusion}
+
+
+@router.delete("/projets/{projet_id}/sondages/{sondage_id}")
+def delete_sondage(projet_id: str, sondage_id: str):
+    db = _get_db(projet_id)
+    db.delete_sondage(sondage_id)
+    db.log(projet_id, "action_humaine", {"action": "supprimer_sondage", "id": sondage_id})
+    return {"deleted": True}

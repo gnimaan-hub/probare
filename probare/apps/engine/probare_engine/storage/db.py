@@ -239,6 +239,67 @@ class ProjectDB:
             evalue_le TEXT,
             UNIQUE(projet_id, cycle)
         );
+
+        CREATE TABLE IF NOT EXISTS circularisation (
+            id TEXT PRIMARY KEY,
+            projet_id TEXT NOT NULL REFERENCES projet(id),
+            cycle TEXT NOT NULL,
+            compte TEXT NOT NULL,
+            libelle TEXT,
+            solde_comptable REAL,
+            sources TEXT,
+            statut TEXT CHECK(statut IN ('propose','envoye','reponse_recue','sans_reponse','clos')) DEFAULT 'propose',
+            lettre_ia TEXT,
+            solde_confirme REAL,
+            ecart REAL,
+            ecart_pct REAL,
+            est_significatif INTEGER DEFAULT 0,
+            reponse_brute TEXT,
+            analyse_ia TEXT,
+            date_envoi TEXT,
+            date_relance TEXT,
+            date_reponse TEXT,
+            cree_le TEXT,
+            modifie_le TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS sondage (
+            id TEXT PRIMARY KEY,
+            projet_id TEXT NOT NULL REFERENCES projet(id),
+            cycle TEXT NOT NULL,
+            libelle TEXT,
+            prefixes TEXT,
+            population INTEGER,
+            taille_echantillon INTEGER,
+            taux_erreur_tolere REAL DEFAULT 0.05,
+            niveau_confiance INTEGER DEFAULT 95,
+            montant_population REAL,
+            seed INTEGER,
+            nb_anomalies INTEGER DEFAULT 0,
+            montant_anomalies REAL DEFAULT 0.0,
+            taux_anomalie REAL,
+            montant_projete REAL,
+            conclusion_ia TEXT,
+            statut TEXT CHECK(statut IN ('en_cours','conclu')) DEFAULT 'en_cours',
+            cree_le TEXT,
+            modifie_le TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS sondage_element (
+            id TEXT PRIMARY KEY,
+            sondage_id TEXT NOT NULL REFERENCES sondage(id),
+            projet_id TEXT NOT NULL,
+            index_original INTEGER,
+            compte TEXT,
+            libelle TEXT,
+            montant REAL,
+            numero_piece TEXT,
+            date_piece TEXT,
+            sources TEXT,
+            est_anomalie INTEGER DEFAULT 0,
+            montant_anomalie REAL DEFAULT 0.0,
+            commentaire TEXT
+        );
         """)
         self.conn.commit()
 
@@ -273,6 +334,9 @@ class ProjectDB:
             ("fichier_source", "correspond_a", "TEXT"),
             ("fichier_source", "statut_checklist", "TEXT"),
             ("fichier_source", "onglet", "TEXT"),
+            ("exception", "fichiers_sources", "TEXT"),
+            ("circularisation", "date_relance", "TEXT"),
+            ("sondage", "seed", "INTEGER"),
         ]
         for table, col, typedef in migrations:
             try:
@@ -282,7 +346,7 @@ class ProjectDB:
                 pass  # colonne déjà présente
 
     def _deserialize_exception(self, d: dict) -> dict:
-        for field in ("hypotheses", "diligences"):
+        for field in ("hypotheses", "diligences", "fichiers_sources"):
             val = d.get(field)
             if val and isinstance(val, str):
                 try:
@@ -297,7 +361,7 @@ class ProjectDB:
 
     def create_projet(self, data: dict) -> dict:
         now = _now()
-        cycles = data.get("cycles_couverts", [])
+        cycles = data.get("cycles_couverts") or ["tresorerie", "achats", "ventes"]
         self.conn.execute(
             """INSERT INTO projet (id,nom,client,nif,exercice,seuil_signification,
                seuil_planification,consentement_client,consentement_horodatage,
@@ -650,12 +714,14 @@ class ProjectDB:
     def save_exception(self, data: dict) -> dict:
         hyp = data.get("hypotheses")
         dil = data.get("diligences")
+        fich = data.get("fichiers_sources")
         self.conn.execute(
             """INSERT OR REPLACE INTO exception
                (id,projet_id,controle_ref,nep_ref,severite,description,
                 statut,decision_humaine,decideur,interpretation_llm,
-                hypotheses,diligences,decision_proposee,urgence,ia_analysee,horodatage)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                hypotheses,diligences,decision_proposee,urgence,ia_analysee,
+                fichiers_sources,horodatage)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (data["id"], data["projet_id"], data.get("controle_ref"),
              data.get("nep_ref"), data.get("severite"),
              data.get("description"), data.get("statut", "ouverte"),
@@ -666,6 +732,7 @@ class ProjectDB:
              data.get("decision_proposee"),
              data.get("urgence"),
              int(data.get("ia_analysee", 0)),
+             json.dumps(fich) if isinstance(fich, list) else fich,
              data.get("horodatage", _now()))
         )
         self.conn.commit()
@@ -922,6 +989,239 @@ class ProjectDB:
     def delete_programme_item(self, item_id: str) -> None:
         self.conn.execute("DELETE FROM programme_travail_item WHERE id=?", (item_id,))
         self.conn.commit()
+
+    # --- Circularisation ---
+
+    def _deserialize_circularisation(self, d: dict) -> dict:
+        for field in ("sources",):
+            val = d.get(field)
+            if val and isinstance(val, str):
+                try:
+                    d[field] = json.loads(val)
+                except Exception:
+                    d[field] = []
+            elif not val:
+                d[field] = []
+        return d
+
+    def save_circularisation(self, data: dict) -> dict:
+        now = _now()
+        data.setdefault("id", str(__import__("uuid").uuid4()))
+        data.setdefault("cree_le", now)
+        data["modifie_le"] = now
+        sources = data.get("sources", [])
+        if isinstance(sources, list):
+            data["sources"] = json.dumps(sources)
+        self.conn.execute(
+            """INSERT OR REPLACE INTO circularisation
+            (id, projet_id, cycle, compte, libelle, solde_comptable, sources, statut,
+             lettre_ia, solde_confirme, ecart, ecart_pct, est_significatif, reponse_brute,
+             analyse_ia, date_envoi, date_relance, date_reponse, cree_le, modifie_le)
+            VALUES (:id,:projet_id,:cycle,:compte,:libelle,:solde_comptable,:sources,:statut,
+             :lettre_ia,:solde_confirme,:ecart,:ecart_pct,:est_significatif,:reponse_brute,
+             :analyse_ia,:date_envoi,:date_relance,:date_reponse,:cree_le,:modifie_le)""",
+            {k: data.get(k) for k in (
+                "id","projet_id","cycle","compte","libelle","solde_comptable","sources","statut",
+                "lettre_ia","solde_confirme","ecart","ecart_pct","est_significatif","reponse_brute",
+                "analyse_ia","date_envoi","date_relance","date_reponse","cree_le","modifie_le"
+            )}
+        )
+        self.conn.commit()
+        return self.get_circularisation(data["id"])
+
+    def get_circularisation(self, circ_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM circularisation WHERE id=?", (circ_id,)
+        ).fetchone()
+        if not row:
+            return None
+        return self._deserialize_circularisation(dict(row))
+
+    def list_circularisations(self, projet_id: str, cycle: str | None = None) -> list[dict]:
+        if cycle:
+            rows = self.conn.execute(
+                "SELECT * FROM circularisation WHERE projet_id=? AND cycle=? ORDER BY cree_le",
+                (projet_id, cycle)
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM circularisation WHERE projet_id=? ORDER BY cycle, cree_le",
+                (projet_id,)
+            ).fetchall()
+        return [self._deserialize_circularisation(dict(r)) for r in rows]
+
+    def update_circularisation(self, circ_id: str, data: dict) -> dict | None:
+        allowed = {
+            "statut","lettre_ia","solde_confirme","ecart","ecart_pct","est_significatif",
+            "reponse_brute","analyse_ia","date_envoi","date_relance","date_reponse","libelle"
+        }
+        fields = {k: v for k, v in data.items() if k in allowed}
+        fields["modifie_le"] = _now()
+        set_clause = ", ".join(f"{k}=?" for k in fields)
+        self.conn.execute(
+            f"UPDATE circularisation SET {set_clause} WHERE id=?",
+            list(fields.values()) + [circ_id]
+        )
+        self.conn.commit()
+        return self.get_circularisation(circ_id)
+
+    def delete_circularisation(self, circ_id: str) -> None:
+        self.conn.execute("DELETE FROM circularisation WHERE id=?", (circ_id,))
+        self.conn.commit()
+
+    # --- Sondages ---
+
+    def _deserialize_sondage(self, d: dict) -> dict:
+        for field in ("prefixes",):
+            val = d.get(field)
+            if val and isinstance(val, str):
+                try:
+                    d[field] = json.loads(val)
+                except Exception:
+                    d[field] = []
+            elif not val:
+                d[field] = []
+        return d
+
+    def _deserialize_sondage_element(self, d: dict) -> dict:
+        for field in ("sources",):
+            val = d.get(field)
+            if val and isinstance(val, str):
+                try:
+                    d[field] = json.loads(val)
+                except Exception:
+                    d[field] = []
+            elif not val:
+                d[field] = []
+        return d
+
+    def save_sondage(self, data: dict) -> dict:
+        now = _now()
+        data.setdefault("id", str(__import__("uuid").uuid4()))
+        data.setdefault("cree_le", now)
+        data["modifie_le"] = now
+        prefixes = data.get("prefixes", [])
+        if isinstance(prefixes, list):
+            data["prefixes"] = json.dumps(prefixes)
+        self.conn.execute(
+            """INSERT OR REPLACE INTO sondage
+            (id, projet_id, cycle, libelle, prefixes, population, taille_echantillon,
+             taux_erreur_tolere, niveau_confiance, montant_population, seed,
+             nb_anomalies, montant_anomalies, taux_anomalie, montant_projete,
+             conclusion_ia, statut, cree_le, modifie_le)
+            VALUES (:id,:projet_id,:cycle,:libelle,:prefixes,:population,:taille_echantillon,
+             :taux_erreur_tolere,:niveau_confiance,:montant_population,:seed,
+             :nb_anomalies,:montant_anomalies,:taux_anomalie,:montant_projete,
+             :conclusion_ia,:statut,:cree_le,:modifie_le)""",
+            {k: data.get(k) for k in (
+                "id","projet_id","cycle","libelle","prefixes","population","taille_echantillon",
+                "taux_erreur_tolere","niveau_confiance","montant_population","seed",
+                "nb_anomalies","montant_anomalies","taux_anomalie","montant_projete",
+                "conclusion_ia","statut","cree_le","modifie_le"
+            )}
+        )
+        self.conn.commit()
+        return self.get_sondage(data["id"])
+
+    def get_sondage(self, sondage_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM sondage WHERE id=?", (sondage_id,)
+        ).fetchone()
+        if not row:
+            return None
+        return self._deserialize_sondage(dict(row))
+
+    def list_sondages(self, projet_id: str, cycle: str | None = None) -> list[dict]:
+        if cycle:
+            rows = self.conn.execute(
+                "SELECT * FROM sondage WHERE projet_id=? AND cycle=? ORDER BY cree_le",
+                (projet_id, cycle)
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM sondage WHERE projet_id=? ORDER BY cycle, cree_le",
+                (projet_id,)
+            ).fetchall()
+        return [self._deserialize_sondage(dict(r)) for r in rows]
+
+    def update_sondage(self, sondage_id: str, data: dict) -> dict | None:
+        allowed = {
+            "nb_anomalies","montant_anomalies","taux_anomalie","montant_projete",
+            "conclusion_ia","statut","libelle","taille_echantillon","population","montant_population"
+        }
+        fields = {k: v for k, v in data.items() if k in allowed}
+        fields["modifie_le"] = _now()
+        set_clause = ", ".join(f"{k}=?" for k in fields)
+        self.conn.execute(
+            f"UPDATE sondage SET {set_clause} WHERE id=?",
+            list(fields.values()) + [sondage_id]
+        )
+        self.conn.commit()
+        return self.get_sondage(sondage_id)
+
+    def delete_sondage(self, sondage_id: str) -> None:
+        self.conn.execute("DELETE FROM sondage_element WHERE sondage_id=?", (sondage_id,))
+        self.conn.execute("DELETE FROM sondage WHERE id=?", (sondage_id,))
+        self.conn.commit()
+
+    def save_sondage_element(self, data: dict) -> dict:
+        data.setdefault("id", str(__import__("uuid").uuid4()))
+        sources = data.get("sources", [])
+        if isinstance(sources, list):
+            data["sources"] = json.dumps(sources)
+        self.conn.execute(
+            """INSERT OR REPLACE INTO sondage_element
+            (id, sondage_id, projet_id, index_original, compte, libelle, montant,
+             numero_piece, date_piece, sources, est_anomalie, montant_anomalie, commentaire)
+            VALUES (:id,:sondage_id,:projet_id,:index_original,:compte,:libelle,:montant,
+             :numero_piece,:date_piece,:sources,:est_anomalie,:montant_anomalie,:commentaire)""",
+            {k: data.get(k) for k in (
+                "id","sondage_id","projet_id","index_original","compte","libelle","montant",
+                "numero_piece","date_piece","sources","est_anomalie","montant_anomalie","commentaire"
+            )}
+        )
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT * FROM sondage_element WHERE id=?", (data["id"],)
+        ).fetchone()
+        return self._deserialize_sondage_element(dict(row)) if row else {}
+
+    def list_sondage_elements(self, sondage_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM sondage_element WHERE sondage_id=? ORDER BY index_original",
+            (sondage_id,)
+        ).fetchall()
+        return [self._deserialize_sondage_element(dict(r)) for r in rows]
+
+    def update_sondage_element(self, element_id: str, data: dict) -> dict | None:
+        allowed = {"est_anomalie", "montant_anomalie", "commentaire"}
+        fields = {k: v for k, v in data.items() if k in allowed}
+        if not fields:
+            row = self.conn.execute(
+                "SELECT * FROM sondage_element WHERE id=?", (element_id,)
+            ).fetchone()
+            return self._deserialize_sondage_element(dict(row)) if row else None
+        set_clause = ", ".join(f"{k}=?" for k in fields)
+        self.conn.execute(
+            f"UPDATE sondage_element SET {set_clause} WHERE id=?",
+            list(fields.values()) + [element_id]
+        )
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT * FROM sondage_element WHERE id=?", (element_id,)
+        ).fetchone()
+        return self._deserialize_sondage_element(dict(row)) if row else None
+
+    def delete_sondage_elements(self, sondage_id: str) -> None:
+        self.conn.execute("DELETE FROM sondage_element WHERE sondage_id=?", (sondage_id,))
+        self.conn.commit()
+
+    def recalculer_sondage_stats(self, sondage_id: str) -> dict | None:
+        """Recalcule nb_anomalies et montant_anomalies depuis les éléments marqués."""
+        elements = self.list_sondage_elements(sondage_id)
+        nb = sum(1 for e in elements if e.get("est_anomalie"))
+        montant = sum(e.get("montant_anomalie") or 0.0 for e in elements if e.get("est_anomalie"))
+        return self.update_sondage(sondage_id, {"nb_anomalies": nb, "montant_anomalies": montant})
 
     # --- Journal ---
 

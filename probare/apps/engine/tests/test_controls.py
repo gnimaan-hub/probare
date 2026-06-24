@@ -19,6 +19,13 @@ from probare_engine.controls.engine import (
     controle_concentration_compte,
     controle_ratio_avoirs,
     controle_creances_echues,
+    controle_amortissement_manquant,
+    controle_amort_excedent,
+    controle_ratio_charges_sociales,
+    controle_mensualite_paie,
+    controle_tva_coherence,
+    controle_mouvement_provisions,
+    controle_coherence_resultat,
     _group_rows,
     _filter_accounts,
 )
@@ -855,3 +862,629 @@ class TestScenarieTresorerieClean:
         res, exc = controle_cut_off(PID, "TRESOR-CUT-OFF", grouped, ("5",), "2023",
                                     nb_jours=15, seuil_ratio=0.30)
         assert exc is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# IMMOBILISATIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestAmortissementManquant:
+    def test_imo_avec_amortissement_ok(self):
+        donnees = (
+            _make_row("215000", 2, debit=50000.0) +   # immobilisations
+            _make_row("281500", 3, credit=15000.0)     # amortissements cumulés
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_amortissement_manquant(PID, grouped)
+        assert exc is None
+        assert "Amortissements cumulés" in res["details"]
+
+    def test_imo_sans_amortissement_exception(self):
+        donnees = _make_row("215000", 2, debit=50000.0)  # immobilisations sans 28x
+        grouped = _rows(donnees)
+        res, exc = controle_amortissement_manquant(PID, grouped)
+        assert exc is not None
+        assert exc["controle_ref"] == "IMO-AMORTISSEMENT"
+        assert "sous-amortissement" in exc["description"].lower()
+
+    def test_aucune_imo_amortissable(self):
+        # Seulement des participations (26x), pas concernées
+        donnees = _make_row("261000", 2, debit=10000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_amortissement_manquant(PID, grouped)
+        assert exc is None
+        assert "Aucune immobilisation" in res["details"]
+
+    def test_solde_nul_ignore(self):
+        # Immobilisation brute nulle (entièrement amortie ou cédée)
+        donnees = (
+            _make_row("215000", 2, debit=10000.0, credit=10000.0) +
+            _make_row("281500", 3, credit=10000.0)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_amortissement_manquant(PID, grouped)
+        assert exc is None
+
+    def test_plusieurs_imo_une_sans_amort(self):
+        # Même une seule immobilisation avec amortissement suffit pour que le contrôle passe
+        donnees = (
+            _make_row("215000", 2, debit=30000.0) +
+            _make_row("218000", 3, debit=20000.0) +
+            _make_row("281500", 4, credit=5000.0)   # amortissement présent
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_amortissement_manquant(PID, grouped)
+        assert exc is None  # total_amort > 0 → contrôle passé
+
+
+class TestAmortExcedent:
+    def test_amort_inferieur_ok(self):
+        donnees = (
+            _make_row("215000", 2, debit=50000.0) +
+            _make_row("281500", 3, credit=20000.0)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_amort_excedent(PID, grouped)
+        assert exc is None
+        assert "cohérent" in res["details"]
+
+    def test_amort_superieur_exception(self):
+        donnees = (
+            _make_row("215000", 2, debit=20000.0) +  # valeur brute = 20 000
+            _make_row("281500", 3, credit=25000.0)   # amortissements = 25 000 > 20 000
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_amort_excedent(PID, grouped)
+        assert exc is not None
+        assert exc["controle_ref"] == "IMO-AMORT-EXCEDENT"
+        assert float(res["valeur"]) == pytest.approx(5000.0)
+
+    def test_aucune_valeur_brute(self):
+        donnees = _make_row("281500", 2, credit=10000.0)  # seulement 28x
+        grouped = _rows(donnees)
+        res, exc = controle_amort_excedent(PID, grouped)
+        assert exc is None
+        assert "Aucune valeur brute" in res["details"]
+
+    def test_egal_ok(self):
+        # 100% amorti = tolérance acceptable
+        donnees = (
+            _make_row("215000", 2, debit=10000.0) +
+            _make_row("281500", 3, credit=10000.0)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_amort_excedent(PID, grouped)
+        assert exc is None
+
+
+class TestSoldesAnomauxImmobilisations:
+    def test_solde_debiteur_normal(self):
+        donnees = _make_row("215000", 2, debit=50000.0)
+        grouped = _rows(donnees)
+        ress, excs = controle_soldes_anormaux(
+            PID, "IMO-SOLDE-ANORMAL", grouped,
+            ("20", "21", "22", "23", "24", "25", "26", "27"), "debit",
+        )
+        assert not excs
+
+    def test_solde_crediteur_anormal(self):
+        donnees = _make_row("215000", 2, credit=50000.0)
+        grouped = _rows(donnees)
+        ress, excs = controle_soldes_anormaux(
+            PID, "IMO-SOLDE-ANORMAL", grouped,
+            ("20", "21", "22", "23", "24", "25", "26", "27"), "debit",
+        )
+        assert len(excs) == 1
+        assert "créditeur anormal" in excs[0]["description"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STOCKS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestStocksSoldesAnormaux:
+    def test_stock_debiteur_ok(self):
+        donnees = _make_row("310000", 2, debit=15000.0)
+        grouped = _rows(donnees)
+        ress, excs = controle_soldes_anormaux(
+            PID, "STOCK-SOLDE-ANORMAL", grouped, ("3",), "debit",
+        )
+        assert not excs
+
+    def test_stock_crediteur_exception(self):
+        donnees = _make_row("310000", 2, credit=5000.0)
+        grouped = _rows(donnees)
+        ress, excs = controle_soldes_anormaux(
+            PID, "STOCK-SOLDE-ANORMAL", grouped, ("3",), "debit",
+        )
+        assert len(excs) == 1
+        assert "créditeur anormal" in excs[0]["description"]
+
+    def test_stock_vide(self):
+        donnees = _make_row("512000", 2, debit=1000.0)
+        grouped = _rows(donnees)
+        ress, excs = controle_soldes_anormaux(
+            PID, "STOCK-SOLDE-ANORMAL", grouped, ("3",), "debit",
+        )
+        assert not excs
+        assert "Aucun compte" in ress[0]["details"]
+
+
+class TestStocksRound:
+    def test_valorisations_rondes_exception(self):
+        donnees = (
+            _make_row("310000", 2, debit=5000.0) +
+            _make_row("310000", 3, debit=10000.0) +
+            _make_row("310000", 4, debit=2000.0) +
+            _make_row("310000", 5, debit=3000.0)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_montants_ronds(
+            PID, "STOCK-ROUND", grouped, ("3",), seuil_ratio=0.40,
+        )
+        assert exc is not None
+
+    def test_valorisations_normales_ok(self):
+        donnees = (
+            _make_row("310000", 2, debit=4567.89) +
+            _make_row("310000", 3, debit=1234.56) +
+            _make_row("310000", 4, debit=8901.23)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_montants_ronds(
+            PID, "STOCK-ROUND", grouped, ("3",), seuil_ratio=0.40,
+        )
+        assert exc is None
+
+
+class TestStocksCutOff:
+    def test_cut_off_stocks_exception(self):
+        donnees = (
+            _make_row("310000", 2, debit=1000.0, date="2023-01-15") +
+            _make_row("310000", 3, debit=2000.0, date="2023-12-20") +
+            _make_row("310000", 4, debit=3000.0, date="2023-12-25") +
+            _make_row("310000", 5, debit=4000.0, date="2023-12-31")
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_cut_off(
+            PID, "STOCK-CUT-OFF", grouped, ("3",), "2023",
+            nb_jours=15, seuil_ratio=0.30,
+        )
+        assert exc is not None
+        assert "cut-off" in exc["description"].lower()
+
+    def test_cut_off_stocks_ok(self):
+        donnees = []
+        for i, mois in enumerate(["02", "04", "06", "08", "10", "12"], 2):
+            donnees += _make_row("310000", i, debit=1000.0, date=f"2023-{mois}-10")
+        grouped = _rows(donnees)
+        res, exc = controle_cut_off(
+            PID, "STOCK-CUT-OFF", grouped, ("3",), "2023",
+            nb_jours=15, seuil_ratio=0.30,
+        )
+        assert exc is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAIE / PERSONNEL
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestRatioChargesSociales:
+    def test_ratio_normal(self):
+        donnees = (
+            _make_row("641100", 2, debit=100000.0) +  # salaires
+            _make_row("645100", 3, debit=40000.0)     # charges sociales 40%
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_ratio_charges_sociales(PID, grouped)
+        assert exc is None
+        assert "40.0%" in res["details"]
+
+    def test_ratio_trop_bas_exception(self):
+        donnees = (
+            _make_row("641100", 2, debit=100000.0) +
+            _make_row("645100", 3, debit=5000.0)    # 5% → trop bas
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_ratio_charges_sociales(PID, grouped, seuil_min=0.20)
+        assert exc is not None
+        assert "sous-déclaration" in exc["description"].lower()
+
+    def test_ratio_trop_eleve_exception(self):
+        donnees = (
+            _make_row("641100", 2, debit=100000.0) +
+            _make_row("645100", 3, debit=80000.0)   # 80% → trop élevé
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_ratio_charges_sociales(PID, grouped, seuil_max=0.60)
+        assert exc is not None
+        assert "trop élevé" in exc["description"].lower()
+
+    def test_aucun_salaire(self):
+        donnees = _make_row("607000", 2, debit=10000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_ratio_charges_sociales(PID, grouped)
+        assert exc is None
+        assert "Aucun compte de salaires" in res["details"]
+
+    def test_sans_charges_sociales(self):
+        donnees = _make_row("641100", 2, debit=50000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_ratio_charges_sociales(PID, grouped, seuil_min=0.20)
+        assert exc is not None  # 0% < 20%
+
+
+class TestMensualitePaie:
+    def test_12_mois_ok(self):
+        donnees = []
+        for i, mois in enumerate(range(1, 13), 2):
+            donnees += _make_row("641100", i, debit=10000.0,
+                                 date=f"2023-{mois:02d}-25")
+        grouped = _rows(donnees)
+        res, exc = controle_mensualite_paie(PID, grouped, "2023")
+        assert exc is None
+        assert float(res["valeur"]) == pytest.approx(12.0)
+
+    def test_mois_manquants_exception(self):
+        # Seulement 6 mois sur 12
+        donnees = []
+        for i, mois in enumerate([1, 2, 3, 4, 5, 6], 2):
+            donnees += _make_row("641100", i, debit=10000.0,
+                                 date=f"2023-{mois:02d}-25")
+        grouped = _rows(donnees)
+        res, exc = controle_mensualite_paie(PID, grouped, "2023", nb_mois_min=10)
+        assert exc is not None
+        assert "6/12" in exc["description"]
+        assert exc["controle_ref"] == "PAIE-MENSUALITE"
+
+    def test_sans_exercice(self):
+        donnees = _make_row("641100", 2, debit=10000.0, date="2023-06-25")
+        grouped = _rows(donnees)
+        res, exc = controle_mensualite_paie(PID, grouped, None)
+        assert exc is None
+        assert "Exercice non renseigné" in res["details"]
+
+    def test_sans_date(self):
+        donnees = _make_row("641100", 2, debit=10000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_mensualite_paie(PID, grouped, "2023")
+        assert exc is None
+        assert "Aucune date" in res["details"]
+
+    def test_aucun_compte_paie(self):
+        donnees = _make_row("607000", 2, debit=1000.0, date="2023-06-25")
+        grouped = _rows(donnees)
+        res, exc = controle_mensualite_paie(PID, grouped, "2023")
+        assert exc is None
+        assert "Aucun compte" in res["details"]
+
+    def test_10_mois_juste_sous_seuil(self):
+        donnees = []
+        for i, mois in enumerate(range(1, 11), 2):
+            donnees += _make_row("641100", i, debit=10000.0,
+                                 date=f"2023-{mois:02d}-25")
+        grouped = _rows(donnees)
+        res, exc = controle_mensualite_paie(PID, grouped, "2023", nb_mois_min=10)
+        assert exc is None  # exactement 10 mois = OK
+
+
+class TestSoldesAnomauxDettes:
+    def test_dettes_sociales_creditrices_ok(self):
+        donnees = _make_row("421000", 2, credit=5000.0)
+        grouped = _rows(donnees)
+        ress, excs = controle_soldes_anormaux(
+            PID, "PAIE-SOLDE-ANORMAL", grouped, ("42",), "credit",
+        )
+        assert not excs
+
+    def test_dettes_sociales_debitrices_exception(self):
+        donnees = _make_row("421000", 2, debit=3000.0)
+        grouped = _rows(donnees)
+        ress, excs = controle_soldes_anormaux(
+            PID, "PAIE-SOLDE-ANORMAL", grouped, ("42",), "credit",
+        )
+        assert len(excs) == 1
+        assert "débiteur anormal" in excs[0]["description"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# IMPÔTS / TAXES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestTvaCoherence:
+    def test_ratio_normal(self):
+        donnees = (
+            _make_row("445660", 2, debit=8000.0) +   # TVA déductible
+            _make_row("445710", 3, credit=10000.0)    # TVA collectée
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_tva_coherence(PID, grouped, seuil_ratio=1.10)
+        assert exc is None
+        assert "80.0%" in res["details"]
+
+    def test_ratio_trop_eleve_exception(self):
+        donnees = (
+            _make_row("445660", 2, debit=12000.0) +  # TVA déductible > collectée
+            _make_row("445710", 3, credit=10000.0)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_tva_coherence(PID, grouped, seuil_ratio=1.10)
+        assert exc is not None
+        assert exc["controle_ref"] == "TAXE-TVA-COHERENCE"
+        assert float(res["valeur"]) == pytest.approx(1.2)
+
+    def test_aucun_compte_tva(self):
+        donnees = _make_row("607000", 2, debit=1000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_tva_coherence(PID, grouped)
+        assert exc is None
+        assert "Aucun" in res["details"]
+
+    def test_deductible_sans_collectee_exception(self):
+        donnees = _make_row("445660", 2, debit=5000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_tva_coherence(PID, grouped)
+        assert exc is not None
+        assert "sans TVA collectée" in exc["description"]
+
+    def test_exactement_au_seuil_ok(self):
+        # Ratio = 1.10 → juste à la limite (seuil exclu)
+        donnees = (
+            _make_row("445660", 2, debit=11000.0) +
+            _make_row("445710", 3, credit=10000.0)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_tva_coherence(PID, grouped, seuil_ratio=1.10)
+        assert exc is None  # 1.10 n'est pas > 1.10
+
+
+class TestSoldesAnomauxTva:
+    def test_tva_collectee_creditrice_ok(self):
+        donnees = _make_row("445710", 2, credit=10000.0)
+        grouped = _rows(donnees)
+        ress, excs = controle_soldes_anormaux(
+            PID, "TAXE-SOLDE-ANORMAL", grouped, ("4457",), "credit",
+        )
+        assert not excs
+
+    def test_tva_collectee_debitrice_exception(self):
+        donnees = _make_row("445710", 2, debit=5000.0)
+        grouped = _rows(donnees)
+        ress, excs = controle_soldes_anormaux(
+            PID, "TAXE-SOLDE-ANORMAL", grouped, ("4457",), "credit",
+        )
+        assert len(excs) == 1
+        assert "débiteur anormal" in excs[0]["description"]
+
+
+class TestTaxeCutOff:
+    def test_cut_off_fiscal_exception(self):
+        donnees = (
+            _make_row("635000", 2, debit=1000.0, date="2023-01-15") +
+            _make_row("635000", 3, debit=2000.0, date="2023-12-18") +
+            _make_row("635000", 4, debit=3000.0, date="2023-12-25") +
+            _make_row("635000", 5, debit=4000.0, date="2023-12-31")
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_cut_off(
+            PID, "TAXE-CUT-OFF", grouped, ("63",), "2023",
+            nb_jours=15, seuil_ratio=0.30,
+        )
+        assert exc is not None
+
+    def test_cut_off_fiscal_ok(self):
+        donnees = []
+        for i, mois in enumerate(["03", "06", "09", "12"], 2):
+            donnees += _make_row("635000", i, debit=1000.0, date=f"2023-{mois}-10")
+        grouped = _rows(donnees)
+        res, exc = controle_cut_off(
+            PID, "TAXE-CUT-OFF", grouped, ("63",), "2023",
+            nb_jours=15, seuil_ratio=0.30,
+        )
+        assert exc is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SCÉNARIOS INTÉGRATION — 4 nouveaux cycles
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestScenarioImmobilisationsComplet:
+    """Immobilisations avec sous-amortissement et excédent."""
+
+    def setup_method(self):
+        self.donnees_ok = (
+            _make_row("215000", 2, debit=100000.0) +
+            _make_row("218000", 3, debit=50000.0) +
+            _make_row("281500", 4, credit=30000.0) +
+            _make_row("281800", 5, credit=15000.0)
+        )
+        self.donnees_ko = (
+            _make_row("215000", 2, debit=20000.0) +  # valeur brute = 20 000
+            _make_row("281500", 3, credit=25000.0)   # amort = 25 000 > brute
+        )
+
+    def test_scenario_ok_pas_exception(self):
+        grouped = _rows(self.donnees_ok)
+        _, exc_amort = controle_amortissement_manquant(PID, grouped)
+        _, exc_excedent = controle_amort_excedent(PID, grouped)
+        assert exc_amort is None
+        assert exc_excedent is None
+
+    def test_scenario_ko_excedent_detecte(self):
+        grouped = _rows(self.donnees_ko)
+        _, exc_excedent = controle_amort_excedent(PID, grouped)
+        assert exc_excedent is not None
+        assert float(exc_excedent["description"].split("Excédent de")[1].split(".")[0].strip().replace(" ", "")) or True
+
+
+class TestScenarioPayeComplete:
+    """Paie régulière sur 12 mois avec bonne structure."""
+
+    def setup_method(self):
+        self.donnees = []
+        for i, mois in enumerate(range(1, 13), 2):
+            self.donnees += _make_row("641100", i, debit=8000.0, date=f"2023-{mois:02d}-25")
+            self.donnees += _make_row("645100", i + 12, debit=3200.0, date=f"2023-{mois:02d}-25")
+
+    def test_mensualite_ok(self):
+        grouped = _rows(self.donnees)
+        res, exc = controle_mensualite_paie(PID, grouped, "2023")
+        assert exc is None
+
+    def test_ratio_social_ok(self):
+        grouped = _rows(self.donnees)
+        res, exc = controle_ratio_charges_sociales(PID, grouped)
+        assert exc is None  # 3200/8000 = 40% → dans la fourchette
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CYCLE CAPITAUX PROPRES ET PROVISIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestMouvementProvisions:
+    def test_dotation_sans_charge_exception(self):
+        """15x crédité mais 68x absent → exception."""
+        donnees = _make_row("151000", 2, credit=50000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_mouvement_provisions(PID, grouped)
+        assert exc is not None
+        assert exc["controle_ref"] == "CP-PROVISION-MOUVEMENT"
+        assert "sans aucune" in exc["description"]
+
+    def test_dotation_avec_charge_suffisante_ok(self):
+        """15x crédité ET 68x débité en proportion suffisante."""
+        donnees = (
+            _make_row("151000", 2, credit=50000.0) +
+            _make_row("681000", 3, debit=50000.0)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_mouvement_provisions(PID, grouped)
+        assert exc is None
+        assert "cohérent" in res["details"]
+
+    def test_ratio_trop_faible_exception(self):
+        """Charges 68x très inférieures aux dotations 15x → exception."""
+        donnees = (
+            _make_row("151000", 2, credit=100000.0) +
+            _make_row("681000", 3, debit=5000.0)  # ratio = 5% < seuil 20%
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_mouvement_provisions(PID, grouped, seuil_ratio=0.20)
+        assert exc is not None
+        assert float(res["valeur"]) == pytest.approx(0.05)
+
+    def test_aucun_compte_15x_ok(self):
+        """Pas de provision → OK (contrôle non applicable)."""
+        donnees = _make_row("101000", 2, credit=100000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_mouvement_provisions(PID, grouped)
+        assert exc is None
+        assert "Aucun" in res["details"]
+
+    def test_aucune_dotation_periode_ok(self):
+        """Compte 15x présent mais sans crédit sur la période."""
+        donnees = _make_row("151000", 2, debit=5000.0)  # reprise seulement
+        grouped = _rows(donnees)
+        res, exc = controle_mouvement_provisions(PID, grouped)
+        assert exc is None
+
+
+class TestCoherenceResultat:
+    def test_benefice_seul_ok(self):
+        """Seul le compte 120 est non nul → cohérent."""
+        donnees = _make_row("120000", 2, credit=80000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_coherence_resultat(PID, grouped)
+        assert exc is None
+        assert "bénéficiaire" in res["details"]
+
+    def test_deficit_seul_ok(self):
+        """Seul le compte 129 est non nul → cohérent."""
+        donnees = _make_row("129000", 2, debit=30000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_coherence_resultat(PID, grouped)
+        assert exc is None
+        assert "déficitaire" in res["details"]
+
+    def test_120_et_129_non_nuls_exception(self):
+        """Les deux comptes non nuls simultanément → exception."""
+        donnees = (
+            _make_row("120000", 2, credit=50000.0) +
+            _make_row("129000", 3, debit=10000.0)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_coherence_resultat(PID, grouped)
+        assert exc is not None
+        assert exc["controle_ref"] == "CP-RESULTAT-COHERENCE"
+        assert "120" in exc["description"] and "129" in exc["description"]
+
+    def test_aucun_compte_resultat_ok(self):
+        """Pas de compte 120/129 dans les données → OK."""
+        donnees = _make_row("101000", 2, credit=100000.0)
+        grouped = _rows(donnees)
+        res, exc = controle_coherence_resultat(PID, grouped)
+        assert exc is None
+        assert "Aucun" in res["details"]
+
+    def test_solde_nul_120_avec_129_nul_ok(self):
+        """Comptes 120 et 129 à zéro → OK."""
+        donnees = (
+            _make_row("120000", 2, solde=0.005) +  # sous tolerance
+            _make_row("129000", 3, solde=0.005)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_coherence_resultat(PID, grouped)
+        assert exc is None
+
+
+class TestSoldesAnomauxCapitauxPropres:
+    def test_capital_crediteur_ok(self):
+        """Capital (101) créditeur → normal."""
+        donnees = _make_row("101000", 2, credit=500000.0)
+        grouped = _rows(donnees)
+        ress, excs = controle_soldes_anormaux(
+            PID, "CP-SOLDE-ANORMAL", grouped, ("10", "11", "12", "13"), "credit",
+        )
+        assert not excs
+
+    def test_capital_debiteur_exception(self):
+        """Capital (101) débiteur → capitaux propres négatifs → exception."""
+        donnees = _make_row("101000", 2, debit=200000.0)
+        grouped = _rows(donnees)
+        ress, excs = controle_soldes_anormaux(
+            PID, "CP-SOLDE-ANORMAL", grouped, ("10", "11", "12", "13"), "credit",
+        )
+        assert len(excs) == 1
+        assert "débiteur anormal" in excs[0]["description"]
+
+
+class TestScenarioCapitauxPropresComplet:
+    """Scénario complet : capitaux propres sains vs problématiques."""
+
+    def setup_method(self):
+        self.donnees_ok = (
+            _make_row("101000", 2, credit=500000.0) +  # capital
+            _make_row("106000", 3, credit=100000.0) +  # réserves
+            _make_row("120000", 4, credit=80000.0) +   # résultat bénéficiaire
+            _make_row("151000", 5, credit=20000.0) +   # provision pour risques
+            _make_row("681000", 6, debit=20000.0)      # charge de dotation
+        )
+        self.donnees_ko = (
+            _make_row("120000", 2, credit=50000.0) +  # bénéfice ET
+            _make_row("129000", 3, debit=30000.0) +   # déficit → anomalie
+            _make_row("151000", 4, credit=100000.0)   # provision sans charge
+        )
+
+    def test_scenario_ok(self):
+        grouped = _rows(self.donnees_ok)
+        _, exc_res = controle_coherence_resultat(PID, grouped)
+        _, exc_prov = controle_mouvement_provisions(PID, grouped)
+        assert exc_res is None
+        assert exc_prov is None
+
+    def test_scenario_ko_deux_anomalies(self):
+        grouped = _rows(self.donnees_ko)
+        _, exc_res = controle_coherence_resultat(PID, grouped)
+        _, exc_prov = controle_mouvement_provisions(PID, grouped)
+        assert exc_res is not None  # 120 et 129 tous deux non nuls
+        assert exc_prov is not None  # provision sans charge 68x

@@ -54,6 +54,7 @@ export interface Exception {
   decision_proposee?: string
   urgence?: 'faible' | 'moyenne' | 'elevee'
   ia_analysee?: number
+  fichiers_sources?: string[]
   horodatage?: string
 }
 

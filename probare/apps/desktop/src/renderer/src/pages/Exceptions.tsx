@@ -3,14 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   AlertTriangle, CheckCircle, Wand2, Send, ArrowRight, X,
-  ChevronDown, ChevronRight, RefreshCw, Lightbulb, ClipboardList,
+  ChevronDown, ChevronRight, RefreshCw, Lightbulb, ClipboardList, FileText,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
-import { useProjetStore, type Exception } from '../stores/projetStore'
+import { useProjetStore, type Exception, type FichierSource } from '../stores/projetStore'
 import { useSyncProjet } from '../hooks/useProjet'
 import { formatDate } from '../lib/utils'
 
@@ -29,7 +29,7 @@ const urgenceColor: Record<string, string> = {
 const urgenceLabel: Record<string, string> = {
   faible: 'Urgence faible',
   moyenne: 'Urgence moyenne',
-  elevee: 'Urgence elevee',
+  elevee: 'Urgence élevée',
 }
 
 function IAPanel({
@@ -149,14 +149,34 @@ function IAPanel({
   )
 }
 
+function SourceFilesBadges({ fichierIds, fichiers }: { fichierIds?: string[], fichiers: FichierSource[] }) {
+  if (!fichierIds || fichierIds.length === 0) return null
+  const noms = fichierIds
+    .map((id) => fichiers.find((f) => f.id === id)?.nom)
+    .filter(Boolean) as string[]
+  if (noms.length === 0) return null
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+      <FileText className="w-3 h-3 text-slate-400 flex-shrink-0" />
+      {noms.map((nom) => (
+        <span key={nom} className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono" title={nom}>
+          {nom.length > 28 ? nom.slice(0, 25) + '…' : nom}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 function ExceptionCard({
   exc,
+  fichiers,
   onTrancher,
   onValiderDecisionIA,
   onRelancerIA,
   relancing,
 }: {
   exc: Exception
+  fichiers: FichierSource[]
   onTrancher: (exc: Exception) => void
   onValiderDecisionIA: (exc: Exception) => void
   onRelancerIA: (exc: Exception) => void
@@ -196,6 +216,7 @@ function ExceptionCard({
             </code>
           </div>
           <p className="text-sm text-slate-600 leading-relaxed">{exc.description}</p>
+          <SourceFilesBadges fichierIds={exc.fichiers_sources} fichiers={fichiers} />
         </div>
         {isTranchee && <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />}
       </div>
@@ -233,7 +254,7 @@ function ExceptionCard({
           )}
           {exc.decision_humaine && (
             <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
-              <div className="text-xs font-semibold text-emerald-700 mb-1">Decision de l'auditeur</div>
+              <div className="text-xs font-semibold text-emerald-700 mb-1">Décision de l'auditeur</div>
               <p className="text-xs text-emerald-800">{exc.decision_humaine}</p>
               <p className="text-xs text-emerald-600 mt-1">
                 Par {exc.decideur} · {formatDate(exc.horodatage)}
@@ -253,7 +274,7 @@ function ExceptionCard({
                 className="btn-primary text-xs py-1.5 flex-1"
               >
                 <CheckCircle className="w-3.5 h-3.5" />
-                Valider la decision IA
+                Valider la décision IA
               </button>
               <button
                 onClick={() => onTrancher(exc)}
@@ -288,10 +309,20 @@ function TrancherModal({ exc, onClose, onConfirmed }: TrancherModalProps) {
   const [decision, setDecision] = useState(exc.decision_proposee || '')
   const [decideur, setDecideur] = useState('')
   const [loading, setLoading] = useState(false)
+  const [confirmationCritique, setConfirmationCritique] = useState('')
+
+  const isCritique = exc.severite === 'critique'
+  const CONFIRMATION_REQUISE = 'VALIDER'
+
+  const peutSoumettre = (
+    decision.trim().length >= 20 &&
+    decideur.trim().length >= 2 &&
+    (!isCritique || confirmationCritique === CONFIRMATION_REQUISE)
+  )
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!decision.trim() || !decideur.trim()) return
+    if (!peutSoumettre) return
     setLoading(true)
     onConfirmed(decision, decideur)
   }
@@ -311,7 +342,14 @@ function TrancherModal({ exc, onClose, onConfirmed }: TrancherModalProps) {
         className="bg-white rounded-2xl shadow-modal w-full max-w-lg"
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="font-semibold text-slate-900">Trancher l'exception</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold text-slate-900">Trancher l'exception</h2>
+            {isCritique && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                Critique
+              </span>
+            )}
+          </div>
           <button onClick={onClose} className="btn-ghost p-1.5 rounded-lg">
             <X className="w-4 h-4" />
           </button>
@@ -323,27 +361,39 @@ function TrancherModal({ exc, onClose, onConfirmed }: TrancherModalProps) {
             <span className="text-slate-500 mt-1 block">{exc.description}</span>
           </div>
 
+          {isCritique && (
+            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700">
+                <strong>Exception critique.</strong> Votre décision sera inscrite définitivement dans le dossier d'audit et engage votre responsabilité professionnelle. Relisez attentivement avant de valider.
+              </p>
+            </div>
+          )}
+
           {exc.decision_proposee && (
             <div className="flex items-start gap-2 p-2.5 bg-indigo-50 border border-indigo-100 rounded-lg">
               <Wand2 className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-indigo-700">
-                La decision ci-dessous est pre-redigee par l'IA. Modifiez-la si necessaire avant de valider.
+                La décision ci-dessous est pré-rédigée par l'IA. Modifiez-la si nécessaire avant de valider.
               </p>
             </div>
           )}
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Decision de l'auditeur <span className="text-red-500">*</span>
+              Décision de l'auditeur <span className="text-red-500">*</span>
             </label>
             <textarea
               className="input-field min-h-28 resize-none"
-              placeholder="Ex : Ecart justifie par une regularisation de fin d'exercice. Piece n 2025/12/045 recue et verifiee."
+              placeholder="Ex : Écart justifié par une régularisation de fin d'exercice. Pièce n° 2025/12/045 reçue et vérifiée."
               value={decision}
               onChange={(e) => setDecision(e.target.value)}
               required
               autoFocus
             />
+            {decision.trim().length > 0 && decision.trim().length < 20 && (
+              <p className="text-xs text-amber-600 mt-1">La décision doit être suffisamment argumentée (20 caractères minimum).</p>
+            )}
           </div>
 
           <div>
@@ -352,22 +402,36 @@ function TrancherModal({ exc, onClose, onConfirmed }: TrancherModalProps) {
             </label>
             <input
               className="input-field"
-              placeholder="Prenom Nom"
+              placeholder="Prénom Nom"
               value={decideur}
               onChange={(e) => setDecideur(e.target.value)}
               required
             />
           </div>
 
+          {isCritique && (
+            <div>
+              <label className="block text-sm font-medium text-red-700 mb-1.5">
+                Confirmation requise — saisissez <code className="bg-red-100 px-1 rounded">{CONFIRMATION_REQUISE}</code> pour valider <span className="text-red-500">*</span>
+              </label>
+              <input
+                className="input-field border-red-200 focus:border-red-400"
+                placeholder={CONFIRMATION_REQUISE}
+                value={confirmationCritique}
+                onChange={(e) => setConfirmationCritique(e.target.value.toUpperCase())}
+              />
+            </div>
+          )}
+
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1">Annuler</button>
             <button
               type="submit"
-              disabled={!decision.trim() || !decideur.trim() || loading}
-              className="btn-primary flex-1"
+              disabled={!peutSoumettre || loading}
+              className={`flex-1 ${isCritique ? 'btn-danger' : 'btn-primary'}`}
             >
               {loading ? <Spinner size="sm" /> : <CheckCircle className="w-4 h-4" />}
-              Confirmer la decision
+              Confirmer la décision
             </button>
           </div>
         </form>
@@ -381,7 +445,7 @@ export function Exceptions() {
   const navigate = useNavigate()
   const { get, post } = useApi()
   const toast = useToast()
-  const { projetActif, setProjetActif, exceptions, setExceptions } = useProjetStore()
+  const { projetActif, setProjetActif, exceptions, setExceptions, fichiers, setFichiers } = useProjetStore()
   useSyncProjet()
 
   const [pendingTrancher, setPendingTrancher] = useState<Exception | null>(null)
@@ -394,6 +458,9 @@ export function Exceptions() {
     get(`/projets/${projetId}/exceptions`)
       .then((d) => setExceptions(d.exceptions || []))
       .catch((e) => toast.error(e.message))
+    get(`/projets/${projetId}/fichiers`)
+      .then((d) => setFichiers(d.fichiers || []))
+      .catch(() => {/* fichiers non critiques pour cette page */})
   }, [projetId])
 
   const handleRelancerIA = async (exc: Exception) => {
@@ -404,7 +471,7 @@ export function Exceptions() {
       if (result.exception) {
         setExceptions(exceptions.map((e) => e.id === exc.id ? result.exception : e))
       }
-      toast.success('Analyse IA mise a jour.')
+      toast.success('Analyse IA mise à jour.')
     } catch (e: any) {
       toast.error(e.message)
     } finally {
@@ -425,7 +492,7 @@ export function Exceptions() {
         { decision_humaine: decision, decideur }
       )
       setExceptions(exceptions.map((e) => (e.id === updated.id ? updated : e)))
-      toast.success('Exception tranchee et archivee.')
+      toast.success('Exception tranchée et archivée.')
       setPendingTrancher(null)
     } catch (e: any) {
       toast.error(e.message)
@@ -460,12 +527,12 @@ export function Exceptions() {
     <div className="flex flex-col h-full">
       <Header
         title="Revue des exceptions"
-        subtitle={`${ouvertes.length} ouverte${ouvertes.length !== 1 ? 's' : ''} · ${tranchees.length} tranchee${tranchees.length !== 1 ? 's' : ''}`}
+        subtitle={`${ouvertes.length} ouverte${ouvertes.length !== 1 ? 's' : ''} · ${tranchees.length} tranchée${tranchees.length !== 1 ? 's' : ''}`}
         actions={
           toutesTranschees && (
             <button onClick={handlePasserGeneration} disabled={transitioning} className="btn-primary">
               {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
-              Generer le dossier
+              Générer le dossier
             </button>
           )
         }
@@ -473,7 +540,7 @@ export function Exceptions() {
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-3xl mx-auto space-y-4">
-          {/* Banner toutes tranchees */}
+          {/* Banner toutes tranchées */}
           {toutesTranschees && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
@@ -483,10 +550,10 @@ export function Exceptions() {
               <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0" />
               <div>
                 <div className="text-sm font-semibold text-emerald-800">
-                  Toutes les exceptions ont ete tranchees
+                  Toutes les exceptions ont été tranchées
                 </div>
                 <div className="text-xs text-emerald-700 mt-0.5">
-                  Vous pouvez generer le dossier de travail.
+                  Vous pouvez générer le dossier de travail.
                 </div>
               </div>
             </motion.div>
@@ -507,7 +574,7 @@ export function Exceptions() {
                 >
                   {f === 'toutes' ? `Toutes (${exceptions.length})`
                    : f === 'ouverte' ? `Ouvertes (${ouvertes.length})`
-                   : `Tranchees (${tranchees.length})`}
+                   : `Tranchées (${tranchees.length})`}
                 </button>
               ))}
             </div>
@@ -518,7 +585,7 @@ export function Exceptions() {
             <EmptyState
               icon={AlertTriangle}
               title="Aucune exception"
-              description="Tous les controles ont passe sans anomalie, ou aucun controle n'a encore ete execute."
+              description="Tous les contrôles ont passé sans anomalie, ou aucun contrôle n'a encore été exécuté."
             />
           ) : (
             <AnimatePresence>
@@ -526,6 +593,7 @@ export function Exceptions() {
                 <ExceptionCard
                   key={exc.id}
                   exc={exc}
+                  fichiers={fichiers}
                   onTrancher={setPendingTrancher}
                   onValiderDecisionIA={handleValiderDecisionIA}
                   onRelancerIA={handleRelancerIA}

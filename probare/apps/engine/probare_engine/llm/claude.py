@@ -68,15 +68,9 @@ Réponds UNIQUEMENT avec un JSON valide de la forme :
         self._log(MODEL_SIMPLE, "mapper_colonnes",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "mapping" in result:
+            return result
         return {"mapping": {}, "confiance": 0.0, "notes": "Réponse non parseable."}
 
     # ─── Ingestion intelligente ────────────────────────────────────────────────
@@ -377,17 +371,11 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "interpreter_exception",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "explication" in result:
+            return result
         return {
-            "explication": text,
+            "explication": resp.content[0].text[:500],
             "hypotheses": [],
             "diligences": [],
             "decision_proposee": "",
@@ -439,17 +427,11 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "analyser_document_annexe",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "resume" in result:
+            return result
         return {
-            "resume": text[:500],
+            "resume": resp.content[0].text[:500],
             "points_cles": [],
             "alertes": [],
         }
@@ -500,18 +482,12 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_SIMPLE, "cataloguer_document",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "type_detecte" in result:
+            return result
         return {
             "type_detecte": "autre",
-            "description": text[:300],
+            "description": resp.content[0].text[:300],
             "parties": [],
             "dates": [],
             "montants_cles": [],
@@ -589,17 +565,10 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_ESCALADE, "extraire_donnees_comptables",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                result = json.loads(text[start:end])
-                result["nb_lignes"] = len(result.get("lignes", []))
-                return result
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "lignes" in result:
+            result["nb_lignes"] = len(result.get("lignes", []))
+            return result
         return {"type_sortie": "grand_livre", "lignes": [], "nb_lignes": 0}
 
     def verifier_extraction_donnees(
@@ -672,19 +641,13 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "verifier_extraction_donnees",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "score_global" in result:
+            return result
         return {
             "score_global": 0.5,
             "lignes_verifiees": [],
-            "resume_verification": text[:300],
+            "resume_verification": resp.content[0].text[:300],
         }
 
     def interpreter_variations_analytiques(
@@ -736,17 +699,11 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "interpreter_variations_analytiques",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "synthese" in result:
+            return result
         return {
-            "synthese": text[:800],
+            "synthese": resp.content[0].text[:800],
             "zones_risque": [],
             "facteurs_contextuels": "",
             "alertes": [],
@@ -817,16 +774,9 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "proposer_risques",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                result = json.loads(text[start:end])
-                return result.get("risques", [])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict):
+            return result.get("risques", [])
         return []
 
     def reformuler_risque(self, risque: dict) -> dict:
@@ -868,16 +818,8 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_SIMPLE, "reformuler_risque",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
-        return {}
+        result = self._parse_json(resp.content[0].text)
+        return result if isinstance(result, dict) else {}
 
     def generer_note_synthese(
         self,
@@ -961,15 +903,9 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "generer_note_synthese",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "sections" in result:
+            return result
         return {"titre": "Note de synthèse", "sections": [], "conclusion": ""}
 
     def generer_programme_travail(
@@ -1025,17 +961,175 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "generer_programme_travail",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", resp.content[0].text.strip()).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                result = json.loads(text[start:end])
-                return result.get("items", [])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict):
+            return result.get("items", [])
         return []
+
+    # ─── Circularisation ─────────────────────────────────────────────────────
+
+    def generer_lettre_circularisation(
+        self,
+        tiers: dict,
+        contexte_projet: dict,
+        type_circularisation: str = "client",
+    ) -> dict:
+        """Rédige la lettre de confirmation externe adressée au tiers (NEP 505).
+
+        Ne produit aucun montant — les montants sont injectés par le code appelant.
+        """
+        cycle_label = {
+            "client": "client (créances — comptes 41x)",
+            "fournisseur": "fournisseur (dettes — comptes 40x)",
+            "banque": "établissement bancaire (trésorerie — comptes 51x)",
+        }.get(type_circularisation, type_circularisation)
+
+        prompt = f"""Tu es auditeur légal agréé. Rédige une lettre de confirmation externe
+à destination du {cycle_label} suivant, conformément à la NEP 505.
+
+Tiers : {tiers.get('libelle') or tiers.get('compte')}
+Compte comptable : {tiers.get('compte')}
+Solde comptable (calculé par le code, à citer tel quel) : {tiers.get('solde_comptable')}
+Exercice audité : {contexte_projet.get('exercice', 'N')}
+Société auditée : [NOM_SOCIÉTÉ]
+Cabinet : [NOM_CABINET]
+
+Instructions :
+- Rédige en français, ton professionnel et neutre.
+- La lettre doit demander la confirmation du solde au {contexte_projet.get('exercice', 'N')}.
+- Inclure : objet, corps de lettre, demande explicite de confirmation, coordonnées de retour.
+- Ne modifie pas le montant du solde reçu ci-dessus.
+- Indique [DATE] pour la date de la lettre.
+
+Réponds UNIQUEMENT avec un JSON :
+{{"objet": "...", "corps": "...", "formule_confirmation": "...", "destinataire_type": "{type_circularisation}"}}"""
+
+        resp = self._client.messages.create(
+            model=MODEL_DEFAULT,
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_DEFAULT, "generer_lettre_circularisation",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "corps" in result:
+            return result
+        return {"objet": "Confirmation de solde", "corps": resp.content[0].text,
+                "formule_confirmation": "", "destinataire_type": type_circularisation}
+
+    def analyser_reponse_circularisation(
+        self,
+        tiers: dict,
+        ecart: dict,
+        reponse_brute: str,
+        contexte_projet: dict,
+    ) -> dict:
+        """Analyse la réponse du tiers et explique l'écart (le cas échéant).
+
+        Les montants et l'écart viennent tous du code Python (tiers + ecart).
+        """
+        prompt = f"""Tu es auditeur légal. Analyse la réponse de circularisation reçue.
+
+Tiers : {tiers.get('libelle') or tiers.get('compte')} (compte {tiers.get('compte')})
+Solde comptable : {tiers.get('solde_comptable')}
+Solde confirmé par le tiers : {tiers.get('solde_confirme')}
+Écart calculé (Python) : {ecart.get('ecart')} ({ecart.get('ecart_pct', 0):.2f} %)
+Significatif : {'Oui' if ecart.get('est_significatif') else 'Non'}
+
+Réponse brute du tiers :
+\"\"\"{reponse_brute}\"\"\"
+
+Exercice : {contexte_projet.get('exercice', 'N')}
+
+Instructions :
+- Explique les causes probables de l'écart (si existant) : décalage temporel, erreur de comptabilisation, litige, erreur tiers.
+- Propose les diligences complémentaires si nécessaire.
+- Si pas d'écart : confirme la cohérence.
+- Ne produis aucun chiffre supplémentaire non fourni ci-dessus.
+- Langue : français professionnel.
+
+Réponds UNIQUEMENT avec un JSON :
+{{"synthese": "...", "causes_probables": ["..."], "diligences": ["..."], "conclusion": "sans_anomalie|anomalie_expliquee|anomalie_inexpliquee"}}"""
+
+        resp = self._client.messages.create(
+            model=MODEL_DEFAULT,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_DEFAULT, "analyser_reponse_circularisation",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "synthese" in result:
+            return result
+        return {
+            "synthese": resp.content[0].text,
+            "causes_probables": [],
+            "diligences": [],
+            "conclusion": "anomalie_inexpliquee",
+        }
+
+    # ─── Sondages sur pièces ─────────────────────────────────────────────────
+
+    def conclure_sondage(
+        self,
+        sondage: dict,
+        projection: dict,
+        elements_anomalies: list[dict],
+        contexte_projet: dict,
+    ) -> dict:
+        """Rédige la conclusion du sondage (NEP 530).
+
+        Tous les chiffres proviennent de sondage + projection (calculés Python).
+        Le LLM interprète uniquement, il ne recalcule pas.
+        """
+        prompt = f"""Tu es auditeur légal. Rédige la conclusion du sondage sur pièces conformément à la NEP 530.
+
+Sondage : {sondage.get('libelle')} — cycle {sondage.get('cycle')}
+Population : {sondage.get('population')} éléments, montant total {sondage.get('montant_population')}
+Taille de l'échantillon : {sondage.get('taille_echantillon')}
+Taux d'erreur toléré : {sondage.get('taux_erreur_tolere', 0.05)*100:.1f} %
+Niveau de confiance : {sondage.get('niveau_confiance', 95)} %
+
+Résultats calculés (Python) :
+- Anomalies constatées : {projection.get('nb_anomalies')} / {projection.get('taille_echantillon')}
+- Montant anomalies échantillon : {projection.get('montant_anomalies_echantillon')}
+- Taux d'anomalie : {projection.get('taux_anomalie', 0)*100:.2f} %
+- Montant projeté sur la population : {projection.get('montant_projete_population')}
+
+Détail des anomalies relevées :
+{json.dumps(elements_anomalies[:10], ensure_ascii=False, indent=2)}
+
+Exercice : {contexte_projet.get('exercice', 'N')}
+Seuil de signification : {contexte_projet.get('seuil_signification')}
+
+Instructions :
+- Conclure en comparant le montant projeté au seuil de signification.
+- Ne recalcule aucun montant — utilise uniquement les chiffres fournis.
+- Propose les diligences complémentaires si le taux d'erreur dépasse le seuil toléré.
+- Langue : français professionnel.
+
+Réponds UNIQUEMENT avec un JSON :
+{{"synthese": "...", "diligences": ["..."], "conclusion": "acceptable|exige_diligences|materiel", "impact_opinion": "..."}}"""
+
+        resp = self._client.messages.create(
+            model=MODEL_DEFAULT,
+            max_tokens=1500,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_DEFAULT, "conclure_sondage",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "synthese" in result:
+            return result
+        return {
+            "synthese": resp.content[0].text,
+            "diligences": [],
+            "conclusion": "exige_diligences",
+            "impact_opinion": "",
+        }
 
     def rediger_feuille_travail(
         self,
@@ -1073,20 +1167,12 @@ Réponds UNIQUEMENT avec un JSON valide :
         self._log(MODEL_DEFAULT, "rediger_feuille_travail",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
-        text = resp.content[0].text.strip()
-        # Supprimer les blocs markdown ```json ... ``` si présents
-        import re as _re
-        text = _re.sub(r"```(?:json)?\s*", "", text).strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except Exception:
-                pass
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and "contenu" in result:
+            return result
         return {
             "titre": f"Feuille de travail — {cycle}",
-            "contenu": text,
+            "contenu": resp.content[0].text,
             "nep_refs": [],
             "conclusion": "sans_reserve",
         }

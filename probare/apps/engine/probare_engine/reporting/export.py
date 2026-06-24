@@ -2,6 +2,7 @@
 from __future__ import annotations
 import io
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,35 @@ def _verifier_sources(valeur: Any, sources: list[str], libelle: str) -> None:
             f"Valeur '{libelle}' = {valeur} sans source. "
             f"La génération est bloquée (règle B.2)."
         )
+
+
+_MONTANT_RE = re.compile(r'\b\d{1,3}(?:[,\s]\d{3})+(?:[.,]\d+)?\b|\b\d{5,}(?:[.,]\d+)?\b')
+
+
+def _verifier_provenance_texte_llm(
+    contenu: str,
+    valeurs_python: set[float],
+    contexte: str,
+) -> list[str]:
+    """
+    Scanne contenu à la recherche de grands nombres (≥ 1 000) non calculés par Python.
+    Retourne la liste des avertissements (n'interrompt pas la génération).
+    """
+    avertissements = []
+    for m in _MONTANT_RE.finditer(contenu):
+        raw = m.group().replace(',', '').replace(' ', '').replace('\xa0', '')
+        try:
+            val = float(raw)
+        except ValueError:
+            continue
+        if val < 1000:
+            continue
+        # Tolérance ±0.5% ou 1 FDJ
+        if not any(abs(val - v) <= max(0.005 * v, 1.0) for v in valeurs_python):
+            avertissements.append(
+                f"Nombre {val:,.0f} dans '{contexte}' non retrouvé dans les valeurs Python."
+            )
+    return avertissements
 
 
 def generer_dossier_travail(
@@ -45,6 +75,18 @@ def generer_dossier_travail(
     for res in resultats:
         _verifier_sources(res.get("valeur"), res.get("sources", []),
                           f"contrôle {res.get('controle_ref')}")
+
+    # Valeurs calculées par Python (pour vérification des feuilles IA)
+    valeurs_python: set[float] = {
+        float(r["valeur"]) for r in resultats
+        if r.get("valeur") is not None and isinstance(r.get("valeur"), (int, float))
+    }
+    avertissements_provenance: list[str] = []
+    for ft in feuilles:
+        contenu = ft.get("contenu_redige", "") or ""
+        if contenu:
+            warns = _verifier_provenance_texte_llm(contenu, valeurs_python, ft.get("cycle", "?"))
+            avertissements_provenance.extend(warns)
 
     doc = Document()
 
@@ -118,6 +160,18 @@ def generer_dossier_travail(
         sources_ft = ft.get("sources", [])
         if sources_ft:
             doc.add_paragraph(f"Sources : {', '.join(str(s) for s in sources_ft[:5])}")
+
+    # Avertissements de provenance (si des nombres LLM ne sont pas tracés)
+    if avertissements_provenance:
+        doc.add_heading("⚠ Avertissements de traçabilité", level=1)
+        p_warn = doc.add_paragraph()
+        p_warn.add_run(
+            "Les montants suivants ont été détectés dans les feuilles de travail rédigées par l'IA "
+            "sans correspondance exacte dans les valeurs calculées par le moteur déterministe. "
+            "L'auditeur doit les vérifier manuellement."
+        ).italic = True
+        for w in avertissements_provenance[:20]:
+            doc.add_paragraph(w, style="List Bullet")
 
     # Pied de page
     doc.add_paragraph("─" * 60)

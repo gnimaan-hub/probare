@@ -4,8 +4,6 @@ import os
 import tempfile
 import pytest
 
-sys.path.insert(0, "D:\\pip\\packages")
-
 
 # ─── document_types ──────────────────────────────────────────────────────────
 

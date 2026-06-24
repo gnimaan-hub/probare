@@ -116,10 +116,15 @@ const ASSERTIONS = [
 ]
 
 const CYCLES = [
-  { id: 'tresorerie',  label: 'Trésorerie' },
-  { id: 'achats',      label: 'Achats-Fournisseurs' },
-  { id: 'ventes',      label: 'Ventes-Clients' },
-  { id: 'transversal', label: 'Transversal' },
+  { id: 'tresorerie',       label: 'Trésorerie' },
+  { id: 'achats',           label: 'Achats-Fournisseurs' },
+  { id: 'ventes',           label: 'Ventes-Clients' },
+  { id: 'immobilisations',  label: 'Immobilisations' },
+  { id: 'stocks',           label: 'Stocks' },
+  { id: 'paie',             label: 'Paie / Personnel' },
+  { id: 'impots',           label: 'Impôts & Taxes' },
+  { id: 'capitaux_propres', label: 'Capitaux propres' },
+  { id: 'transversal',      label: 'Transversal' },
 ]
 
 const NIVEAUX: Record<string, { label: string; color: string; bg: string }> = {

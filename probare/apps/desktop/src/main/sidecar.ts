@@ -38,11 +38,9 @@ export async function startSidecar(): Promise<void> {
       '--port', String(sidecarPort),
       '--no-access-log',
     ]
-    // Packages pip installés dans D:\pip\packages (cible globale sur ce poste)
-    const pipPackages = 'D:\\pip\\packages'
     const sep = process.platform === 'win32' ? ';' : ':'
     const existingPythonPath = process.env.PYTHONPATH || ''
-    const pythonPath = [engineDir, pipPackages, existingPythonPath].filter(Boolean).join(sep)
+    const pythonPath = [engineDir, existingPythonPath].filter(Boolean).join(sep)
 
     sidecarProcess = spawn(pythonExe, args, {
       cwd: engineDir,

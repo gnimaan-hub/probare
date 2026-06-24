@@ -99,6 +99,76 @@ DOCUMENTS_PAR_CYCLE: dict[str, list[dict]] = {
             "description": "Résumé par compte avec soldes finaux.",
         },
     ],
+    "immobilisations": [
+        {
+            "type": "grand_livre",
+            "label": "Grand livre comptable",
+            "requis": True,
+            "description": "Doit contenir les comptes 2xx (immobilisations et amortissements).",
+        },
+        {
+            "type": "balance",
+            "label": "Balance des comptes",
+            "requis": True,
+            "description": "Résumé par compte avec soldes finaux.",
+        },
+    ],
+    "stocks": [
+        {
+            "type": "grand_livre",
+            "label": "Grand livre comptable",
+            "requis": True,
+            "description": "Doit contenir les comptes 3xx (stocks et en-cours).",
+        },
+        {
+            "type": "balance",
+            "label": "Balance des comptes",
+            "requis": True,
+            "description": "Résumé par compte avec soldes finaux.",
+        },
+    ],
+    "paie": [
+        {
+            "type": "grand_livre",
+            "label": "Grand livre comptable",
+            "requis": True,
+            "description": "Doit contenir les comptes 64x (charges de personnel) et 42x (dettes sociales).",
+        },
+        {
+            "type": "balance",
+            "label": "Balance des comptes",
+            "requis": True,
+            "description": "Résumé par compte avec soldes finaux.",
+        },
+    ],
+    "impots": [
+        {
+            "type": "grand_livre",
+            "label": "Grand livre comptable",
+            "requis": True,
+            "description": "Doit contenir les comptes 44x (TVA et impôts) et 63x (impôts et taxes charges).",
+        },
+        {
+            "type": "balance",
+            "label": "Balance des comptes",
+            "requis": True,
+            "description": "Résumé par compte avec soldes finaux.",
+        },
+    ],
+    "capitaux_propres": [
+        {
+            "type": "grand_livre",
+            "label": "Grand livre comptable",
+            "requis": True,
+            "description": "Doit contenir les comptes 10x-15x (capital, réserves, résultat, provisions).",
+        },
+        {
+            "type": "balance",
+            "label": "Balance des comptes",
+            "requis": True,
+            "description": "Résumé par compte avec soldes finaux.",
+        },
+    ],
 }
 
 
@@ -138,6 +208,36 @@ PRECONDITIONS_CONTROLES: dict[str, list[str]] = {
     "VENTE-ROUND":          ["grand_livre"],
     "VENTE-CUT-OFF":        ["grand_livre"],
     "VENTE-CREANCES-ECHUES":["grand_livre"],
+    # Immobilisations
+    "IMO-GL-COHER":         ["grand_livre", "balance"],
+    "IMO-AMORTISSEMENT":    ["balance"],
+    "IMO-AMORT-EXCEDENT":   ["balance"],
+    "IMO-VARIATION":        ["balance"],
+    "IMO-SOLDE-ANORMAL":    ["balance"],
+    # Stocks
+    "STOCK-GL-COHER":       ["grand_livre", "balance"],
+    "STOCK-SOLDE-ANORMAL":  ["balance"],
+    "STOCK-VARIATION":      ["balance"],
+    "STOCK-ROUND":          ["grand_livre"],
+    "STOCK-CUT-OFF":        ["grand_livre"],
+    # Paie / Personnel
+    "PAIE-GL-COHER":        ["grand_livre", "balance"],
+    "PAIE-VARIATION":       ["balance"],
+    "PAIE-RATIO-SOCIAL":    ["grand_livre"],
+    "PAIE-MENSUALITE":      ["grand_livre"],
+    "PAIE-SOLDE-ANORMAL":   ["balance"],
+    # Impôts / Taxes
+    "TAXE-GL-COHER":        ["grand_livre", "balance"],
+    "TAXE-VARIATION":       ["balance"],
+    "TAXE-TVA-COHERENCE":   ["balance"],
+    "TAXE-SOLDE-ANORMAL":   ["balance"],
+    "TAXE-CUT-OFF":         ["grand_livre"],
+    # Capitaux propres et provisions
+    "CP-GL-COHER":           ["grand_livre", "balance"],
+    "CP-VARIATION":          ["balance"],
+    "CP-PROVISION-MOUVEMENT":["grand_livre"],
+    "CP-RESULTAT-COHERENCE": ["balance"],
+    "CP-SOLDE-ANORMAL":      ["balance"],
 }
 
 
