@@ -10,6 +10,7 @@ import {
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
+import { AIThinkingAnimation, type AIThinkingVariant } from '../components/ui/AIThinkingAnimation'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore } from '../stores/projetStore'
@@ -236,6 +237,32 @@ function DocCard({
           </button>
         </div>
       </div>
+
+      {/* Loading IA */}
+      <AnimatePresence>
+        {isLoading && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden border-t border-border"
+          >
+            <AIThinkingAnimation
+              variant={
+                (['uploade', 'erreur'].includes(doc.statut)
+                  ? 'catalogue'
+                  : doc.statut === 'catalogue'
+                    ? 'extraction'
+                    : doc.statut === 'extrait'
+                      ? 'verification'
+                      : 'extraction') as AIThinkingVariant
+              }
+              size="sm"
+              className="m-3"
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Détails expandables */}
       <AnimatePresence>

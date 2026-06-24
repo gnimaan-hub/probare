@@ -9,6 +9,7 @@ import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
 import { OriginBadge } from '../components/ui/OriginBadge'
+import { AIThinkingAnimation } from '../components/ui/AIThinkingAnimation'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore, type Exception, type FichierSource } from '../stores/projetStore'
@@ -61,12 +62,7 @@ function IAPanel({
   }
 
   if (relancing) {
-    return (
-      <div className="flex items-center gap-2 p-3 bg-primary-50 rounded-lg border border-primary-100">
-        <Spinner size="sm" />
-        <span className="text-xs text-primary-700">L'IA analyse cette exception…</span>
-      </div>
-    )
+    return <AIThinkingAnimation variant="analyse" size="sm" />
   }
 
   return (

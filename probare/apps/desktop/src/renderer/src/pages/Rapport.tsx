@@ -8,6 +8,7 @@ import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
 import { OriginBadge } from '../components/ui/OriginBadge'
+import { AIThinkingAnimation } from '../components/ui/AIThinkingAnimation'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore } from '../stores/projetStore'
@@ -240,6 +241,19 @@ export function Rapport() {
               </button>
             </div>
 
+            <AnimatePresence>
+              {generatingFeuille && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden mb-4"
+                >
+                  <AIThinkingAnimation variant="redaction" size="sm" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {feuilles.length === 0 ? (
               <div className="py-8 text-center text-sm text-slate-400">
                 Aucune feuille de travail générée.
@@ -329,6 +343,19 @@ export function Rapport() {
                   {opinion ? 'Recalculer' : "Former l'opinion"}
                 </button>
               </div>
+
+              <AnimatePresence>
+                {formingOpinion && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden mb-4"
+                  >
+                    <AIThinkingAnimation variant="opinion" size="sm" />
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {opinion && (() => {
                 const agg = opinion.agregation_json || {}

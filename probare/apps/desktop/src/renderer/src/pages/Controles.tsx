@@ -11,6 +11,7 @@ import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
 import { OriginBadge } from '../components/ui/OriginBadge'
+import { AIThinkingAnimation } from '../components/ui/AIThinkingAnimation'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore, type ResultatControle } from '../stores/projetStore'
@@ -228,6 +229,20 @@ function CyclePanel({
           </button>
         )}
       </div>
+
+      {/* Loading contrôles */}
+      <AnimatePresence>
+        {running && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <AIThinkingAnimation variant="calcul" size="md" />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Bannière IA */}
       {iaAnalysees > 0 && (

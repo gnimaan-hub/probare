@@ -9,6 +9,7 @@ import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
 import { OriginBadge } from '../components/ui/OriginBadge'
+import { AIThinkingAnimation } from '../components/ui/AIThinkingAnimation'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useSyncProjet } from '../hooks/useProjet'
@@ -257,7 +258,7 @@ function SondageDetail({ sondage, projetId, onRefresh }: { sondage: any; projetI
           )}
 
           {/* Bouton conclure */}
-          <div className="mt-3">
+          <div className="mt-3 space-y-2">
             <button
               onClick={handleConclure}
               disabled={concluding}
@@ -266,6 +267,18 @@ function SondageDetail({ sondage, projetId, onRefresh }: { sondage: any; projetI
               {concluding ? <Spinner size="sm" /> : <Wand2 className="w-4 h-4" />}
               Conclure avec l'IA
             </button>
+            <AnimatePresence>
+              {concluding && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <AIThinkingAnimation variant="conclusion" size="sm" />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       )}
