@@ -479,6 +479,8 @@ export function EvaluationCI() {
 
   const anyRepondu = cycles.some(c => (qciData[c]?.nb_repondues ?? 0) > 0)
   const allEvalues = cycles.length > 0 && cycles.every(c => qciData[c]?.evaluation)
+  // Passer sans IA si au moins 1 réponse par cycle — l'évaluation IA reste recommandée mais non bloquante
+  const peutPasser = cycles.length > 0 && cycles.every(c => (qciData[c]?.nb_repondues ?? 0) >= 1)
 
   const handlePasserTravaux = async () => {
     if (!projetId) return
@@ -532,8 +534,14 @@ export function EvaluationCI() {
             {etatCourant === 'evaluation_ci' && (
               <button
                 onClick={handlePasserTravaux}
-                disabled={transitioning || !allEvalues}
-                title={!allEvalues ? 'Évaluez tous les cycles avant de continuer' : ''}
+                disabled={transitioning || !peutPasser}
+                title={
+                  !peutPasser
+                    ? 'Répondez à au moins une question par cycle pour continuer'
+                    : !allEvalues
+                      ? "Passer à l'ingestion (évaluation IA recommandée mais non obligatoire)"
+                      : ''
+                }
                 className="btn-primary"
               >
                 {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}

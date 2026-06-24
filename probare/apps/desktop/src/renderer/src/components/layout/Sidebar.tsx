@@ -4,6 +4,7 @@ import {
   LayoutDashboard, Settings, FolderOpen, Upload,
   ShieldCheck, AlertTriangle, FileText, ChevronLeft,
   Activity, ArrowLeft, ClipboardList, BarChart2, Database,
+  HardDrive, Building2,
 } from 'lucide-react'
 import { useProjetStore } from '../../stores/projetStore'
 import { ETATS_PIPELINE, getEtatIndex } from '../../lib/utils'
@@ -29,7 +30,8 @@ const projetNavItems: NavItemDef[] = [
   { to: 'controles',        icon: BarChart2,     label: 'Travaux substantifs',  minEtat: 'planification' },
   { to: 'sondages',         icon: Database,      label: 'Sondages',             minEtat: 'planification' },
   { to: 'exceptions',       icon: AlertTriangle, label: 'Exceptions',           minEtat: 'travaux_substantifs' },
-  { to: 'rapport',          icon: FileText,      label: 'Rapport',              minEtat: 'revue' },
+  { to: 'rapport',          icon: FileText,      label: 'Rapport',              minEtat: 'travaux_substantifs' },
+  { to: 'dossier-brut',     icon: HardDrive,     label: 'Documents bruts',      minEtat: 'ingestion' },
   { to: 'journal',          icon: Activity,      label: 'Journal',              minEtat: 'cadrage' },
 ]
 
@@ -149,8 +151,18 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="p-3 border-t border-border">
-        <div className="text-xs text-slate-400 text-center">
+      <div className="p-3 border-t border-border space-y-1">
+        <NavLink
+          to="/dossiers-permanents"
+          className={({ isActive }) => cn(
+            'nav-item text-slate-500',
+            isActive && 'nav-item-active'
+          )}
+        >
+          <Building2 className="w-4 h-4 flex-shrink-0" />
+          Dossiers permanents
+        </NavLink>
+        <div className="text-xs text-slate-400 text-center pt-1">
           Probare v0.1 — MVP
         </div>
       </div>

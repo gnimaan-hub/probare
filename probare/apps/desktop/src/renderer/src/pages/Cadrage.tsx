@@ -18,6 +18,7 @@ const CYCLES_DISPONIBLES = [
     icon: Shield,
     description: 'Comptes 5xx — Caisse, banque, CCP',
     docs: 'Grand livre + Balance + Relevé bancaire (optionnel)',
+    controles: true,
   },
   {
     id: 'achats',
@@ -25,6 +26,7 @@ const CYCLES_DISPONIBLES = [
     icon: ShoppingCart,
     description: 'Comptes 40x + 60x-63x — Fournisseurs et charges',
     docs: 'Grand livre + Balance',
+    controles: true,
   },
   {
     id: 'ventes',
@@ -32,6 +34,7 @@ const CYCLES_DISPONIBLES = [
     icon: TrendingUp,
     description: 'Comptes 41x + 70x-73x — Clients et produits',
     docs: 'Grand livre + Balance',
+    controles: true,
   },
   {
     id: 'immobilisations',
@@ -39,6 +42,7 @@ const CYCLES_DISPONIBLES = [
     icon: Landmark,
     description: 'Comptes 2xx — Immobilisations corporelles, incorporelles et amortissements',
     docs: 'Grand livre + Balance',
+    controles: false,
   },
   {
     id: 'stocks',
@@ -46,6 +50,7 @@ const CYCLES_DISPONIBLES = [
     icon: Package,
     description: 'Comptes 3xx — Stocks, en-cours et marchandises',
     docs: 'Grand livre + Balance',
+    controles: false,
   },
   {
     id: 'paie',
@@ -53,6 +58,7 @@ const CYCLES_DISPONIBLES = [
     icon: Users,
     description: 'Comptes 42x + 64x — Dettes sociales et charges de personnel',
     docs: 'Grand livre + Balance',
+    controles: false,
   },
   {
     id: 'impots',
@@ -60,6 +66,7 @@ const CYCLES_DISPONIBLES = [
     icon: Receipt,
     description: 'Comptes 44x + 63x — TVA, impôts et taxes',
     docs: 'Grand livre + Balance',
+    controles: false,
   },
   {
     id: 'capitaux_propres',
@@ -67,6 +74,7 @@ const CYCLES_DISPONIBLES = [
     icon: PieChart,
     description: 'Comptes 10x-15x — Capital, réserves, résultat et provisions',
     docs: 'Grand livre + Balance',
+    controles: false,
   },
 ]
 
@@ -339,13 +347,22 @@ export function Cadrage() {
                       <Icon className={`w-4 h-4 ${selected ? 'text-white' : 'text-slate-400'}`} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className={`text-sm font-semibold ${selected ? 'text-primary-900' : 'text-slate-700'}`}>
                           {cycle.label}
                         </span>
                         {selected && (
                           <span className="text-xs bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded-full font-medium">
                             Sélectionné
+                          </span>
+                        )}
+                        {cycle.controles ? (
+                          <span className="text-xs bg-emerald-50 text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                            Contrôles disponibles
+                          </span>
+                        ) : (
+                          <span className="text-xs bg-slate-50 text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded-full">
+                            QCI uniquement — v2
                           </span>
                         )}
                       </div>
@@ -359,6 +376,59 @@ export function Cadrage() {
 
             {form.cycles_couverts.length === 0 && (
               <p className="text-xs text-red-500 mt-3">Sélectionnez au moins un cycle.</p>
+            )}
+          </motion.div>
+
+          {/* Seuil de signification */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.08 }} className="card p-5"
+          >
+            <h2 className="font-semibold text-slate-900 mb-1">Seuils d'audit</h2>
+            <p className="text-sm text-slate-500 mb-4">
+              NEP 320 — Le seuil de signification détermine si une anomalie est matérielle.
+              Il peut être recalculé automatiquement à l'étape Planification.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Seuil de signification (FDJ)
+                </label>
+                <input
+                  className="input-field"
+                  type="number"
+                  min="0"
+                  placeholder="Ex : 500 000"
+                  value={form.seuil_signification}
+                  onChange={(e) => setForm({ ...form, seuil_signification: e.target.value })}
+                  disabled={locked}
+                />
+                <p className="text-xs text-slate-400 mt-1">Anomalie matérielle si montant ≥ seuil</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Seuil de planification (FDJ)
+                </label>
+                <input
+                  className="input-field"
+                  type="number"
+                  min="0"
+                  placeholder="Ex : 375 000 (75 % du seuil)"
+                  value={form.seuil_planification}
+                  onChange={(e) => setForm({ ...form, seuil_planification: e.target.value })}
+                  disabled={locked}
+                />
+                <p className="text-xs text-slate-400 mt-1">Généralement 75 % du seuil de signification</p>
+              </div>
+            </div>
+            {!form.seuil_signification && (
+              <div className="mt-3 flex items-start gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-800">
+                <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <span>
+                  Seuil non défini. L'agrégation des anomalies et la formation de l'opinion ne pourront pas
+                  comparer les montants au seuil. Vous pouvez laisser vide et le définir lors de la planification.
+                </span>
+              </div>
             )}
           </motion.div>
 

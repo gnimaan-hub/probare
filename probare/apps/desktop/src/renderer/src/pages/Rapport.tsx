@@ -74,8 +74,13 @@ export function Rapport() {
     if (!projetId) return
     setGeneratingFeuille(true)
     try {
-      await post(`/projets/${projetId}/generer-feuille`, { cycle: 'tresorerie' })
-      toast.success("Feuille de travail redigee par l'IA.")
+      const cycles: string[] = projetActif?.cycles_couverts?.length
+        ? projetActif.cycles_couverts
+        : ['tresorerie']
+      for (const cycle of cycles) {
+        await post(`/projets/${projetId}/generer-feuille`, { cycle })
+      }
+      toast.success(`${cycles.length} feuille${cycles.length > 1 ? 's' : ''} de travail rédigée${cycles.length > 1 ? 's' : ''} par l'IA.`)
       await loadData()
     } catch (e: any) {
       toast.error(e.message)
@@ -183,6 +188,22 @@ export function Rapport() {
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-3xl mx-auto space-y-5">
+          {/* Bandeau état en avance */}
+          {['travaux_substantifs', 'cadrage', 'evaluation_ci', 'ingestion', 'planification'].includes(etatCourant) && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl"
+            >
+              <FileText className="w-5 h-5 text-blue-600 flex-shrink-0" />
+              <div>
+                <div className="text-sm font-semibold text-blue-800">Rapport disponible après la revue des exceptions</div>
+                <div className="text-xs text-blue-700 mt-0.5">
+                  Terminez les travaux substantifs puis traitez toutes les exceptions pour débloquer la génération.
+                </div>
+              </div>
+            </motion.div>
+          )}
           {/* Avertissement exceptions ouvertes */}
           {nbOuvertes > 0 && (
             <motion.div
