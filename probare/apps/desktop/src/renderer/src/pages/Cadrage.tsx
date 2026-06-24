@@ -18,7 +18,7 @@ const CYCLES_DISPONIBLES = [
     icon: Shield,
     description: 'Comptes 5xx — Caisse, banque, CCP',
     docs: 'Grand livre + Balance + Relevé bancaire (optionnel)',
-    controles: true,
+    nb_controles: 8,
   },
   {
     id: 'achats',
@@ -26,7 +26,7 @@ const CYCLES_DISPONIBLES = [
     icon: ShoppingCart,
     description: 'Comptes 40x + 60x-63x — Fournisseurs et charges',
     docs: 'Grand livre + Balance',
-    controles: true,
+    nb_controles: 9,
   },
   {
     id: 'ventes',
@@ -34,7 +34,7 @@ const CYCLES_DISPONIBLES = [
     icon: TrendingUp,
     description: 'Comptes 41x + 70x-73x — Clients et produits',
     docs: 'Grand livre + Balance',
-    controles: true,
+    nb_controles: 10,
   },
   {
     id: 'immobilisations',
@@ -42,7 +42,7 @@ const CYCLES_DISPONIBLES = [
     icon: Landmark,
     description: 'Comptes 2xx — Immobilisations corporelles, incorporelles et amortissements',
     docs: 'Grand livre + Balance',
-    controles: false,
+    nb_controles: 5,
   },
   {
     id: 'stocks',
@@ -50,7 +50,7 @@ const CYCLES_DISPONIBLES = [
     icon: Package,
     description: 'Comptes 3xx — Stocks, en-cours et marchandises',
     docs: 'Grand livre + Balance',
-    controles: false,
+    nb_controles: 5,
   },
   {
     id: 'paie',
@@ -58,7 +58,7 @@ const CYCLES_DISPONIBLES = [
     icon: Users,
     description: 'Comptes 42x + 64x — Dettes sociales et charges de personnel',
     docs: 'Grand livre + Balance',
-    controles: false,
+    nb_controles: 5,
   },
   {
     id: 'impots',
@@ -66,7 +66,7 @@ const CYCLES_DISPONIBLES = [
     icon: Receipt,
     description: 'Comptes 44x + 63x — TVA, impôts et taxes',
     docs: 'Grand livre + Balance',
-    controles: false,
+    nb_controles: 5,
   },
   {
     id: 'capitaux_propres',
@@ -74,7 +74,7 @@ const CYCLES_DISPONIBLES = [
     icon: PieChart,
     description: 'Comptes 10x-15x — Capital, réserves, résultat et provisions',
     docs: 'Grand livre + Balance',
-    controles: false,
+    nb_controles: 5,
   },
 ]
 
@@ -357,15 +357,9 @@ export function Cadrage() {
                             Sélectionné
                           </span>
                         )}
-                        {cycle.controles ? (
-                          <span className="text-xs bg-emerald-50 text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded-full">
-                            Contrôles disponibles
-                          </span>
-                        ) : (
-                          <span className="text-xs bg-slate-50 text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded-full">
-                            QCI uniquement — v2
-                          </span>
-                        )}
+                        <span className="text-xs bg-emerald-50 text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                          {cycle.nb_controles} contrôles
+                        </span>
                       </div>
                       <p className="text-xs text-slate-500 mt-0.5">{cycle.description}</p>
                       <p className="text-xs text-slate-400 mt-1">Documents : {cycle.docs}</p>
@@ -377,15 +371,6 @@ export function Cadrage() {
 
             {form.cycles_couverts.length === 0 && (
               <p className="text-xs text-red-500 mt-3">Sélectionnez au moins un cycle.</p>
-            )}
-            {form.cycles_couverts.some((id) => CYCLES_DISPONIBLES.find((c) => c.id === id)?.controles === false) && (
-              <div className="mt-3">
-                <InfoBanner icon={Info} color="amber">
-                  Certains cycles sélectionnés (Immobilisations, Stocks, Paie, Impôts, Capitaux propres)
-                  n'ont pas encore de contrôles automatisés — seul le questionnaire de contrôle interne (QCI)
-                  sera disponible pour ces cycles dans cette version.
-                </InfoBanner>
-              </div>
             )}
           </motion.div>
 
