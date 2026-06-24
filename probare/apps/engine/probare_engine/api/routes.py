@@ -2152,6 +2152,10 @@ def generer_feuille(projet_id: str, body: dict = {}):
     resultats_cycle = [r for r in resultats if r.get("controle_ref") in refs_cycle]
     exceptions_cycle = [e for e in exceptions if e.get("controle_ref") in refs_cycle]
 
+    # Contrôles de détail du cycle (NEP 505 / 530)
+    circularisations_cycle = db.list_circularisations(projet_id, cycle)
+    sondages_cycle = db.list_sondages(projet_id, cycle)
+
     try:
         from ..llm.claude import ClaudeClient
         def log_llm(t, p): db.log(projet_id, t, p)
@@ -2161,6 +2165,8 @@ def generer_feuille(projet_id: str, body: dict = {}):
             resultats_cycle or resultats,
             exceptions_cycle or exceptions,
             {"exercice": projet.get("exercice"), "seuil": projet.get("seuil_signification")},
+            circularisations=circularisations_cycle,
+            sondages=sondages_cycle,
         )
     except RuntimeError as e:
         raise HTTPException(503, str(e))
@@ -2196,12 +2202,17 @@ def exporter_dossier(projet_id: str):
     resultats = db.list_resultats(projet_id)
     exceptions = db.list_exceptions(projet_id)
     feuilles = db.list_feuilles(projet_id)
+    circularisations = db.list_circularisations(projet_id)
+    sondages = db.list_sondages(projet_id)
 
     output_dir = DATA_DIR / projet_id / "exports"
     output_path = output_dir / f"dossier_travail_{projet_id[:8]}.docx"
 
     try:
-        generer_dossier_travail(projet, resultats, exceptions, feuilles, output_path)
+        generer_dossier_travail(
+            projet, resultats, exceptions, feuilles, output_path,
+            circularisations=circularisations, sondages=sondages,
+        )
     except ProvenanceError as e:
         raise HTTPException(422, str(e))
 

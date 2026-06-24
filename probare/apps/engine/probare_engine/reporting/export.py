@@ -60,10 +60,14 @@ def generer_dossier_travail(
     exceptions: list[dict],
     feuilles: list[dict],
     output_path: Path,
+    circularisations: list[dict] | None = None,
+    sondages: list[dict] | None = None,
 ) -> Path:
     """Génère le dossier de travail en .docx.
     Lève ProvenanceError si un chiffre non sourcé est détecté.
     """
+    circularisations = circularisations or []
+    sondages = sondages or []
     try:
         from docx import Document
         from docx.shared import Pt, RGBColor
@@ -75,6 +79,11 @@ def generer_dossier_travail(
     for res in resultats:
         _verifier_sources(res.get("valeur"), res.get("sources", []),
                           f"contrôle {res.get('controle_ref')}")
+    # Le solde comptable circularisé provient des DonneeSourcee (sources).
+    # Le solde confirmé est une preuve externe (NEP 505), pas une donnée extraite.
+    for circ in circularisations:
+        _verifier_sources(circ.get("solde_comptable"), circ.get("sources", []),
+                          f"circularisation {circ.get('compte')}")
 
     # Valeurs calculées par Python (pour vérification des feuilles IA)
     valeurs_python: set[float] = {
@@ -160,6 +169,111 @@ def generer_dossier_travail(
         sources_ft = ft.get("sources", [])
         if sources_ft:
             doc.add_paragraph(f"Sources : {', '.join(str(s) for s in sources_ft[:5])}")
+
+    # Section circularisation (NEP 505)
+    if circularisations:
+        doc.add_heading("4. Circularisation des tiers (NEP 505)", level=1)
+        doc.add_paragraph(
+            f"{len(circularisations)} tiers ont fait l'objet d'une demande de confirmation externe. "
+            "Les soldes comptables proviennent du grand livre ; les soldes confirmés constituent "
+            "la preuve externe collectée auprès des tiers."
+        )
+
+        def _statut_circ(s: str) -> str:
+            return {
+                "propose": "Proposé", "envoye": "Envoyé", "reponse_recue": "Réponse reçue",
+                "sans_reponse": "Sans réponse", "clos": "Clos",
+            }.get(s, s or "—")
+
+        table = doc.add_table(rows=1, cols=5)
+        table.style = "Light Grid Accent 1"
+        hdr = table.rows[0].cells
+        for i, lib in enumerate(["Compte / Tiers", "Solde comptable", "Solde confirmé", "Écart", "Statut"]):
+            hdr[i].text = lib
+            hdr[i].paragraphs[0].runs[0].bold = True
+
+        for circ in circularisations:
+            cells = table.add_row().cells
+            tiers = circ.get("libelle") or circ.get("compte") or "—"
+            cells[0].text = f"{circ.get('compte', '')} — {tiers}".strip(" —")
+            sc = circ.get("solde_comptable")
+            scf = circ.get("solde_confirme")
+            ec = circ.get("ecart")
+            cells[1].text = f"{sc:,.0f}" if isinstance(sc, (int, float)) else "—"
+            cells[2].text = f"{scf:,.0f}" if isinstance(scf, (int, float)) else "—"
+            ecart_txt = f"{ec:,.0f}" if isinstance(ec, (int, float)) else "—"
+            if circ.get("est_significatif"):
+                ecart_txt += " ⚠"
+            cells[3].text = ecart_txt
+            cells[4].text = _statut_circ(circ.get("statut", ""))
+
+        # Synthèses des analyses IA, le cas échéant
+        for circ in circularisations:
+            analyse = circ.get("analyse_ia")
+            if isinstance(analyse, str) and analyse.strip():
+                try:
+                    analyse = json.loads(analyse)
+                except Exception:
+                    analyse = None
+            if isinstance(analyse, dict) and analyse.get("synthese"):
+                p = doc.add_paragraph()
+                p.add_run(f"{circ.get('compte', '')} — {circ.get('libelle', '')} : ").bold = True
+                p.add_run(analyse["synthese"])
+                for dil in (analyse.get("diligences") or [])[:5]:
+                    doc.add_paragraph(f"Diligence : {dil}", style="List Bullet")
+
+    # Section sondages sur pièces (NEP 530)
+    if sondages:
+        doc.add_heading("5. Sondages sur pièces (NEP 530)", level=1)
+        doc.add_paragraph(
+            f"{len(sondages)} sondage(s) statistique(s) réalisé(s). La taille d'échantillon, "
+            "la sélection et la projection d'erreur sont calculées par le moteur déterministe. "
+            "Les montants projetés sont à comparer au seuil de signification."
+        )
+
+        for s in sondages:
+            doc.add_heading(f"Sondage : {s.get('libelle', 'N/A')} — cycle {s.get('cycle', 'N/A')}", level=2)
+            pop = s.get("population")
+            taille = s.get("taille_echantillon")
+            nb_ano = s.get("nb_anomalies") or 0
+            taux = s.get("taux_anomalie")
+            proj = s.get("montant_projete")
+            mt_pop = s.get("montant_population")
+            p = doc.add_paragraph()
+            p.add_run("Population : ").bold = True
+            p.add_run(f"{pop} éléments")
+            if isinstance(mt_pop, (int, float)):
+                p.add_run(f" ({mt_pop:,.0f} FDJ)")
+            p.add_run("    Échantillon : ").bold = True
+            p.add_run(f"{taille} éléments")
+            p.add_run(f"    Niveau de confiance : {s.get('niveau_confiance', 95)} %")
+
+            p2 = doc.add_paragraph()
+            p2.add_run("Anomalies constatées : ").bold = True
+            run_ano = p2.add_run(f"{nb_ano}")
+            if nb_ano > 0:
+                from docx.shared import RGBColor as _RGB
+                run_ano.font.color.rgb = _RGB(0xC0, 0x39, 0x2B)
+            if isinstance(taux, (int, float)):
+                p2.add_run(f"    Taux d'anomalie : {taux * 100:.1f} %")
+            if isinstance(proj, (int, float)):
+                p2.add_run("    Montant projeté : ").bold = True
+                p2.add_run(f"{proj:,.0f} FDJ")
+
+            conclusion = s.get("conclusion_ia")
+            if isinstance(conclusion, str) and conclusion.strip():
+                try:
+                    conclusion = json.loads(conclusion)
+                except Exception:
+                    conclusion = None
+            if isinstance(conclusion, dict) and conclusion.get("synthese"):
+                doc.add_paragraph(conclusion["synthese"])
+                for dil in (conclusion.get("diligences") or [])[:5]:
+                    doc.add_paragraph(f"Diligence : {dil}", style="List Bullet")
+                if conclusion.get("impact_opinion"):
+                    pi = doc.add_paragraph()
+                    pi.add_run("Impact sur l'opinion : ").bold = True
+                    pi.add_run(conclusion["impact_opinion"])
 
     # Avertissements de provenance (si des nombres LLM ne sont pas tracés)
     if avertissements_provenance:

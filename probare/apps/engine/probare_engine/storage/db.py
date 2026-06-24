@@ -412,15 +412,18 @@ class ProjectDB:
         if not row:
             return None
         d = dict(row)
-        # Désérialiser cycles_couverts
+        # Désérialiser cycles_couverts — défaut aux 3 cycles de base si absent
+        # (cohérent avec create_projet, et défensif pour les projets hérités à NULL).
+        defaut_cycles = ["tresorerie", "achats", "ventes"]
         val = d.get("cycles_couverts")
         if val and isinstance(val, str):
             try:
-                d["cycles_couverts"] = json.loads(val)
+                parsed = json.loads(val)
+                d["cycles_couverts"] = parsed if parsed else defaut_cycles
             except Exception:
-                d["cycles_couverts"] = []
+                d["cycles_couverts"] = defaut_cycles
         elif not val:
-            d["cycles_couverts"] = []
+            d["cycles_couverts"] = defaut_cycles
         return d
 
     # --- Fichier source ---

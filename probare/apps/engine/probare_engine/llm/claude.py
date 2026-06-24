@@ -1137,8 +1137,25 @@ Réponds UNIQUEMENT avec un JSON :
         resultats: list[dict],
         exceptions: list[dict],
         contexte_projet: dict,
+        circularisations: list[dict] | None = None,
+        sondages: list[dict] | None = None,
     ) -> dict:
         """Rédige une feuille de travail à partir de résultats déjà calculés."""
+        circularisations = circularisations or []
+        sondages = sondages or []
+
+        bloc_detail = ""
+        if circularisations:
+            bloc_detail += (
+                "\nCircularisations réalisées (NEP 505 — soldes et écarts calculés par le code) :\n"
+                + json.dumps(circularisations[:15], ensure_ascii=False, indent=2) + "\n"
+            )
+        if sondages:
+            bloc_detail += (
+                "\nSondages sur pièces réalisés (NEP 530 — taille, taux et projection calculés par le code) :\n"
+                + json.dumps(sondages[:10], ensure_ascii=False, indent=2) + "\n"
+            )
+
         prompt = f"""Tu es auditeur senior. Rédige la feuille de travail pour le cycle {cycle}
 en français, conformément aux NEP, à partir des résultats déterministes suivants.
 
@@ -1147,13 +1164,15 @@ Résultats des contrôles (calculés par le code, ne les modifie pas) :
 
 Exceptions levées et tranchées :
 {json.dumps(exceptions[:10], ensure_ascii=False, indent=2)}
-
+{bloc_detail}
 Contexte : {json.dumps(contexte_projet, ensure_ascii=False)}
 
 Règles :
 - Ne produis aucun montant que tu n'as pas reçu dans les données ci-dessus.
 - Référence chaque chiffre à sa source (controle_ref).
-- Structure : Objectif, Procédures effectuées, Résultats, Anomalies non corrigées, Conclusion.
+- Si des circularisations ou sondages sont fournis, mentionne-les dans les procédures effectuées
+  et tiens compte de leurs écarts/projections dans la conclusion.
+- Structure : Objectif, Procédures effectuées (analytiques + détail), Résultats, Anomalies non corrigées, Conclusion.
 - Langue : français professionnel.
 
 Réponds UNIQUEMENT avec un JSON valide :
