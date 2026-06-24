@@ -925,7 +925,7 @@ function SondagesPanel({
                 <label className="text-xs text-slate-600 mb-1 block">Cycle</label>
                 <select className="input text-sm w-full"
                   value={createForm.cycle}
-                  onChange={(e) => setCreateForm({ ...createForm, cycle: e.target.value })}>
+                  onChange={(e) => setCreateForm({ ...createForm, cycle: e.target.value as Cycle })}>
                   {cycles.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
                 </select>
               </div>

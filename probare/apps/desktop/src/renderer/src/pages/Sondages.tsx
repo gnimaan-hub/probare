@@ -378,7 +378,7 @@ export function Sondages() {
             <div className="flex justify-center py-16"><Spinner /></div>
           ) : sondages.length === 0 ? (
             <EmptyState
-              icon={<Database className="w-10 h-10 text-slate-300" />}
+              icon={Database}
               title="Aucun sondage"
               description="Créez un sondage statistique pour sélectionner un échantillon à partir des données importées."
             />

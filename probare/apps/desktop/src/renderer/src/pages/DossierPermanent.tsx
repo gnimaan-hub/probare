@@ -417,19 +417,17 @@ export function DossierPermanent() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <Header
-        title={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate('/dossiers-permanents')}
-              className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <Building2 className="w-5 h-5 text-primary-600" />
-            <span>Dossier permanent — {client.nom}</span>
-          </div>
-        }
+        title={`Dossier permanent — ${client.nom}`}
         subtitle={`NIF : ${client.nif} · ${client.nb_fichiers_permanents} document${client.nb_fichiers_permanents !== 1 ? 's' : ''}`}
+        actions={
+          <button
+            onClick={() => navigate('/dossiers-permanents')}
+            className="btn-secondary"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Tous les clients
+          </button>
+        }
       />
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
