@@ -1,4 +1,4 @@
-"""Moteur de contrôles déterministes — 27 contrôles, 3 cycles."""
+"""Moteur de contrôles déterministes — 52 contrôles, 8 cycles."""
 from __future__ import annotations
 import re
 import uuid
