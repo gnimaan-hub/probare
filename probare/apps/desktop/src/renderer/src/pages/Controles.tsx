@@ -167,10 +167,12 @@ function CyclePanel({
   cycle,
   projetId,
   etatCourant,
+  externallyLaunching,
 }: {
   cycle: typeof CYCLES[0]
   projetId: string
   etatCourant: string
+  externallyLaunching?: boolean
 }) {
   const { post, get } = useApi()
   const toast = useToast()
@@ -189,6 +191,13 @@ function CyclePanel({
   }, [projetId, cycle.id])
 
   const handleLancer = async () => {
+    // Si des résultats existent déjà, demander confirmation pour éviter la duplication
+    if (resultats.length > 0) {
+      const ok = window.confirm(
+        `Des résultats existent déjà pour le cycle ${cycle.label}.\nRelancer les contrôles peut créer des doublons dans les exceptions.\n\nContinuer quand même ?`
+      )
+      if (!ok) return
+    }
     setRunning(true)
     setIaAnalysees(0)
     try {
@@ -211,6 +220,7 @@ function CyclePanel({
   const nbOk = resultats.filter((r) => r.statut === 'ok').length
   const nbExc = resultats.filter((r) => r.statut === 'exception').length
   const canRun = ['travaux_substantifs', 'controles', 'extraction', 'revue'].includes(etatCourant)
+  const isBlocked = running || !!externallyLaunching
 
   return (
     <div className="space-y-4">
@@ -220,9 +230,9 @@ function CyclePanel({
           <p className="text-xs text-slate-500">{cycle.accounts} — {cycle.nep}</p>
         </div>
         {canRun && (
-          <button onClick={handleLancer} disabled={running} className="btn-secondary text-sm">
-            {running ? <Spinner size="sm" /> : <Play className="w-4 h-4" />}
-            {running ? 'Calcul + analyse IA…' : `Lancer les contrôles`}
+          <button onClick={handleLancer} disabled={isBlocked} className="btn-secondary text-sm">
+            {isBlocked ? <Spinner size="sm" /> : <Play className="w-4 h-4" />}
+            {running ? 'Calcul + analyse IA…' : externallyLaunching ? 'En cours…' : resultats.length > 0 ? 'Relancer les contrôles' : 'Lancer les contrôles'}
           </button>
         )}
       </div>
@@ -1236,6 +1246,13 @@ export function Controles() {
 
   const handleLancerTous = async () => {
     if (!projetId) return
+    // Vérifier si des résultats existent déjà dans le store
+    if (resultats.length > 0) {
+      const ok = window.confirm(
+        `Des résultats existent déjà pour cette mission.\nRelancer les procédures analytiques remplacera les résultats précédents et les exceptions non tranchées (les décisions déjà signées sont conservées).\n\nContinuer quand même ?`
+      )
+      if (!ok) return
+    }
     setLaunchingAll(true)
     try {
       let totalControles = 0
@@ -1352,6 +1369,7 @@ export function Controles() {
                     cycle={c}
                     projetId={projetId}
                     etatCourant={etatCourant}
+                    externallyLaunching={launchingAll}
                   />
                 </div>
               ))}

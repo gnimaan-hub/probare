@@ -102,7 +102,9 @@ def generer_dossier_travail(
     info = doc.add_paragraph()
     info.add_run(f"Client : {projet.get('client', 'N/A')}\n").bold = True
     info.add_run(f"Exercice : {projet.get('exercice', 'N/A')}\n")
-    info.add_run(f"Seuil de signification : {projet.get('seuil_signification', 'N/A'):,.0f} FDJ\n")
+    _seuil = projet.get('seuil_signification')
+    _seuil_txt = f"{_seuil:,.0f} FDJ" if isinstance(_seuil, (int, float)) else "Non défini"
+    info.add_run(f"Seuil de signification : {_seuil_txt}\n")
     info.add_run(f"Généré le : {_now()}\n")
     info.add_run(f"Référence NEP 230 : Dossier de travail\n")
 

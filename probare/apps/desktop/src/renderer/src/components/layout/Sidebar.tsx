@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Settings, FolderOpen, Upload,
   ShieldCheck, AlertTriangle, FileText, ChevronLeft,
-  Activity, ArrowLeft, ClipboardList, BarChart2
+  Activity, ArrowLeft, ClipboardList, BarChart2, Building2
 } from 'lucide-react'
 import { useProjetStore } from '../../stores/projetStore'
 import { ETATS_PIPELINE, getEtatIndex } from '../../lib/utils'
@@ -148,8 +148,15 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="p-3 border-t border-border">
-        <div className="text-xs text-slate-400 text-center">
+      <div className="p-3 border-t border-border space-y-1">
+        <NavLink
+          to="/configuration"
+          className={({ isActive }) => cn('nav-item text-slate-400 hover:text-slate-600', isActive && 'nav-item-active')}
+        >
+          <Building2 className="w-4 h-4 flex-shrink-0" />
+          Cabinet
+        </NavLink>
+        <div className="text-xs text-slate-400 text-center pt-1">
           Probare v0.1 — MVP
         </div>
       </div>

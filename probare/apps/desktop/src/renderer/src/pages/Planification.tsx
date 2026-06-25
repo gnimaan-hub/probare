@@ -259,7 +259,8 @@ export function Planification() {
   const doneAnalytics = !!(plan?.variations_json?.length)
   const doneSeuils = !!(plan?.seuil_calcule)
   const doneRisques = risques.filter((r) => r.valide_auditeur).length > 0
-  const doneProgramme = programme.filter((p) => p.statut === 'inclus').length > 0
+  // Considéré fait si : des items sont inclus OU la note de synthèse existe (générée après le programme)
+  const doneProgramme = noteSynthese !== null || programme.some((p) => p.statut === 'inclus' || (p as any).statut === 1)
 
   const sections = [
     { id: 'fiche-entite',  label: 'Fiche entité',           icon: Building2,     done: doneFiche },

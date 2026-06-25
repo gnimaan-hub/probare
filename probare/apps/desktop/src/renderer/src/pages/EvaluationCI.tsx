@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -308,17 +308,21 @@ function CyclePanel({
           </div>
           <div className="flex items-center gap-2">
             {niveau && <NiveauBadge niveau={niveau} />}
-            {!locked && data.nb_repondues >= 3 && (
+            {!locked && data.nb_repondues >= 1 && (
               <button
                 onClick={() => onEvaluer(cycleKey)}
                 disabled={evaluating === cycleKey}
                 className="btn-secondary text-xs py-1.5"
+                title={data.nb_repondues < 3 ? `${data.nb_repondues} réponse(s) — l'évaluation sera plus précise avec plus de réponses` : ''}
               >
                 {evaluating === cycleKey
                   ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Analyse…</>
                   : <><Sparkles className="w-3.5 h-3.5" />{data.evaluation ? 'Réévaluer' : 'Évaluer par IA'}</>
                 }
               </button>
+            )}
+            {!locked && data.nb_repondues === 0 && !data.evaluation && (
+              <span className="text-xs text-slate-400 italic">Répondez au questionnaire</span>
             )}
           </div>
         </div>
@@ -373,6 +377,178 @@ function CyclePanel({
   )
 }
 
+// ─── Synthèse globale CI ──────────────────────────────────────────────────────
+
+function SyntheseGlobale({
+  cycles,
+  qciData,
+  onNavigateCycle,
+}: {
+  cycles: string[]
+  qciData: Record<string, CycleQCI>
+  onNavigateCycle: (c: string) => void
+}) {
+  const evalues = cycles.filter((c) => qciData[c]?.evaluation)
+  const niveaux = evalues.map((c) => qciData[c]?.evaluation?.niveau_risque || 'eleve')
+
+  const globalNiveau = niveaux.includes('eleve')
+    ? 'eleve'
+    : niveaux.includes('moyen')
+    ? 'moyen'
+    : niveaux.length > 0
+    ? 'faible'
+    : null
+
+  const nbEleve  = niveaux.filter((n) => n === 'eleve').length
+  const nbMoyen  = niveaux.filter((n) => n === 'moyen').length
+  const nbFaible = niveaux.filter((n) => n === 'faible').length
+
+  const nonEvalues = cycles.filter((c) => !qciData[c]?.evaluation)
+
+  return (
+    <div className="space-y-5">
+      {/* Bandeau niveau global */}
+      {globalNiveau ? (
+        <div className={`rounded-2xl p-5 border ${
+          globalNiveau === 'faible' ? 'bg-emerald-50 border-emerald-200' :
+          globalNiveau === 'moyen'  ? 'bg-amber-50 border-amber-200' :
+          'bg-red-50 border-red-200'
+        }`}>
+          <div className="flex items-center gap-3 mb-1">
+            {globalNiveau === 'faible'
+              ? <CheckCircle className="w-5 h-5 text-emerald-600" />
+              : globalNiveau === 'moyen'
+              ? <AlertTriangle className="w-5 h-5 text-amber-600" />
+              : <XCircle className="w-5 h-5 text-red-600" />
+            }
+            <p className={`font-semibold text-base ${
+              globalNiveau === 'faible' ? 'text-emerald-800' :
+              globalNiveau === 'moyen'  ? 'text-amber-800' :
+              'text-red-800'
+            }`}>
+              Niveau de risque global CI — {NIVEAU_CONFIG[globalNiveau].label}
+            </p>
+          </div>
+          <p className={`text-xs ml-8 ${
+            globalNiveau === 'faible' ? 'text-emerald-700' :
+            globalNiveau === 'moyen'  ? 'text-amber-700' :
+            'text-red-700'
+          }`}>
+            Basé sur {evalues.length} cycle{evalues.length !== 1 ? 's' : ''} évalué{evalues.length !== 1 ? 's' : ''} sur {cycles.length}.
+            {globalNiveau === 'eleve' && ' Des contrôles substantifs renforcés sont requis.'}
+            {globalNiveau === 'moyen' && ' Une attention particulière sur les cycles à risque est recommandée.'}
+            {globalNiveau === 'faible' && ' Le dispositif CI est globalement satisfaisant.'}
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-2xl p-5 bg-slate-50 border border-border text-sm text-slate-500 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-slate-400" />
+          Évaluez au moins un cycle pour obtenir la synthèse globale.
+        </div>
+      )}
+
+      {/* Compteurs récap */}
+      {evalues.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="card p-4 text-center border-l-4 border-red-400">
+            <div className="text-2xl font-bold text-red-700">{nbEleve}</div>
+            <div className="text-xs text-slate-500 mt-0.5">Risque élevé</div>
+          </div>
+          <div className="card p-4 text-center border-l-4 border-amber-400">
+            <div className="text-2xl font-bold text-amber-700">{nbMoyen}</div>
+            <div className="text-xs text-slate-500 mt-0.5">Risque moyen</div>
+          </div>
+          <div className="card p-4 text-center border-l-4 border-emerald-400">
+            <div className="text-2xl font-bold text-emerald-700">{nbFaible}</div>
+            <div className="text-xs text-slate-500 mt-0.5">Risque faible</div>
+          </div>
+        </div>
+      )}
+
+      {/* Matrice par cycle */}
+      <div className="card overflow-hidden">
+        <div className="px-4 py-3 bg-slate-50 border-b border-border">
+          <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Matrice des risques CI par cycle</p>
+        </div>
+        <div className="divide-y divide-border">
+          {cycles.map((c) => {
+            const meta = CYCLE_META[c] || { label: c, icon: ShieldCheck }
+            const Icon = meta.icon
+            const cycle = qciData[c]
+            const niveau = cycle?.evaluation?.niveau_risque || cycle?.score_info?.niveau
+            const cfg = niveau ? NIVEAU_CONFIG[niveau] : null
+            const score = cycle?.evaluation?.score ?? cycle?.score_info?.score ?? 0
+            const forces = cycle?.evaluation?.forces ?? []
+            const faiblesses = cycle?.evaluation?.faiblesses ?? []
+
+            return (
+              <button
+                key={c}
+                onClick={() => onNavigateCycle(c)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 group-hover:bg-slate-200 transition-colors">
+                  <Icon className="w-4 h-4 text-slate-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-medium text-slate-800">{meta.label}</span>
+                    {niveau && cfg ? (
+                      <NiveauBadge niveau={niveau} />
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">Non évalué</span>
+                    )}
+                  </div>
+                  {/* Barre score */}
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden w-full max-w-xs">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        niveau === 'faible' ? 'bg-emerald-400' :
+                        niveau === 'moyen'  ? 'bg-amber-400' :
+                        niveau === 'eleve'  ? 'bg-red-400' :
+                        'bg-slate-200'
+                      }`}
+                      style={{ width: `${score * 100}%` }}
+                    />
+                  </div>
+                  {/* Forces / Faiblesses résumé */}
+                  {(forces.length > 0 || faiblesses.length > 0) && (
+                    <div className="flex gap-3 mt-1.5">
+                      {forces.length > 0 && (
+                        <span className="text-xs text-emerald-600 flex items-center gap-0.5">
+                          <CheckCircle className="w-3 h-3" />{forces.length} force{forces.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                      {faiblesses.length > 0 && (
+                        <span className="text-xs text-red-600 flex items-center gap-0.5">
+                          <XCircle className="w-3 h-3" />{faiblesses.length} faiblesse{faiblesses.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 flex-shrink-0 transition-colors" />
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Cycles non évalués */}
+      {nonEvalues.length > 0 && (
+        <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+          <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-800">
+            <strong>{nonEvalues.length} cycle{nonEvalues.length > 1 ? 's' : ''} non évalué{nonEvalues.length > 1 ? 's' : ''} : </strong>
+            {nonEvalues.map((c) => CYCLE_META[c]?.label || c).join(', ')}.
+            Cliquez sur chaque cycle pour lancer l'évaluation IA.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 export function EvaluationCI() {
@@ -389,7 +565,7 @@ export function EvaluationCI() {
   const [saving, setSaving] = useState<string | null>(null)
   const [transitioning, setTransitioning] = useState(false)
 
-  // Cycle actif
+  // Cycle actif — null = synthèse globale
   const cycles = Object.keys(qciData)
   const [activeCycle, setActiveCycle] = useState<string | null>(null)
   useEffect(() => {
@@ -412,7 +588,34 @@ export function EvaluationCI() {
 
   // ── Gestion réponses (debounce save) ──────────────────────────────────────
 
-  const pendingRef = { current: new Map<string, ReturnType<typeof setTimeout>>() }
+  // Réponses en attente + timer de flush, par cycle (un seul POST groupé par cycle
+  // pour éviter les requêtes concurrentes qui se télescopent côté serveur).
+  const pendingRef = useRef(new Map<string, Map<string, { reponse: string; commentaire: string }>>())
+  const timersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+
+  const flushCycle = useCallback(async (cycle: string) => {
+    if (!projetId) return
+    const pending = pendingRef.current.get(cycle)
+    if (!pending || pending.size === 0) return
+    const reponses = Array.from(pending.entries()).map(([question_id, v]) => ({
+      question_id, reponse: v.reponse, commentaire: v.commentaire,
+    }))
+    pendingRef.current.set(cycle, new Map()) // vider l'attente avant l'envoi
+    setSaving(cycle)
+    try {
+      await post(`/projets/${projetId}/qci/${cycle}/reponses`, { reponses })
+    } catch (e: any) {
+      // Re-empiler les réponses non sauvegardées pour un prochain essai
+      const again = pendingRef.current.get(cycle) ?? new Map()
+      reponses.forEach(r => {
+        if (!again.has(r.question_id)) again.set(r.question_id, { reponse: r.reponse, commentaire: r.commentaire })
+      })
+      pendingRef.current.set(cycle, again)
+      toast.error(`Sauvegarde échouée : ${e.message}`)
+    } finally {
+      setSaving(null)
+    }
+  }, [projetId, post, toast])
 
   const handleReponse = (cycle: string, questionId: string, reponse: 'oui' | 'non' | 'na', commentaire: string) => {
     // Mise à jour locale immédiate
@@ -433,24 +636,12 @@ export function EvaluationCI() {
       }
     })
 
-    // Sauvegarde groupée après 600ms d'inactivité
-    const key = `${cycle}-${questionId}`
-    const existing = pendingRef.current.get(key)
+    // Empiler la réponse et programmer un flush groupé après 600ms d'inactivité
+    if (!pendingRef.current.has(cycle)) pendingRef.current.set(cycle, new Map())
+    pendingRef.current.get(cycle)!.set(questionId, { reponse, commentaire })
+    const existing = timersRef.current.get(cycle)
     if (existing) clearTimeout(existing)
-    const timer = setTimeout(async () => {
-      if (!projetId) return
-      setSaving(cycle)
-      try {
-        await post(`/projets/${projetId}/qci/${cycle}/reponses`, {
-          reponses: [{ question_id: questionId, reponse, commentaire }],
-        })
-      } catch (e: any) {
-        toast.error(`Sauvegarde échouée : ${e.message}`)
-      } finally {
-        setSaving(null)
-      }
-    }, 600)
-    pendingRef.current.set(key, timer)
+    timersRef.current.set(cycle, setTimeout(() => flushCycle(cycle), 600))
   }
 
   // ── Évaluation IA ─────────────────────────────────────────────────────────
@@ -558,10 +749,24 @@ export function EvaluationCI() {
           </div>
         </div>
 
-        {/* Onglets cycles */}
-        {cycles.length > 1 && (
+        {/* Onglets cycles + Synthèse */}
+        {cycles.length > 0 && (
           <div className="border-b border-border bg-white sticky top-0 z-10">
-            <div className="flex">
+            <div className="flex overflow-x-auto">
+              {/* Onglet Synthèse (toujours présent si au moins un cycle) */}
+              <button
+                onClick={() => setActiveCycle(null)}
+                className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium border-b-2 transition-colors flex-shrink-0 ${
+                  activeCycle === null
+                    ? 'border-primary-600 text-primary-700 bg-primary-50/50'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4" />
+                Synthèse globale
+              </button>
+              {/* Séparateur */}
+              <div className="w-px bg-border my-2 mx-1 flex-shrink-0" />
               {cycles.map(c => {
                 const meta = CYCLE_META[c] || { label: c, icon: ShieldCheck }
                 const Icon = meta.icon
@@ -570,7 +775,7 @@ export function EvaluationCI() {
                   <button
                     key={c}
                     onClick={() => setActiveCycle(c)}
-                    className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium border-b-2 transition-colors ${
+                    className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-colors flex-shrink-0 ${
                       activeCycle === c
                         ? 'border-primary-600 text-primary-700 bg-primary-50/50'
                         : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -600,6 +805,27 @@ export function EvaluationCI() {
               <p className="text-sm">Aucun cycle sélectionné dans le cadrage.</p>
               <p className="text-xs mt-1">Retournez au cadrage pour sélectionner les cycles à auditer.</p>
             </div>
+          ) : activeCycle === null ? (
+            /* Vue synthèse globale */
+            <div className="space-y-4">
+              <SyntheseGlobale
+                cycles={cycles}
+                qciData={qciData}
+                onNavigateCycle={(c) => setActiveCycle(c)}
+              />
+              {!locked && allEvalues && (
+                <div className="flex justify-end pt-2">
+                  <button
+                    onClick={handlePasserTravaux}
+                    disabled={transitioning}
+                    className="btn-primary"
+                  >
+                    {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
+                    Passer à l'ingestion
+                  </button>
+                </div>
+              )}
+            </div>
           ) : activeCycle && activeCycleData ? (
             <CyclePanel
               key={activeCycle}
@@ -612,49 +838,6 @@ export function EvaluationCI() {
               locked={locked}
             />
           ) : null}
-
-          {/* Récapitulatif si tous évalués */}
-          {allEvalues && (
-            <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-border">
-              <p className="text-xs font-semibold text-slate-600 mb-3">Récapitulatif — Niveaux de risque CI</p>
-              <div className="space-y-2">
-                {cycles.map(c => {
-                  const meta = CYCLE_META[c] || { label: c }
-                  const niveau = qciData[c]?.evaluation?.niveau_risque || 'eleve'
-                  const cfg = NIVEAU_CONFIG[niveau] || NIVEAU_CONFIG.eleve
-                  const score = qciData[c]?.evaluation?.score ?? 0
-                  return (
-                    <div key={c} className="flex items-center gap-3">
-                      <span className="text-xs text-slate-600 w-36 font-medium">{meta.label}</span>
-                      <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${
-                            niveau === 'faible' ? 'bg-emerald-400' :
-                            niveau === 'moyen'  ? 'bg-amber-400' :
-                            'bg-red-400'
-                          }`}
-                          style={{ width: `${score * 100}%` }}
-                        />
-                      </div>
-                      <NiveauBadge niveau={niveau} />
-                    </div>
-                  )
-                })}
-              </div>
-              {!locked && (
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={handlePasserTravaux}
-                    disabled={transitioning}
-                    className="btn-primary"
-                  >
-                    {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
-                    Passer à l'ingestion
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>

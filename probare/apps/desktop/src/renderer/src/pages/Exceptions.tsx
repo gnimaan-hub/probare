@@ -301,11 +301,12 @@ function ExceptionCard({
 
 interface TrancherModalProps {
   exc: Exception
+  mode: 'valider' | 'modifier'
   onClose: () => void
   onConfirmed: (decision: string, decideur: string) => void
 }
 
-function TrancherModal({ exc, onClose, onConfirmed }: TrancherModalProps) {
+function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) {
   const [decision, setDecision] = useState(exc.decision_proposee || '')
   const [decideur, setDecideur] = useState('')
   const [loading, setLoading] = useState(false)
@@ -313,18 +314,17 @@ function TrancherModal({ exc, onClose, onConfirmed }: TrancherModalProps) {
 
   const isCritique = exc.severite === 'critique'
   const CONFIRMATION_REQUISE = 'VALIDER'
+  const isValidationMode = mode === 'valider'
 
-  const peutSoumettre = (
-    decision.trim().length >= 20 &&
-    decideur.trim().length >= 2 &&
-    (!isCritique || confirmationCritique === CONFIRMATION_REQUISE)
-  )
+  const peutSoumettre = isValidationMode
+    ? decideur.trim().length >= 2 && (!isCritique || confirmationCritique === CONFIRMATION_REQUISE)
+    : decision.trim().length >= 20 && decideur.trim().length >= 2 && (!isCritique || confirmationCritique === CONFIRMATION_REQUISE)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!peutSoumettre) return
     setLoading(true)
-    onConfirmed(decision, decideur)
+    onConfirmed(isValidationMode ? (exc.decision_proposee || decision) : decision, decideur)
   }
 
   return (
@@ -339,11 +339,13 @@ function TrancherModal({ exc, onClose, onConfirmed }: TrancherModalProps) {
         initial={{ scale: 0.95, y: 12 }}
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.95, y: 12 }}
-        className="bg-white rounded-2xl shadow-modal w-full max-w-lg"
+        className="bg-white rounded-2xl shadow-modal w-full max-w-lg flex flex-col max-h-[85vh]"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-2">
-            <h2 className="font-semibold text-slate-900">Trancher l'exception</h2>
+            <h2 className="font-semibold text-slate-900">
+              {isValidationMode ? 'Valider la décision de l\'IA' : 'Modifier la décision'}
+            </h2>
             {isCritique && (
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
                 Critique
@@ -355,7 +357,8 @@ function TrancherModal({ exc, onClose, onConfirmed }: TrancherModalProps) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden min-h-0">
+          <div className="p-6 space-y-4 overflow-y-auto">
           <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600">
             <strong>{exc.controle_ref}</strong> — {exc.nep_ref}<br />
             <span className="text-slate-500 mt-1 block">{exc.description}</span>
@@ -370,31 +373,43 @@ function TrancherModal({ exc, onClose, onConfirmed }: TrancherModalProps) {
             </div>
           )}
 
-          {exc.decision_proposee && (
+          {/* Mode VALIDER : rappel concis (la décision a déjà été lue sur la page Exceptions) */}
+          {isValidationMode && exc.decision_proposee && (
             <div className="flex items-start gap-2 p-2.5 bg-indigo-50 border border-indigo-100 rounded-lg">
               <Wand2 className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-indigo-700">
-                La décision ci-dessous est pré-rédigée par l'IA. Modifiez-la si nécessaire avant de valider.
+              <p className="text-xs text-indigo-700 font-medium">
+                Vous validez la décision proposée par l'IA telle quelle.
               </p>
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Décision de l'auditeur <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              className="input-field min-h-28 resize-none"
-              placeholder="Ex : Écart justifié par une régularisation de fin d'exercice. Pièce n° 2025/12/045 reçue et vérifiée."
-              value={decision}
-              onChange={(e) => setDecision(e.target.value)}
-              required
-              autoFocus
-            />
-            {decision.trim().length > 0 && decision.trim().length < 20 && (
-              <p className="text-xs text-amber-600 mt-1">La décision doit être suffisamment argumentée (20 caractères minimum).</p>
-            )}
-          </div>
+          {/* Mode MODIFIER : permet d'éditer la décision */}
+          {!isValidationMode && (
+            <div>
+              {exc.decision_proposee && (
+                <div className="flex items-start gap-2 p-2.5 bg-indigo-50 border border-indigo-100 rounded-lg mb-3">
+                  <Wand2 className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-indigo-700">
+                    La décision ci-dessous est pré-rédigée par l'IA. Modifiez-la librement avant de valider.
+                  </p>
+                </div>
+              )}
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Décision de l'auditeur <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                className="input-field min-h-28 resize-none"
+                placeholder="Ex : Écart justifié par une régularisation de fin d'exercice. Pièce n° 2025/12/045 reçue et vérifiée."
+                value={decision}
+                onChange={(e) => setDecision(e.target.value)}
+                required
+                autoFocus
+              />
+              {decision.trim().length > 0 && decision.trim().length < 20 && (
+                <p className="text-xs text-amber-600 mt-1">La décision doit être suffisamment argumentée (20 caractères minimum).</p>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -406,6 +421,7 @@ function TrancherModal({ exc, onClose, onConfirmed }: TrancherModalProps) {
               value={decideur}
               onChange={(e) => setDecideur(e.target.value)}
               required
+              autoFocus={isValidationMode}
             />
           </div>
 
@@ -423,7 +439,9 @@ function TrancherModal({ exc, onClose, onConfirmed }: TrancherModalProps) {
             </div>
           )}
 
-          <div className="flex gap-3 pt-2">
+          </div>
+
+          <div className="flex gap-3 px-6 py-4 border-t border-border flex-shrink-0">
             <button type="button" onClick={onClose} className="btn-secondary flex-1">Annuler</button>
             <button
               type="submit"
@@ -431,7 +449,7 @@ function TrancherModal({ exc, onClose, onConfirmed }: TrancherModalProps) {
               className={`flex-1 ${isCritique ? 'btn-danger' : 'btn-primary'}`}
             >
               {loading ? <Spinner size="sm" /> : <CheckCircle className="w-4 h-4" />}
-              Confirmer la décision
+              {isValidationMode ? 'Signer et valider' : 'Confirmer la modification'}
             </button>
           </div>
         </form>
@@ -449,6 +467,7 @@ export function Exceptions() {
   useSyncProjet()
 
   const [pendingTrancher, setPendingTrancher] = useState<Exception | null>(null)
+  const [pendingValider, setPendingValider] = useState<Exception | null>(null)
   const [relancingId, setRelancingId] = useState<string | null>(null)
   const [transitioning, setTransitioning] = useState(false)
   const [filtre, setFiltre] = useState<'toutes' | 'ouverte' | 'tranchee'>('toutes')
@@ -480,23 +499,25 @@ export function Exceptions() {
   }
 
   const handleValiderDecisionIA = (exc: Exception) => {
-    // Ouvre le modal pré-rempli avec la décision proposée par l'IA
-    setPendingTrancher(exc)
+    setPendingValider(exc)
   }
 
   const handleTrancher = async (decision: string, decideur: string) => {
-    if (!projetId || !pendingTrancher) return
+    const pending = pendingTrancher || pendingValider
+    if (!projetId || !pending) return
     try {
       const updated = await post(
-        `/projets/${projetId}/exceptions/${pendingTrancher.id}/trancher`,
+        `/projets/${projetId}/exceptions/${pending.id}/trancher`,
         { decision_humaine: decision, decideur }
       )
       setExceptions(exceptions.map((e) => (e.id === updated.id ? updated : e)))
       toast.success('Exception tranchée et archivée.')
       setPendingTrancher(null)
+      setPendingValider(null)
     } catch (e: any) {
       toast.error(e.message)
       setPendingTrancher(null)
+      setPendingValider(null)
     }
   }
 
@@ -606,9 +627,18 @@ export function Exceptions() {
       </div>
 
       <AnimatePresence>
+        {pendingValider && (
+          <TrancherModal
+            exc={pendingValider}
+            mode="valider"
+            onClose={() => setPendingValider(null)}
+            onConfirmed={handleTrancher}
+          />
+        )}
         {pendingTrancher && (
           <TrancherModal
             exc={pendingTrancher}
+            mode="modifier"
             onClose={() => setPendingTrancher(null)}
             onConfirmed={handleTrancher}
           />

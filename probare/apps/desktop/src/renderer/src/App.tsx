@@ -14,6 +14,7 @@ import { DossierBrut } from './pages/DossierBrut'
 import { Planification } from './pages/Planification'
 import { DossiersPermanents } from './pages/DossiersPermanents'
 import { DossierPermanent } from './pages/DossierPermanent'
+import { Configuration } from './pages/Configuration'
 import { NotFound } from './pages/NotFound'
 import { useProjetStore } from './stores/projetStore'
 import { Spinner } from './components/ui/Spinner'
@@ -114,6 +115,7 @@ export default function App() {
         <Route path="/projet/:projetId/planification" element={<Planification />} />
         <Route path="/dossiers-permanents" element={<DossiersPermanents />} />
         <Route path="/dossiers-permanents/:clientId" element={<DossierPermanent />} />
+        <Route path="/configuration" element={<Configuration />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

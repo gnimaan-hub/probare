@@ -217,6 +217,38 @@ def _resoudre_fichiers_sources(exceptions: list[dict], donnees_all: list) -> Non
         exc["fichiers_sources"] = fichier_ids
 
 
+def _persister_controles(db, projet_id: str, resultats_total: list, exceptions_total: list) -> list:
+    """
+    Persiste résultats et exceptions de façon idempotente.
+
+    Une ré-exécution des contrôles d'un cycle ne doit plus accumuler de doublons :
+    on purge d'abord les anciens résultats et les exceptions NON tranchées des
+    contrôles qui viennent d'être relancés, puis on réécrit les nouveaux. Les
+    exceptions déjà tranchées par l'auditeur sont préservées et ne sont pas recréées.
+
+    Retourne la liste des exceptions effectivement enregistrées (les nouvelles),
+    pour que l'interprétation IA ne porte que sur celles-ci.
+    """
+    refs = {r.get("controle_ref") for r in resultats_total if r.get("controle_ref")}
+    refs |= {e.get("controle_ref") for e in exceptions_total if e.get("controle_ref")}
+    refs = [r for r in refs if r]
+
+    db.delete_resultats_by_refs(projet_id, refs)
+    db.delete_open_exceptions_by_refs(projet_id, refs)
+    deja_tranchees = db.tranchees_signatures(projet_id, refs)
+
+    for r in resultats_total:
+        db.save_resultat(r)
+
+    enregistrees = []
+    for e in exceptions_total:
+        if (e.get("controle_ref"), e.get("description")) in deja_tranchees:
+            continue  # déjà tranchée par l'auditeur — ne pas recréer un doublon
+        db.save_exception(e)
+        enregistrees.append(e)
+    return enregistrees
+
+
 def _preconditions_check(
     controle_ref: str,
     ids_gl: set,
@@ -1121,10 +1153,7 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
 
     # Persistance
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    for r in resultats_total:
-        db.save_resultat(r)
-    for e in exceptions_total:
-        db.save_exception(e)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_tresorerie",
@@ -1284,10 +1313,7 @@ def run_controles_achats(projet_id: str, body: dict = {}):
                 _skip("ACHAT-VARIATION", "Balance N-1 non renseignée (configurez-la dans Planification → Variations).")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    for r in resultats_total:
-        db.save_resultat(r)
-    for e in exceptions_total:
-        db.save_exception(e)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_achats",
@@ -1449,10 +1475,7 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
                 _skip("VENTE-VARIATION", "Balance N-1 non renseignée (configurez-la dans Planification → Variations).")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    for r in resultats_total:
-        db.save_resultat(r)
-    for e in exceptions_total:
-        db.save_exception(e)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_ventes",
@@ -1564,10 +1587,7 @@ def run_controles_immobilisations(projet_id: str, body: dict = {}):
                 _skip("IMO-VARIATION", "Balance N-1 non renseignée.")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    for r in resultats_total:
-        db.save_resultat(r)
-    for e in exceptions_total:
-        db.save_exception(e)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_immobilisations",
@@ -1681,10 +1701,7 @@ def run_controles_stocks(projet_id: str, body: dict = {}):
                 _skip("STOCK-VARIATION", "Balance N-1 non renseignée.")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    for r in resultats_total:
-        db.save_resultat(r)
-    for e in exceptions_total:
-        db.save_exception(e)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_stocks",
@@ -1796,10 +1813,7 @@ def run_controles_paie(projet_id: str, body: dict = {}):
                 _skip("PAIE-VARIATION", "Balance N-1 non renseignée.")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    for r in resultats_total:
-        db.save_resultat(r)
-    for e in exceptions_total:
-        db.save_exception(e)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_paie",
@@ -1913,10 +1927,7 @@ def run_controles_impots(projet_id: str, body: dict = {}):
                 _skip("TAXE-VARIATION", "Balance N-1 non renseignée.")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    for r in resultats_total:
-        db.save_resultat(r)
-    for e in exceptions_total:
-        db.save_exception(e)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_impots",
@@ -2027,10 +2038,7 @@ def run_controles_capitaux_propres(projet_id: str, body: dict = {}):
                 _skip("CP-VARIATION", "Balance N-1 non renseignée.")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    for r in resultats_total:
-        db.save_resultat(r)
-    for e in exceptions_total:
-        db.save_exception(e)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_capitaux_propres",

@@ -619,7 +619,7 @@ class ProjectDB:
                  evalue_le=excluded.evalue_le""",
             (eid, projet_id, cycle,
              data.get("score"), data.get("niveau_risque"),
-             data.get("synthese_ia"),
+             data.get("synthese_ia") or data.get("synthese"),
              json.dumps(data.get("forces", []), ensure_ascii=False),
              json.dumps(data.get("faiblesses", []), ensure_ascii=False),
              json.dumps(data.get("recommandations", []), ensure_ascii=False),
@@ -642,6 +642,8 @@ class ProjectDB:
                         d[field] = json.loads(val)
                     except Exception:
                         d[field] = []
+            # L'UI lit `synthese` ; la colonne stockée est `synthese_ia`
+            d["synthese"] = d.get("synthese_ia")
             result.append(d)
         return result
 
@@ -709,6 +711,18 @@ class ProjectDB:
             result.append(d)
         return result
 
+    def delete_resultats_by_refs(self, projet_id: str, refs: list[str]) -> int:
+        """Supprime les résultats de contrôle pour les références données (ré-exécution idempotente)."""
+        if not refs:
+            return 0
+        ph = ",".join("?" for _ in refs)
+        cur = self.conn.execute(
+            f"DELETE FROM resultat_calcul WHERE projet_id=? AND controle_ref IN ({ph})",
+            (projet_id, *refs),
+        )
+        self.conn.commit()
+        return cur.rowcount
+
     # --- Exceptions ---
 
     def save_exception(self, data: dict) -> dict:
@@ -737,6 +751,30 @@ class ProjectDB:
         )
         self.conn.commit()
         return data
+
+    def delete_open_exceptions_by_refs(self, projet_id: str, refs: list[str]) -> int:
+        """Supprime les exceptions NON tranchées des contrôles donnés (préserve les décisions humaines)."""
+        if not refs:
+            return 0
+        ph = ",".join("?" for _ in refs)
+        cur = self.conn.execute(
+            f"DELETE FROM exception WHERE projet_id=? AND statut='ouverte' AND controle_ref IN ({ph})",
+            (projet_id, *refs),
+        )
+        self.conn.commit()
+        return cur.rowcount
+
+    def tranchees_signatures(self, projet_id: str, refs: list[str]) -> set:
+        """Retourne {(controle_ref, description)} des exceptions déjà tranchées, pour éviter de les recréer."""
+        if not refs:
+            return set()
+        ph = ",".join("?" for _ in refs)
+        rows = self.conn.execute(
+            f"SELECT controle_ref, description FROM exception "
+            f"WHERE projet_id=? AND statut='tranchee' AND controle_ref IN ({ph})",
+            (projet_id, *refs),
+        ).fetchall()
+        return {(r["controle_ref"], r["description"]) for r in rows}
 
     def update_exception_ia(self, exception_id: str, ia_result: dict) -> dict | None:
         self.conn.execute(

@@ -280,7 +280,9 @@ Si ce n'est pas une liasse (document unique), réponds avec est_liasse: false et
 
         reponses_txt = ""
         for r in reponses:
-            reponses_txt += f"\n- [{r.get('reponse', '?').upper()}] {r.get('question', r.get('question_id', ''))}"
+            if not r.get("reponse"):
+                continue  # ignorer les questions non répondues
+            reponses_txt += f"\n- [{(r.get('reponse') or '?').upper()}] {r.get('question', r.get('question_id', ''))}"
             if r.get("reponse") == "non" and r.get("risque_si_non"):
                 reponses_txt += f"\n  → Risque : {r['risque_si_non']}"
             if r.get("commentaire"):
