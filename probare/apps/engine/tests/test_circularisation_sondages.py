@@ -177,11 +177,24 @@ class TestProjecterErreur:
         assert res["montant_projete_population"] == 0.0
 
     def test_projection_standard(self):
-        # 2 anomalies / 100 échantillon, 500 Fdj anomalies, pop 1M
-        # projection = (500/100) × 1_000_000 = 5_000_000
-        res = projeter_erreur(2, 500.0, 1_000_000.0, 100)
+        # Extrapolation par ratio monétaire (NEP 530) :
+        # montant testé = 50_000, anomalies = 500, population = 1_000_000
+        # projection = (500 / 50_000) × 1_000_000 = 10_000
+        res = projeter_erreur(2, 500.0, 1_000_000.0, 100, montant_echantillon=50_000.0)
         assert res["taux_anomalie"] == pytest.approx(0.02)
-        assert res["montant_projete_population"] == pytest.approx(5_000_000.0, rel=0.01)
+        assert res["montant_projete_population"] == pytest.approx(10_000.0, rel=0.01)
+
+    def test_projection_ne_depasse_pas_la_population(self):
+        # Le montant projeté ne peut dépasser la population que si le taux
+        # d'erreur de l'échantillon dépasse 100 % — impossible ici.
+        res = projeter_erreur(2, 500.0, 1_000_000.0, 100, montant_echantillon=50_000.0)
+        assert res["montant_projete_population"] <= 1_000_000.0
+
+    def test_repli_sans_montant_echantillon(self):
+        # Sans montant d'échantillon, repli sur le taux d'anomalie :
+        # (2/100) × 1_000_000 = 20_000
+        res = projeter_erreur(2, 500.0, 1_000_000.0, 100)
+        assert res["montant_projete_population"] == pytest.approx(20_000.0, rel=0.01)
 
     def test_echantillon_zero(self):
         res = projeter_erreur(0, 0.0, 500_000.0, 0)
@@ -189,13 +202,14 @@ class TestProjecterErreur:
         assert res["montant_projete_population"] == 0.0
 
     def test_toutes_anomalies(self):
-        # 10/10 anomalies, 10_000 Fdj / 10 × 100_000 = 100_000_000
-        res = projeter_erreur(10, 10_000.0, 100_000.0, 10)
+        # 10/10 anomalies, montant testé = montant anomalies = 10_000
+        # projection = (10_000 / 10_000) × 100_000 = 100_000 (toute la population)
+        res = projeter_erreur(10, 10_000.0, 100_000.0, 10, montant_echantillon=10_000.0)
         assert res["taux_anomalie"] == pytest.approx(1.0)
-        assert res["montant_projete_population"] == pytest.approx(100_000_000.0)
+        assert res["montant_projete_population"] == pytest.approx(100_000.0)
 
     def test_champs_retournes(self):
-        res = projeter_erreur(1, 200.0, 50_000.0, 20)
+        res = projeter_erreur(1, 200.0, 50_000.0, 20, montant_echantillon=5_000.0)
         assert "taux_anomalie" in res
         assert "montant_anomalies_echantillon" in res
         assert "montant_projete_population" in res

@@ -126,21 +126,35 @@ def projeter_erreur(
     montant_anomalies: float,
     montant_population: float,
     taille_echantillon: int,
+    montant_echantillon: float = 0.0,
 ) -> dict:
     """Projette les anomalies constatées dans l'échantillon à la population entière.
 
-    Taux d'anomalie = nb_anomalies / taille_echantillon.
-    Montant projeté = (montant_anomalies / taille_echantillon) × montant_population / 1.
+    `montant_population` est le montant TOTAL de la population, `montant_echantillon`
+    le montant total des éléments effectivement testés. L'extrapolation par ratio
+    (NEP 530) est donc :
+
+        montant projeté = (montant_anomalies / montant_echantillon) × montant_population
+
+    Si le montant de l'échantillon n'est pas disponible, on se rabat sur une
+    extrapolation par taux d'anomalie (nb_anomalies / taille) appliqué au montant
+    de la population. On ne divise jamais un montant par un nombre d'éléments
+    (l'ancienne formule surestimait l'erreur d'un facteur ≈ montant moyen).
     """
     taux_anomalie = nb_anomalies / taille_echantillon if taille_echantillon > 0 else 0.0
-    if taille_echantillon > 0 and montant_population > 0:
-        montant_projete = (montant_anomalies / taille_echantillon) * montant_population
+
+    if montant_echantillon > 0 and montant_population > 0:
+        montant_projete = (montant_anomalies / montant_echantillon) * montant_population
+    elif taille_echantillon > 0 and montant_population > 0:
+        # Repli : extrapolation par taux d'anomalie constaté
+        montant_projete = taux_anomalie * montant_population
     else:
         montant_projete = 0.0
 
     return {
         "taux_anomalie": round(taux_anomalie, 4),
         "montant_anomalies_echantillon": round(montant_anomalies, 2),
+        "montant_echantillon": round(montant_echantillon, 2),
         "montant_projete_population": round(montant_projete, 2),
         "nb_anomalies": nb_anomalies,
         "taille_echantillon": taille_echantillon,

@@ -459,6 +459,16 @@ class ProjectDB:
         self.conn.execute("DELETE FROM fichier_source WHERE id=?", (fichier_id,))
         self.conn.commit()
 
+    def find_fichier_by_hash(self, projet_id: str, file_hash: str) -> dict | None:
+        """Retourne un fichier source déjà importé avec le même hash (anti-doublon)."""
+        if not file_hash:
+            return None
+        row = self.conn.execute(
+            "SELECT * FROM fichier_source WHERE projet_id=? AND hash=? LIMIT 1",
+            (projet_id, file_hash),
+        ).fetchone()
+        return dict(row) if row else None
+
     def list_fichiers_source(self, projet_id: str) -> list[dict]:
         rows = self.conn.execute(
             "SELECT * FROM fichier_source WHERE projet_id=? ORDER BY importe_le",

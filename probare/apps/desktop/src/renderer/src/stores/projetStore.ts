@@ -90,8 +90,10 @@ interface ProjetStore {
   documentsRequis: DocumentRequis[]
   journal: any[]
   apiPort: number
+  apiToken: string
 
   setApiPort: (port: number) => void
+  setApiToken: (token: string) => void
   setLoading: (v: boolean) => void
   setError: (e: string | null) => void
   setProjets: (projets: Projet[]) => void
@@ -117,8 +119,10 @@ export const useProjetStore = create<ProjetStore>((set) => ({
   documentsRequis: [],
   journal: [],
   apiPort: 8765,
+  apiToken: '',
 
   setApiPort: (port) => set({ apiPort: port }),
+  setApiToken: (token) => set({ apiToken: token }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
   setProjets: (projets) => set({ projets }),

@@ -1213,7 +1213,7 @@ function RisquesSection({
   projetId: string
   onChanged: (r: Risque[]) => void
 }) {
-  const { post, patch } = useApi()
+  const { post, patch, del } = useApi()
   const toast = useToast()
   const [proposing, setProposing] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
@@ -1246,7 +1246,7 @@ function RisquesSection({
 
   const handleDelete = async (id: string) => {
     try {
-      await fetch(`/api/projets/${projetId}/planification/risques/${id}`, { method: 'DELETE' })
+      await del(`/projets/${projetId}/planification/risques/${id}`)
       onChanged(risques.filter((r) => r.id !== id))
     } catch { /* silencieux */ }
   }

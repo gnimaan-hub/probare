@@ -586,11 +586,16 @@ def controle_montants_ronds(
     compte_prefixes: tuple[str, ...],
     seuil_ratio: float = 0.40,
     diviseur: float = 100.0,
+    sensibilite: float = 1.0,
 ) -> tuple[dict, dict | None]:
     """
     Détecte une proportion anormalement élevée de montants ronds dans les mouvements d'un cycle.
     Un montant rond est défini comme multiple de `diviseur` (défaut: 100).
+
+    `sensibilite` module le seuil selon le contrôle interne (CI élevé → < 1 → seuil
+    abaissé → plus d'exceptions ; CI faible → > 1 → seuil relevé).
     """
+    seuil_ratio = seuil_ratio * sensibilite
     rows_f = _filter_accounts(rows, compte_prefixes)
     if not rows_f:
         return _result_ok(projet_id, controle_ref, 0,
@@ -642,11 +647,15 @@ def controle_cut_off(
     exercice: str | None,
     nb_jours: int = 15,
     seuil_ratio: float = 0.30,
+    sensibilite: float = 1.0,
 ) -> tuple[dict, dict | None]:
     """
     Détecte une concentration d'écritures dans les nb_jours derniers jours de l'exercice.
     Nécessite une colonne 'date' dans les données.
+
+    `sensibilite` module le seuil selon le niveau de contrôle interne.
     """
+    seuil_ratio = seuil_ratio * sensibilite
     fin_exercice = _exercice_end(exercice)
     rows_f = _filter_accounts(rows, compte_prefixes)
 
@@ -768,11 +777,15 @@ def controle_concentration_compte(
     compte_prefixes: tuple[str, ...],
     sens: str,  # "credit" pour fournisseurs (40x), "debit" pour clients (41x)
     seuil_concentration: float = 0.30,
+    sensibilite: float = 1.0,
 ) -> tuple[dict, dict | None]:
     """
     Détecte une concentration des flux sur un seul compte (fournisseur ou client).
     Chaque numéro de compte = un tiers distinct.
+
+    `sensibilite` module le seuil selon le niveau de contrôle interne.
     """
+    seuil_concentration = seuil_concentration * sensibilite
     rows_f = _filter_accounts(rows, compte_prefixes)
     if not rows_f:
         return _result_ok(projet_id, controle_ref, 0,
@@ -826,13 +839,17 @@ def controle_ratio_avoirs(
     prefixe_tiers: tuple[str, ...],
     sens_avoir: str,  # "debit" pour avoirs fournisseurs (débit sur 40x), "credit" pour avoirs clients
     seuil_ratio: float = 0.05,
+    sensibilite: float = 1.0,
 ) -> tuple[dict, dict | None]:
     """
     Détecte un ratio avoirs/total anormal.
     - Avoirs fournisseurs : mouvements débiteurs sur les comptes 40x (remboursements)
     - Avoirs clients : mouvements créditeurs sur les comptes 41x (notes de crédit)
     Complété par la détection de lignes avec "AVOIR" dans le libellé.
+
+    `sensibilite` module le seuil selon le niveau de contrôle interne.
     """
+    seuil_ratio = seuil_ratio * sensibilite
     rows_f = _filter_accounts(rows, prefixe_tiers)
     if not rows_f:
         return _result_ok(projet_id, controle_ref, 0,
@@ -1341,12 +1358,16 @@ def controle_creances_echues(
     exercice: str | None,
     nb_jours_seuil: int = 90,
     seuil_ratio: float = 0.10,
+    sensibilite: float = 1.0,
 ) -> tuple[dict, dict | None]:
     """
     VENTE-CREANCES-ECHUES : détecte les créances clients (41x) dont la date
     d'émission est antérieure à (fin_exercice - nb_jours), signalant un risque
     d'irrécouvrabilité non provisionné.
+
+    `sensibilite` module le seuil selon le niveau de contrôle interne.
     """
+    seuil_ratio = seuil_ratio * sensibilite
     rows_41x = _filter_accounts(rows, ("41",))
     fin_exercice = _exercice_end(exercice)
 

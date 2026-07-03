@@ -1,7 +1,8 @@
 """Point d'entrée FastAPI — sidecar Probare."""
 import os
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 # Charger .env depuis la racine probare/ (4 niveaux au-dessus de ce fichier)
@@ -21,14 +22,36 @@ app = FastAPI(
     description="Moteur d'audit comptable — FastAPI sidecar",
 )
 
+# Le sidecar n'écoute que sur 127.0.0.1 et n'utilise aucun cookie : on n'active
+# donc pas allow_credentials (la combinaison "*" + credentials est de toute façon
+# refusée par les navigateurs). La protection réelle contre un site tiers qui
+# tenterait d'appeler l'API locale est le jeton partagé ci-dessous.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["content-disposition"],
 )
+
+
+# ─── Authentification par jeton partagé ──────────────────────────────────────
+# Electron génère un jeton au démarrage, l'injecte dans l'environnement du
+# sidecar (PROBARE_API_TOKEN) et le transmet au renderer via IPC. Toute requête
+# doit alors présenter l'en-tête « X-Probare-Token ». Si aucun jeton n'est
+# configuré (ex. tests, exécution standalone), la garde est désactivée.
+_API_TOKEN = os.environ.get("PROBARE_API_TOKEN")
+_EXEMPT_PATHS = {"/api/health", "/docs", "/openapi.json", "/redoc"}
+
+
+@app.middleware("http")
+async def verifier_jeton(request: Request, call_next):
+    if _API_TOKEN and request.method != "OPTIONS" and request.url.path not in _EXEMPT_PATHS:
+        if request.headers.get("x-probare-token") != _API_TOKEN:
+            return JSONResponse({"detail": "Jeton d'API manquant ou invalide."}, status_code=401)
+    return await call_next(request)
+
 
 app.include_router(router, prefix="/api")
 

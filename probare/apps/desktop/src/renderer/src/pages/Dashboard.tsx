@@ -8,7 +8,7 @@ import {
 import { Header } from '../components/layout/Header'
 import { EmptyState } from '../components/ui/EmptyState'
 import { Spinner } from '../components/ui/Spinner'
-import { useApi } from '../hooks/useApi'
+import { useApi, authHeaders } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore, type Projet } from '../stores/projetStore'
 import { formatDate, formatMontant, getEtatIndex, ETATS_PIPELINE } from '../lib/utils'
@@ -231,7 +231,7 @@ function CreateDialog({ open, onClose, onCreated }: CreateDialogProps) {
     formData.append('archive', file)
     try {
       const apiBase = (window as any).__PROBARE_API_BASE__ || 'http://127.0.0.1:8765/api'
-      const response = await fetch(`${apiBase}/projets/restaurer`, { method: 'POST', body: formData })
+      const response = await fetch(`${apiBase}/projets/restaurer`, { method: 'POST', headers: authHeaders(), body: formData })
       if (!response.ok) {
         const err = await response.json().catch(() => ({ detail: response.statusText }))
         throw new Error(err.detail || response.statusText)
@@ -594,7 +594,7 @@ export function Dashboard() {
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return
     try {
-      const res = await fetch(`${baseUrl}/projets/${deleteTarget.id}`, { method: 'DELETE' })
+      const res = await fetch(`${baseUrl}/projets/${deleteTarget.id}`, { method: 'DELETE', headers: authHeaders() })
       if (!res.ok) throw new Error((await res.json()).detail || 'Erreur suppression')
       setProjets(projets.filter((p) => p.id !== deleteTarget.id))
       toast.success(`Projet « ${deleteTarget.nom} » supprimé.`)
@@ -607,7 +607,7 @@ export function Dashboard() {
 
   const handleSauvegarder = async (projet: Projet) => {
     try {
-      const res = await fetch(`${baseUrl}/projets/${projet.id}/sauvegarder`)
+      const res = await fetch(`${baseUrl}/projets/${projet.id}/sauvegarder`, { headers: authHeaders() })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Erreur export')
       const blob = await res.blob()
       const disposition = res.headers.get('content-disposition') || ''

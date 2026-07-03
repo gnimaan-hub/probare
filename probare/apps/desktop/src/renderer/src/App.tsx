@@ -66,17 +66,20 @@ function ConnectionError({ onRetry }: { onRetry: () => void }) {
 }
 
 export default function App() {
-  const { setApiPort } = useProjetStore()
+  const { setApiPort, setApiToken } = useProjetStore()
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
 
   const init = async () => {
     setStatus('loading')
     try {
-      // Récupérer le port du sidecar depuis Electron
+      // Récupérer le port et le jeton du sidecar depuis Electron
       let port = 8765
       if (typeof window !== 'undefined' && window.electron?.getApiPort) {
         port = await window.electron.getApiPort()
         setApiPort(port)
+        if (window.electron.getApiToken) {
+          try { setApiToken(await window.electron.getApiToken()) } catch { /* dev sans jeton */ }
+        }
         const res = await fetch(`http://127.0.0.1:${port}/api/health`)
         if (res.ok) { setStatus('ready'); return }
       }
