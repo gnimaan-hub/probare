@@ -48,6 +48,8 @@ export interface Exception {
   statut: 'ouverte' | 'tranchee'
   decision_humaine?: string
   decideur?: string
+  type_resolution?: 'corrigee' | 'sans_incidence' | 'non_corrigee' | null
+  montant_incidence?: number | null
   interpretation_llm?: string
   hypotheses?: string[]
   diligences?: string[]

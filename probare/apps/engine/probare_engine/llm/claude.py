@@ -354,14 +354,19 @@ Ta tâche (sans jamais produire de calculs ni de montants non reçus ci-dessus) 
 1. Expliquer l'exception en langage clair pour l'auditeur responsable.
 2. Lister 2-3 hypothèses de cause les plus probables dans ce contexte.
 3. Proposer les diligences à effectuer (pièces à demander, vérifications à mener).
-4. Rédiger une décision de tranchement documentée, professionnelle et argumentée, prête à être validée ou modifiée par l'auditeur. Cette décision doit être rédigée à la première personne de l'auditeur.
+4. Rédiger un PROJET de décision de tranchement, professionnel et argumenté, que l'auditeur complétera après avoir réalisé les diligences.
+
+RÈGLE DÉONTOLOGIQUE IMPÉRATIVE pour le projet de décision :
+- N'affirme JAMAIS que des vérifications, examens ou diligences ont été réalisés — ils ne l'ont pas encore été au moment où tu écris.
+- Rédige au conditionnel ou au futur : « Sous réserve de… », « Après obtention de… il conviendra de… », « Si la pièce X confirme…, cette exception pourra être tranchée comme… ».
+- N'écris jamais « J'ai vérifié », « Après examen », « J'ai obtenu » : l'auditeur engagerait sa responsabilité sur des travaux non effectués.
 
 Réponds UNIQUEMENT avec un JSON valide :
 {{
   "explication": "explication claire en 2-3 phrases",
   "hypotheses": ["hypothèse 1", "hypothèse 2", "hypothèse 3"],
   "diligences": ["diligence 1", "diligence 2"],
-  "decision_proposee": "Texte complet de la décision rédigée, prêt à signer. Ex: J'ai examiné cette exception... L'écart s'explique par... Après vérification... Je tranche en faveur de...",
+  "decision_proposee": "Projet de décision conditionné aux diligences. Ex: Sous réserve de l'obtention de la pièce n°..., cette exception pourrait s'expliquer par... Il conviendra de vérifier... avant de la trancher comme corrigée, sans incidence ou non corrigée.",
   "urgence": "faible|moyenne|elevee"
 }}"""
 
@@ -1172,9 +1177,11 @@ Réponds UNIQUEMENT avec un JSON valide :
         result = self._parse_json(resp.content[0].text)
         if isinstance(result, dict) and "contenu" in result:
             return result
+        # Repli NEUTRE : un échec de parsing ne doit jamais produire une
+        # conclusion favorable par défaut — l'auditeur doit conclure lui-même.
         return {
             "titre": f"Feuille de travail — {cycle}",
             "contenu": resp.content[0].text,
             "nep_refs": [],
-            "conclusion": "sans_reserve",
+            "conclusion": "a_completer",
         }

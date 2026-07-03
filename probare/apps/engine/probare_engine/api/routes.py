@@ -255,9 +255,12 @@ def _resoudre_fichiers_sources(exceptions: list[dict], donnees_all: list) -> Non
         exc["fichiers_sources"] = fichier_ids
 
 
-def _persister_controles(db, projet_id: str, resultats_total: list, exceptions_total: list) -> list:
+def _persister_controles(db, projet_id: str, resultats_total: list, exceptions_total: list,
+                         cycle: str | None = None, ignores: list | None = None) -> list:
     """
     Persiste résultats et exceptions de façon idempotente.
+    Persiste aussi les contrôles ignorés avec leur motif (NEP 230 : les procédures
+    prévues non réalisées doivent être documentées dans le dossier).
 
     Une ré-exécution des contrôles d'un cycle ne doit plus accumuler de doublons :
     on purge d'abord les anciens résultats et les exceptions NON tranchées des
@@ -284,6 +287,9 @@ def _persister_controles(db, projet_id: str, resultats_total: list, exceptions_t
             continue  # déjà tranchée par l'auditeur — ne pas recréer un doublon
         db.save_exception(e)
         enregistrees.append(e)
+
+    if cycle is not None:
+        db.save_controles_ignores(projet_id, cycle, ignores or [])
     return enregistrees
 
 
@@ -428,13 +434,17 @@ def get_etat(projet_id: str):
 class TransitionBody(BaseModel):
     vers: str
     acteur: str = "utilisateur"
+    # NEP 450 : confirmation explicite requise si le cumul des anomalies non
+    # corrigées dépasse le seuil de signification au passage en génération.
+    confirmer_depassement_seuil: bool = False
 
 
 @router.post("/projets/{projet_id}/transition")
 def post_transition(projet_id: str, body: TransitionBody):
     db = _get_db(projet_id)
     try:
-        projet = transition(db, projet_id, body.vers, body.acteur)
+        projet = transition(db, projet_id, body.vers, body.acteur,
+                            confirmer_depassement_seuil=body.confirmer_depassement_seuil)
     except PipelineError as e:
         raise HTTPException(400, str(e))
     return projet
@@ -1038,20 +1048,22 @@ def get_registre(projet_id: str | None = None):
 def _seuils_ci(db, projet_id: str, cycle: str) -> dict:
     """
     Retourne les multiplicateurs de sensibilité selon le niveau de risque CI du cycle.
-    CI élevé → seuils plus bas → plus d'exceptions levées (approche substantive renforcée).
-    CI faible → seuils plus hauts → on s'appuie sur le CI, moins d'exceptions.
+
+    NEP 330 : on ne peut alléger les travaux substantifs en s'appuyant sur le
+    contrôle interne qu'après avoir testé son efficacité. Le QCI étant purement
+    déclaratif (aucun test de procédures n'est implémenté), le facteur est
+    PLAFONNÉ à 1.0 : un CI jugé mauvais durcit les seuils (0.5), un CI jugé bon
+    ne les relâche jamais.
     """
     evaluations = {e["cycle"]: e for e in db.get_qci_evaluations(projet_id)}
     eval_cycle = evaluations.get(cycle, {})
     niveau = (eval_cycle.get("niveau_risque") or "").lower()
 
-    # Multiplicateur appliqué sur seuil_pct_min et seuil_abs_min
-    # CI élevé : on divise les seuils par 2 (on devient plus sensible)
-    # CI faible : on multiplie les seuils par 1.5 (on réduit les tests)
     if niveau == "eleve":
         return {"facteur": 0.5, "note_ci": "CI élevé — seuils de détection réduits (approche substantive renforcée)"}
     elif niveau == "faible":
-        return {"facteur": 1.5, "note_ci": "CI faible — seuils de détection relevés (appui sur le contrôle interne)"}
+        return {"facteur": 1.0, "note_ci": "CI faible (déclaratif) — seuils standards maintenus : "
+                                           "aucun allègement sans test d'efficacité du CI (NEP 330)"}
     else:
         return {"facteur": 1.0, "note_ci": "CI moyen ou non évalué — seuils standards"}
 
@@ -1151,6 +1163,8 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
             exceptions_total.append(exc)
 
     # ── 7. TRESOR-VARIATION : variations N/N-1 (si seuil défini et N-1 disponible) ──
+    if seuil <= 0:
+        _skip("TRESOR-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
     if seuil > 0 and _check("TRESOR-VARIATION"):
         rows_pour_solde = rows_balance if rows_balance else rows_gl
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, ("5",))
@@ -1209,7 +1223,8 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
 
     # Persistance
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total,
+                                           cycle="tresorerie", ignores=ignores)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_tresorerie",
@@ -1355,6 +1370,8 @@ def run_controles_achats(projet_id: str, body: dict = {}):
             exceptions_total.append(exc)
 
     # ── 9. ACHAT-VARIATION ──
+    if seuil <= 0:
+        _skip("ACHAT-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
     if seuil > 0 and _check("ACHAT-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_ACHATS)
         if soldes_n:
@@ -1373,7 +1390,8 @@ def run_controles_achats(projet_id: str, body: dict = {}):
                 _skip("ACHAT-VARIATION", "Balance N-1 non renseignée (configurez-la dans Planification → Variations).")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total,
+                                           cycle="achats", ignores=ignores)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_achats",
@@ -1521,6 +1539,8 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
             exceptions_total.append(exc)
 
     # ── 10. VENTE-VARIATION ──
+    if seuil <= 0:
+        _skip("VENTE-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
     if seuil > 0 and _check("VENTE-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_VENTES)
         if soldes_n:
@@ -1539,7 +1559,8 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
                 _skip("VENTE-VARIATION", "Balance N-1 non renseignée (configurez-la dans Planification → Variations).")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total,
+                                           cycle="ventes", ignores=ignores)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_ventes",
@@ -1633,6 +1654,8 @@ def run_controles_immobilisations(projet_id: str, body: dict = {}):
         exceptions_total.extend(excs)
 
     # ── 5. IMO-VARIATION ──
+    if seuil <= 0:
+        _skip("IMO-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
     if seuil > 0 and _check("IMO-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_IMO_ALL)
         if soldes_n:
@@ -1651,7 +1674,8 @@ def run_controles_immobilisations(projet_id: str, body: dict = {}):
                 _skip("IMO-VARIATION", "Balance N-1 non renseignée.")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total,
+                                           cycle="immobilisations", ignores=ignores)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_immobilisations",
@@ -1749,6 +1773,8 @@ def run_controles_stocks(projet_id: str, body: dict = {}):
             exceptions_total.append(exc)
 
     # ── 5. STOCK-VARIATION ──
+    if seuil <= 0:
+        _skip("STOCK-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
     if seuil > 0 and _check("STOCK-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_STOCK)
         if soldes_n:
@@ -1767,7 +1793,8 @@ def run_controles_stocks(projet_id: str, body: dict = {}):
                 _skip("STOCK-VARIATION", "Balance N-1 non renseignée.")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total,
+                                           cycle="stocks", ignores=ignores)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_stocks",
@@ -1861,6 +1888,8 @@ def run_controles_paie(projet_id: str, body: dict = {}):
             exceptions_total.append(exc)
 
     # ── 5. PAIE-VARIATION ──
+    if seuil <= 0:
+        _skip("PAIE-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
     if seuil > 0 and _check("PAIE-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_CHARGES)
         if soldes_n:
@@ -1879,7 +1908,8 @@ def run_controles_paie(projet_id: str, body: dict = {}):
                 _skip("PAIE-VARIATION", "Balance N-1 non renseignée.")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total,
+                                           cycle="paie", ignores=ignores)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_paie",
@@ -1976,6 +2006,8 @@ def run_controles_impots(projet_id: str, body: dict = {}):
             exceptions_total.append(exc)
 
     # ── 5. TAXE-VARIATION ──
+    if seuil <= 0:
+        _skip("TAXE-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
     if seuil > 0 and _check("TAXE-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_CHARGES_FISC)
         if soldes_n:
@@ -1994,7 +2026,8 @@ def run_controles_impots(projet_id: str, body: dict = {}):
                 _skip("TAXE-VARIATION", "Balance N-1 non renseignée.")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total,
+                                           cycle="impots", ignores=ignores)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_impots",
@@ -2087,6 +2120,8 @@ def run_controles_capitaux_propres(projet_id: str, body: dict = {}):
             exceptions_total.append(exc)
 
     # ── 5. CP-VARIATION ──
+    if seuil <= 0:
+        _skip("CP-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
     if seuil > 0 and _check("CP-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_CP)
         if soldes_n:
@@ -2105,7 +2140,8 @@ def run_controles_capitaux_propres(projet_id: str, body: dict = {}):
                 _skip("CP-VARIATION", "Balance N-1 non renseignée.")
 
     _resoudre_fichiers_sources(exceptions_total, donnees_all)
-    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total)
+    exceptions_total = _persister_controles(db, projet_id, resultats_total, exceptions_total,
+                                           cycle="capitaux_propres", ignores=ignores)
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_capitaux_propres",
@@ -2162,21 +2198,56 @@ def list_exceptions(projet_id: str, statut: str | None = None, cycle: str | None
 class TrancheeBody(BaseModel):
     decision_humaine: str
     decideur: str
+    # NEP 450 : typologie de la résolution
+    # 'corrigee'       — anomalie corrigée par le client
+    # 'sans_incidence' — explication obtenue, aucune anomalie avérée
+    # 'non_corrigee'   — anomalie maintenue ; montant_incidence requis (> 0)
+    type_resolution: str | None = None
+    montant_incidence: float | None = None
+
+
+_TYPES_RESOLUTION = {"corrigee", "sans_incidence", "non_corrigee"}
 
 
 @router.post("/projets/{projet_id}/exceptions/{exception_id}/trancher")
 def trancher_exception(projet_id: str, exception_id: str, body: TrancheeBody):
     db = _get_db(projet_id)
-    exc = db.trancher_exception(exception_id, body.decision_humaine, body.decideur)
+    if body.type_resolution is not None and body.type_resolution not in _TYPES_RESOLUTION:
+        raise HTTPException(400, f"type_resolution invalide : {body.type_resolution}. "
+                                 f"Valeurs admises : {sorted(_TYPES_RESOLUTION)}.")
+    if body.type_resolution == "non_corrigee" and not (body.montant_incidence and body.montant_incidence > 0):
+        raise HTTPException(400, "Une anomalie non corrigée doit porter un montant d'incidence "
+                                 "positif (NEP 450) pour entrer dans le cumul comparé au seuil.")
+    montant = body.montant_incidence if body.type_resolution == "non_corrigee" else None
+    exc = db.trancher_exception(
+        exception_id, body.decision_humaine, body.decideur,
+        type_resolution=body.type_resolution, montant_incidence=montant,
+    )
     if not exc:
         raise HTTPException(404, "Exception introuvable.")
     db.log(projet_id, "action_humaine", {
         "action": "trancher_exception",
         "exception_id": exception_id,
         "decideur": body.decideur,
+        "type_resolution": body.type_resolution,
+        "montant_incidence": montant,
         "decision": body.decision_humaine[:100],
     })
     return exc
+
+
+@router.get("/projets/{projet_id}/exceptions/synthese")
+def synthese_exceptions(projet_id: str):
+    """Synthèse NEP 450 : cumul des anomalies non corrigées comparé aux seuils."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    return db.synthese_anomalies(
+        projet_id,
+        projet.get("seuil_signification"),
+        projet.get("seuil_planification"),
+    )
 
 
 @router.post("/projets/{projet_id}/exceptions/{exception_id}/interpreter")
@@ -2271,12 +2342,18 @@ def exporter_dossier(projet_id: str):
     resultats = db.list_resultats(projet_id)
     exceptions = db.list_exceptions(projet_id)
     feuilles = db.list_feuilles(projet_id)
+    controles_ignores = db.list_controles_ignores(projet_id)
+    synthese = db.synthese_anomalies(
+        projet_id, projet.get("seuil_signification"), projet.get("seuil_planification"),
+    )
 
     output_dir = DATA_DIR / projet_id / "exports"
     output_path = output_dir / f"dossier_travail_{projet_id[:8]}.docx"
 
     try:
-        generer_dossier_travail(projet, resultats, exceptions, feuilles, output_path)
+        generer_dossier_travail(projet, resultats, exceptions, feuilles, output_path,
+                                controles_ignores=controles_ignores,
+                                synthese_anomalies=synthese)
     except ProvenanceError as e:
         raise HTTPException(422, str(e))
 
@@ -3604,11 +3681,37 @@ def create_circularisation(projet_id: str, body: CircularisationBody):
 @router.patch("/projets/{projet_id}/circularisation/{circ_id}")
 def update_circularisation(projet_id: str, circ_id: str, body: dict):
     db = _get_db(projet_id)
-    item = db.update_circularisation(circ_id, body)
-    if not item:
+    existant = db.get_circularisation(circ_id)
+    if not existant:
         raise HTTPException(404, "Circularisation introuvable.")
+    # NEP 505 : une circularisation restée sans réponse ne peut être close
+    # qu'après documentation des procédures alternatives mises en œuvre.
+    if body.get("statut") == "clos" and existant.get("statut") == "sans_reponse":
+        procedures = body.get("procedures_alternatives") or existant.get("procedures_alternatives")
+        if not procedures or not str(procedures).strip():
+            raise HTTPException(
+                400,
+                "NEP 505 : en l'absence de réponse du tiers, documentez les procédures "
+                "alternatives mises en œuvre (champ procedures_alternatives) avant de clore."
+            )
+    item = db.update_circularisation(circ_id, body)
     db.log(projet_id, "action_humaine", {"action": "maj_circularisation", "id": circ_id,
                                           "statut": body.get("statut")})
+    return {"circularisation": item}
+
+
+@router.post("/projets/{projet_id}/circularisation/{circ_id}/relancer")
+def relancer_circularisation(projet_id: str, circ_id: str, body: dict | None = None):
+    """Trace une relance du tiers (NEP 505). Peut marquer le dossier 'sans_reponse'."""
+    db = _get_db(projet_id)
+    circ = db.get_circularisation(circ_id)
+    if not circ:
+        raise HTTPException(404, "Circularisation introuvable.")
+    updates: dict = {"date_relance": (body or {}).get("date_relance") or _now()}
+    if (body or {}).get("marquer_sans_reponse"):
+        updates["statut"] = "sans_reponse"
+    item = db.update_circularisation(circ_id, updates)
+    db.log(projet_id, "action_humaine", {"action": "relance_circularisation", "id": circ_id})
     return {"circularisation": item}
 
 
@@ -3638,9 +3741,10 @@ def generer_lettre_circularisation(projet_id: str, circ_id: str):
         )
     except Exception as e:
         raise HTTPException(500, f"Erreur LLM : {e}")
+    # La génération de la lettre n'est PAS un envoi : le statut reste inchangé.
+    # L'auditeur marque l'envoi réel via PATCH {statut: "envoye", date_envoi: ...}.
     item = db.update_circularisation(circ_id, {
         "lettre_ia": json.dumps(lettre, ensure_ascii=False),
-        "statut": "envoye",
     })
     db.log(projet_id, "appel_llm", {"action": "generer_lettre_circularisation", "id": circ_id})
     return {"circularisation": item, "lettre": lettre}
@@ -3654,9 +3758,12 @@ def enregistrer_reponse_circularisation(projet_id: str, circ_id: str, body: dict
     circ = db.get_circularisation(circ_id)
     if not circ:
         raise HTTPException(404, "Circularisation introuvable.")
+    projet_circ = db.get_projet(projet_id) or {}
+    seuil_ref = projet_circ.get("seuil_planification") or projet_circ.get("seuil_signification")
     solde_confirme = float(body.get("solde_confirme", 0.0))
     solde_comptable = float(circ.get("solde_comptable") or 0.0)
-    ecart_data = calculer_ecart(solde_comptable, solde_confirme)
+    ecart_data = calculer_ecart(solde_comptable, solde_confirme, seuil_reference=seuil_ref)
+    ecart_data.pop("seuil_reference", None)  # non persistable (colonne absente)
     item = db.update_circularisation(circ_id, {
         "solde_confirme": solde_confirme,
         "reponse_brute": body.get("reponse_brute", ""),
@@ -3683,6 +3790,7 @@ def analyser_reponse_circularisation(projet_id: str, circ_id: str):
     ecart_data = calculer_ecart(
         float(circ.get("solde_comptable") or 0.0),
         float(circ.get("solde_confirme") or 0.0),
+        seuil_reference=projet.get("seuil_planification") or projet.get("seuil_signification"),
     )
     ctx = {"exercice": projet.get("exercice"), "seuil_signification": projet.get("seuil_signification")}
     try:

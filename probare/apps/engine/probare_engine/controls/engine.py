@@ -1372,7 +1372,7 @@ def controle_creances_echues(
     fin_exercice = _exercice_end(exercice)
 
     if not fin_exercice:
-        return _result_ok("", "VENTE-CREANCES-ECHUES", 0,
+        return _result_ok(projet_id, "VENTE-CREANCES-ECHUES", 0,
                           "Exercice non renseigné, analyse des créances échues ignorée.", []), None
 
     seuil_date = fin_exercice - timedelta(days=nb_jours_seuil)

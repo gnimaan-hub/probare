@@ -300,6 +300,16 @@ class ProjectDB:
             montant_anomalie REAL DEFAULT 0.0,
             commentaire TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS controle_ignore (
+            id TEXT PRIMARY KEY,
+            projet_id TEXT NOT NULL,
+            cycle TEXT NOT NULL,
+            controle_ref TEXT NOT NULL,
+            raison TEXT,
+            horodatage TEXT,
+            UNIQUE(projet_id, controle_ref)
+        );
         """)
         self.conn.commit()
 
@@ -337,6 +347,11 @@ class ProjectDB:
             ("exception", "fichiers_sources", "TEXT"),
             ("circularisation", "date_relance", "TEXT"),
             ("sondage", "seed", "INTEGER"),
+            # NEP 450 : typologie de résolution et incidence chiffrée
+            ("exception", "type_resolution", "TEXT"),
+            ("exception", "montant_incidence", "REAL"),
+            # NEP 505 : procédures alternatives en cas de non-réponse
+            ("circularisation", "procedures_alternatives", "TEXT"),
         ]
         for table, col, typedef in migrations:
             try:
@@ -412,15 +427,17 @@ class ProjectDB:
         if not row:
             return None
         d = dict(row)
-        # Désérialiser cycles_couverts
+        # Désérialiser cycles_couverts — les anciens dossiers (colonne NULL)
+        # couvrent les 3 cycles historiques par défaut.
+        _CYCLES_DEFAUT = ["tresorerie", "achats", "ventes"]
         val = d.get("cycles_couverts")
         if val and isinstance(val, str):
             try:
                 d["cycles_couverts"] = json.loads(val)
             except Exception:
-                d["cycles_couverts"] = []
+                d["cycles_couverts"] = _CYCLES_DEFAUT
         elif not val:
-            d["cycles_couverts"] = []
+            d["cycles_couverts"] = _CYCLES_DEFAUT
         return d
 
     # --- Fichier source ---
@@ -821,11 +838,27 @@ class ProjectDB:
         ).fetchone()
         return self._deserialize_exception(dict(row)) if row else None
 
-    def trancher_exception(self, exception_id: str, decision: str, decideur: str) -> dict | None:
+    def trancher_exception(
+        self,
+        exception_id: str,
+        decision: str,
+        decideur: str,
+        type_resolution: str | None = None,
+        montant_incidence: float | None = None,
+    ) -> dict | None:
+        """
+        Tranche une exception avec typologie NEP 450 :
+        - 'corrigee'      : anomalie corrigée par le client — aucune incidence résiduelle.
+        - 'sans_incidence': explication obtenue, aucune anomalie avérée.
+        - 'non_corrigee'  : anomalie non corrigée — montant_incidence entre dans le
+                            cumul comparé au seuil de signification.
+        type_resolution None = tranchement rétrocompatible non typé.
+        """
         self.conn.execute(
             """UPDATE exception SET statut='tranchee', decision_humaine=?,
-               decideur=?, horodatage=? WHERE id=?""",
-            (decision, decideur, _now(), exception_id)
+               decideur=?, type_resolution=?, montant_incidence=?, horodatage=?
+               WHERE id=?""",
+            (decision, decideur, type_resolution, montant_incidence, _now(), exception_id)
         )
         self.conn.commit()
         return self.get_exception(exception_id)
@@ -836,6 +869,74 @@ class ProjectDB:
             (projet_id,)
         ).fetchone()[0]
         return count > 0
+
+    def synthese_anomalies(self, projet_id: str, seuil_signification: float | None,
+                           seuil_planification: float | None) -> dict:
+        """
+        Synthèse NEP 450 : cumule les anomalies non corrigées et les compare aux seuils.
+        Arithmétique 100 % Python — aucune valeur ne vient du LLM.
+        """
+        rows = self.conn.execute(
+            "SELECT * FROM exception WHERE projet_id=? AND statut='tranchee'",
+            (projet_id,)
+        ).fetchall()
+        tranchees = [dict(r) for r in rows]
+
+        non_corrigees = [e for e in tranchees if e.get("type_resolution") == "non_corrigee"]
+        corrigees = [e for e in tranchees if e.get("type_resolution") == "corrigee"]
+        sans_incidence = [e for e in tranchees if e.get("type_resolution") == "sans_incidence"]
+        non_typees = [e for e in tranchees if not e.get("type_resolution")]
+
+        cumul = sum(abs(float(e.get("montant_incidence") or 0.0)) for e in non_corrigees)
+        seuil_sig = float(seuil_signification or 0.0)
+        seuil_plan = float(seuil_planification or 0.0)
+
+        return {
+            "cumul_non_corrigees": round(cumul, 2),
+            "seuil_signification": seuil_sig or None,
+            "seuil_planification": seuil_plan or None,
+            "depasse_seuil_signification": bool(seuil_sig and cumul > seuil_sig),
+            "depasse_seuil_planification": bool(seuil_plan and cumul > seuil_plan),
+            "nb_ouvertes": self.conn.execute(
+                "SELECT COUNT(*) FROM exception WHERE projet_id=? AND statut='ouverte'",
+                (projet_id,)).fetchone()[0],
+            "nb_corrigees": len(corrigees),
+            "nb_non_corrigees": len(non_corrigees),
+            "nb_sans_incidence": len(sans_incidence),
+            "nb_non_typees": len(non_typees),
+            "exceptions_non_corrigees": [
+                {"id": e["id"], "controle_ref": e.get("controle_ref"),
+                 "description": e.get("description"),
+                 "montant_incidence": e.get("montant_incidence")}
+                for e in non_corrigees
+            ],
+        }
+
+    # --- Contrôles ignorés (NEP 230 : documenter les procédures non réalisées) ---
+
+    def save_controles_ignores(self, projet_id: str, cycle: str, ignores: list[dict]) -> None:
+        """Remplace les motifs d'omission des contrôles du cycle par ceux de la dernière exécution."""
+        self.conn.execute(
+            "DELETE FROM controle_ignore WHERE projet_id=? AND cycle=?",
+            (projet_id, cycle)
+        )
+        now = _now()
+        self.conn.executemany(
+            """INSERT OR REPLACE INTO controle_ignore
+               (id, projet_id, cycle, controle_ref, raison, horodatage)
+               VALUES (?,?,?,?,?,?)""",
+            [(str(__import__("uuid").uuid4()), projet_id, cycle,
+              i.get("controle_ref", ""), i.get("raison", ""), now)
+             for i in ignores]
+        )
+        self.conn.commit()
+
+    def list_controles_ignores(self, projet_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM controle_ignore WHERE projet_id=? ORDER BY cycle, controle_ref",
+            (projet_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     # --- Feuilles de travail ---
 
@@ -1101,7 +1202,8 @@ class ProjectDB:
     def update_circularisation(self, circ_id: str, data: dict) -> dict | None:
         allowed = {
             "statut","lettre_ia","solde_confirme","ecart","ecart_pct","est_significatif",
-            "reponse_brute","analyse_ia","date_envoi","date_relance","date_reponse","libelle"
+            "reponse_brute","analyse_ia","date_envoi","date_relance","date_reponse","libelle",
+            "procedures_alternatives"
         }
         fields = {k: v for k, v in data.items() if k in allowed}
         fields["modifie_le"] = _now()

@@ -1,5 +1,6 @@
 """Point d'entrée FastAPI — sidecar Probare."""
 import os
+import re
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -50,6 +51,33 @@ async def verifier_jeton(request: Request, call_next):
     if _API_TOKEN and request.method != "OPTIONS" and request.url.path not in _EXEMPT_PATHS:
         if request.headers.get("x-probare-token") != _API_TOKEN:
             return JSONResponse({"detail": "Jeton d'API manquant ou invalide."}, status_code=401)
+    return await call_next(request)
+
+
+# ─── Verrou lecture seule des dossiers archivés ──────────────────────────────
+# Un dossier archivé est scellé : toute mutation (POST/PATCH/PUT/DELETE) est
+# refusée, à l'exception du désarchivage explicite qui, lui, est journalisé.
+_PROJET_PATH_RE = re.compile(r"^/api/projets/([0-9a-fA-F-]{8,64})(/.*)?$")
+
+
+@app.middleware("http")
+async def verrou_archive(request: Request, call_next):
+    if request.method in ("POST", "PATCH", "PUT", "DELETE"):
+        m = _PROJET_PATH_RE.match(request.url.path)
+        if m and (m.group(2) or "") != "/desarchiver":
+            projet_id = m.group(1)
+            try:
+                from .api.routes import _get_db
+                projet = _get_db(projet_id).get_projet(projet_id)
+                if projet and projet.get("archive"):
+                    return JSONResponse(
+                        {"detail": "Dossier archivé — lecture seule. "
+                                   "Désarchivez-le pour le modifier."},
+                        status_code=403,
+                    )
+            except Exception:
+                # Id invalide ou projet inexistant : la route donnera la vraie erreur.
+                pass
     return await call_next(request)
 
 

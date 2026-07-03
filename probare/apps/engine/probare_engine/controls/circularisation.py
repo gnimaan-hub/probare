@@ -79,17 +79,27 @@ def proposer_tiers(
 
 # ─── Calcul d'écart ──────────────────────────────────────────────────────────
 
-def calculer_ecart(solde_comptable: float, solde_confirme: float) -> dict:
+def calculer_ecart(
+    solde_comptable: float,
+    solde_confirme: float,
+    seuil_reference: float | None = None,
+) -> dict:
     """Calcule l'écart entre le solde comptable et le solde confirmé par le tiers.
 
-    Retourne ecart (montant), ecart_pct, est_significatif.
+    Le caractère significatif se réfère au seuil du dossier (seuil de planification
+    de préférence) quand il est fourni ; à défaut, repli sur la règle interne
+    « > 5 % ou > 100 » (héritée du MVP, très conservatrice).
+    Retourne ecart (montant), ecart_pct, est_significatif, seuil_reference.
     """
     ecart = solde_comptable - solde_confirme
     ecart_pct = (ecart / solde_comptable * 100) if solde_comptable != 0 else 0.0
-    # Seuil interne : écart > 5 % et > 100 = significatif
-    est_significatif = abs(ecart_pct) > 5.0 or abs(ecart) > 100.0
+    if seuil_reference and seuil_reference > 0:
+        est_significatif = abs(ecart) > seuil_reference
+    else:
+        est_significatif = abs(ecart_pct) > 5.0 or abs(ecart) > 100.0
     return {
         "ecart": round(ecart, 2),
         "ecart_pct": round(ecart_pct, 4),
         "est_significatif": est_significatif,
+        "seuil_reference": seuil_reference,
     }

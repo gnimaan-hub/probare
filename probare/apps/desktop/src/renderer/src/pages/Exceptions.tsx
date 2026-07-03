@@ -303,12 +303,25 @@ interface TrancherModalProps {
   exc: Exception
   mode: 'valider' | 'modifier'
   onClose: () => void
-  onConfirmed: (decision: string, decideur: string) => void
+  onConfirmed: (
+    decision: string,
+    decideur: string,
+    typeResolution: string,
+    montantIncidence: number | null
+  ) => void
 }
+
+const TYPES_RESOLUTION = [
+  { value: 'corrigee', label: 'Corrigée par le client', hint: 'L\'anomalie a été corrigée — aucune incidence résiduelle.' },
+  { value: 'sans_incidence', label: 'Sans incidence', hint: 'Explication obtenue — aucune anomalie avérée.' },
+  { value: 'non_corrigee', label: 'Non corrigée', hint: 'Anomalie maintenue — son montant entre dans le cumul NEP 450 comparé au seuil.' },
+]
 
 function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) {
   const [decision, setDecision] = useState(exc.decision_proposee || '')
   const [decideur, setDecideur] = useState('')
+  const [typeResolution, setTypeResolution] = useState('')
+  const [montantIncidence, setMontantIncidence] = useState('')
   const [loading, setLoading] = useState(false)
   const [confirmationCritique, setConfirmationCritique] = useState('')
 
@@ -316,15 +329,29 @@ function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) 
   const CONFIRMATION_REQUISE = 'VALIDER'
   const isValidationMode = mode === 'valider'
 
-  const peutSoumettre = isValidationMode
-    ? decideur.trim().length >= 2 && (!isCritique || confirmationCritique === CONFIRMATION_REQUISE)
-    : decision.trim().length >= 20 && decideur.trim().length >= 2 && (!isCritique || confirmationCritique === CONFIRMATION_REQUISE)
+  const montantValide =
+    typeResolution !== 'non_corrigee' ||
+    (montantIncidence.trim() !== '' && Number(montantIncidence.replace(',', '.')) > 0)
+
+  const peutSoumettre =
+    typeResolution !== '' &&
+    montantValide &&
+    decideur.trim().length >= 2 &&
+    (!isCritique || confirmationCritique === CONFIRMATION_REQUISE) &&
+    (isValidationMode || decision.trim().length >= 20)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!peutSoumettre) return
     setLoading(true)
-    onConfirmed(isValidationMode ? (exc.decision_proposee || decision) : decision, decideur)
+    const montant =
+      typeResolution === 'non_corrigee' ? Number(montantIncidence.replace(',', '.')) : null
+    onConfirmed(
+      isValidationMode ? (exc.decision_proposee || decision) : decision,
+      decideur,
+      typeResolution,
+      montant
+    )
   }
 
   return (
@@ -408,6 +435,60 @@ function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) 
               {decision.trim().length > 0 && decision.trim().length < 20 && (
                 <p className="text-xs text-amber-600 mt-1">La décision doit être suffisamment argumentée (20 caractères minimum).</p>
               )}
+            </div>
+          )}
+
+          {/* Typologie NEP 450 — nature de la résolution */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Nature de la résolution (NEP 450) <span className="text-red-500">*</span>
+            </label>
+            <div className="space-y-2">
+              {TYPES_RESOLUTION.map((t) => (
+                <label
+                  key={t.value}
+                  className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                    typeResolution === t.value
+                      ? 'border-indigo-400 bg-indigo-50'
+                      : 'border-border hover:border-slate-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="type_resolution"
+                    value={t.value}
+                    checked={typeResolution === t.value}
+                    onChange={() => setTypeResolution(t.value)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-slate-800">{t.label}</span>
+                    <span className="block text-xs text-slate-500">{t.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {typeResolution === 'non_corrigee' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Montant de l'incidence (FDJ) <span className="text-red-500">*</span>
+              </label>
+              <input
+                className="input-field"
+                type="number"
+                min="0"
+                step="any"
+                placeholder="Ex : 250000"
+                value={montantIncidence}
+                onChange={(e) => setMontantIncidence(e.target.value)}
+                required
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Ce montant sera cumulé avec les autres anomalies non corrigées et comparé
+                au seuil de signification avant la génération du dossier (NEP 450).
+              </p>
             </div>
           )}
 
@@ -502,13 +583,23 @@ export function Exceptions() {
     setPendingValider(exc)
   }
 
-  const handleTrancher = async (decision: string, decideur: string) => {
+  const handleTrancher = async (
+    decision: string,
+    decideur: string,
+    typeResolution: string,
+    montantIncidence: number | null
+  ) => {
     const pending = pendingTrancher || pendingValider
     if (!projetId || !pending) return
     try {
       const updated = await post(
         `/projets/${projetId}/exceptions/${pending.id}/trancher`,
-        { decision_humaine: decision, decideur }
+        {
+          decision_humaine: decision,
+          decideur,
+          type_resolution: typeResolution || null,
+          montant_incidence: montantIncidence,
+        }
       )
       setExceptions(exceptions.map((e) => (e.id === updated.id ? updated : e)))
       toast.success('Exception tranchée et archivée.')
@@ -533,7 +624,30 @@ export function Exceptions() {
       setProjetActif(updated)
       navigate(`/projet/${projetId}/rapport`)
     } catch (e: any) {
-      toast.error(e.message)
+      // Verrou NEP 450 : le cumul des anomalies non corrigées dépasse le seuil.
+      // L'auditeur peut confirmer explicitement en acceptant l'incidence sur l'opinion.
+      if (String(e.message).includes('NEP 450')) {
+        const confirme = window.confirm(
+          `${e.message}\n\nConfirmer le passage en génération en acceptant ` +
+          `l'incidence de ce dépassement sur l'opinion d'audit ?`
+        )
+        if (confirme) {
+          try {
+            const updated = await post(`/projets/${projetId}/transition`, {
+              vers: 'generation',
+              acteur: 'utilisateur',
+              confirmer_depassement_seuil: true,
+            })
+            setProjetActif(updated)
+            navigate(`/projet/${projetId}/rapport`)
+            return
+          } catch (e2: any) {
+            toast.error(e2.message)
+          }
+        }
+      } else {
+        toast.error(e.message)
+      }
     } finally {
       setTransitioning(false)
     }
