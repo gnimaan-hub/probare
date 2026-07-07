@@ -11,7 +11,7 @@ import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore } from '../stores/projetStore'
 import { useSyncProjet } from '../hooks/useProjet'
-import { formatDate } from '../lib/utils'
+import { formatDate, normeLabel } from '../lib/utils'
 
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -115,7 +115,7 @@ export function Rapport() {
     <div className="flex flex-col h-full">
       <Header
         title="Dossier de travail & Rapport"
-        subtitle="NEP 230 — Génération des livrables"
+        subtitle={`${normeLabel('230')} — Génération des livrables`}
         actions={
           <button onClick={loadData} className="btn-ghost">
             <RefreshCw className="w-4 h-4" />
@@ -248,7 +248,7 @@ export function Rapport() {
                 {exportingDocx ? <Spinner size="sm" /> : <FileText className="w-5 h-5" />}
                 <div className="text-left">
                   <div className="text-sm font-semibold">Dossier de travail</div>
-                  <div className="text-xs opacity-75">Format .docx — NEP 230</div>
+                  <div className="text-xs opacity-75">Format .docx — {normeLabel('230')}</div>
                 </div>
               </button>
 

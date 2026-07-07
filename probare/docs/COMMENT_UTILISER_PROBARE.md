@@ -1,6 +1,6 @@
 # Comment utiliser Probare
 
-**Guide de première utilisation — assistant d'audit IA-first (référentiel NEP / H2A Djibouti)**
+**Guide de première utilisation — assistant d'audit IA-first (référentiel ISA — NEP en option)**
 
 ---
 
@@ -12,7 +12,7 @@ Probare vous accompagne sur toute une mission d'audit contractuel, du cadrage à
 2. **L'IA interprète et rédige.** Dès qu'une exception est levée, l'IA l'explique, propose des hypothèses, des diligences et un **projet** de décision. Elle ne produit jamais un montant qui ne vient pas du moteur de calcul.
 3. **Vous supervisez et signez.** Aucune décision n'entre au dossier sans votre validation nominative. **Probare ne formule jamais l'opinion d'audit** : elle reste de votre responsabilité exclusive.
 
-Chaque action (import, contrôle, appel IA, décision, changement d'étape) est inscrite dans le **Journal**, la piste d'audit de la mission (NEP 230).
+Chaque action (import, contrôle, appel IA, décision, changement d'étape) est inscrite dans l'**Historique**, la piste d'audit de la mission (ISA 230).
 
 ---
 
@@ -40,6 +40,19 @@ Ouvrez **Cabinet** (bas de la barre latérale) et renseignez le nom du cabinet, 
 
 Depuis le **Tableau de bord → Dossiers permanents**, créez une fiche par client (nom, NIF, secteur, dirigeants) et rattachez-y les documents pluriannuels : statuts, PV d'AG, contrats, rapports antérieurs. Vous pourrez lier chaque mission à un client existant.
 
+### 2.5 Référentiel de normes : ISA (défaut) ou NEP
+
+Probare référence chaque contrôle, exception et livrable à une norme d'audit.
+Le référentiel par défaut est **ISA** (normes internationales de l'IAASB, applicables
+à Djibouti). Les cabinets travaillant sous référentiel français peuvent basculer en
+**NEP** dans **Cabinet → Référentiel de normes d'audit**. Les NEP étant la transposition
+des ISA avec la même numérotation, ce choix ne change rien au processus d'audit —
+uniquement les références affichées et imprimées.
+
+> ⚠️ **Le changement de référentiel nécessite un redémarrage de l'application** pour
+> s'appliquer partout de façon cohérente. La session en cours conserve le référentiel
+> chargé au démarrage ; ce guide utilise les références ISA.
+
 ---
 
 ## 3. Créer une mission
@@ -61,11 +74,11 @@ La barre latérale affiche alors les étapes de la mission et votre progression.
 
 Vérifiez les paramètres de la mission (client, exercice, cycles, nature de la mission). Le seuil de signification peut être saisi ici, mais il est préférable de le **calculer** à l'étape Planification (§ Étape 4). Passez ensuite à l'étape suivante.
 
-### Étape 2 — Contrôle interne (NEP 315)
+### Étape 2 — Contrôle interne (ISA 315)
 
 Pour chaque cycle, répondez au **Questionnaire de Contrôle Interne** (oui / non / N.A., commentaires libres). À partir de 3 réponses, lancez l'**évaluation** : le score est calculé par le logiciel, l'IA rédige la synthèse (forces, faiblesses, recommandations).
 
-> **Incidence sur les travaux :** un contrôle interne jugé **à risque élevé** durcit automatiquement les seuils de détection des contrôles (vous verrez plus d'exceptions). Un bon score ne les allège jamais : le questionnaire étant déclaratif, Probare n'autorise pas de réduction des travaux substantifs sans test d'efficacité du contrôle interne (NEP 330).
+> **Incidence sur les travaux :** un contrôle interne jugé **à risque élevé** durcit automatiquement les seuils de détection des contrôles (vous verrez plus d'exceptions). Un bon score ne les allège jamais : le questionnaire étant déclaratif, Probare n'autorise pas de réduction des travaux substantifs sans test d'efficacité du contrôle interne (ISA 330).
 
 ### Étape 3 — Ingestion des données
 
@@ -86,32 +99,32 @@ Points pratiques :
 - Un fichier strictement identique déjà importé est **refusé** (anti-doublon) — supprimez l'ancien import pour réimporter.
 - Les PDF, scans et documents Word passent par le module **Dossier brut** : l'IA les catalogue, en extrait les données comptables, les **vérifie ligne à ligne**, puis vous les importez comme source de données à part entière.
 
-### Étape 4 — Planification (NEP 300)
+### Étape 4 — Planification (ISA 300)
 
 C'est l'étape la plus structurante. Dans l'ordre :
 
 1. **Fiche entité** : forme juridique, activités, marchés, dirigeants, système d'information, facteurs de risque.
 2. **Variations N/N-1** : choisissez le fichier N et le fichier N-1 ; le logiciel calcule toutes les variations par compte et signale les significatives. L'IA peut ensuite les interpréter (zones de risque).
-3. **Seuil de signification (NEP 320)** : choisissez l'agrégat de référence — total bilan (1 %), chiffre d'affaires (1,5 %), résultat net (5 %) — et validez. Le seuil de signification et le seuil de planification (75 %) sont calculés et appliqués à toute la mission. *Le total bilan est calculé sur les seuls comptes de bilan (classes 1 à 5).*
-4. **Cartographie des risques (NEP 315)** : l'IA propose des risques à partir de la fiche entité et des variations ; ajoutez les vôtres, puis **validez** ceux que vous retenez — seuls les risques validés comptent.
+3. **Seuil de signification (ISA 320)** : choisissez l'agrégat de référence — total bilan (1 %), chiffre d'affaires (1,5 %), résultat net (5 %) — et validez. Le seuil de signification et le seuil de planification (75 %) sont calculés et appliqués à toute la mission. *Le total bilan est calculé sur les seuls comptes de bilan (classes 1 à 5).*
+4. **Cartographie des risques (ISA 315)** : l'IA propose des risques à partir de la fiche entité et des variations ; ajoutez les vôtres, puis **validez** ceux que vous retenez — seuls les risques validés comptent.
 5. **Programme de travail** : généré par l'IA à partir des risques validés et du registre des contrôles ; ajustez les priorités et le périmètre.
 6. **Note de planification** : générez la synthèse et téléchargez la note au format Word pour le dossier.
 
 > ⚠️ **Le passage aux travaux substantifs est bloqué tant que le seuil de signification n'est pas défini.**
 
-### Étape 5 — Travaux substantifs (NEP 330 / 500 / 505 / 530)
+### Étape 5 — Travaux substantifs (ISA 330 / 500 / 505 / 530)
 
 **a) Contrôles déterministes.** Lancez les contrôles cycle par cycle. Pour chaque cycle, Probare exécute sa batterie (équilibre de balance, cohérence grand livre/balance, séquences de pièces, soldes anormaux, doublons de factures, concentration, avoirs, montants ronds, cut-off, variations, amortissements, TVA, paie…). Chaque résultat est soit **OK**, soit une **exception** ; les contrôles qui n'ont pas pu s'exécuter (document manquant, seuil absent) sont **documentés avec leur motif** et figureront au dossier.
 
-**b) Circularisation (NEP 505).** Probare propose les tiers à circulariser (plus gros soldes clients/fournisseurs). Pour chaque tiers :
+**b) Circularisation (ISA 505).** Probare propose les tiers à circulariser (plus gros soldes clients/fournisseurs). Pour chaque tiers :
 1. Générez la lettre de confirmation (IA) — *générer n'est pas envoyer* ;
 2. Après envoi réel, marquez le dossier **« envoyé »** avec la date ;
 3. Sans réponse, tracez la **relance** ; à réception, saisissez le solde confirmé — l'écart est calculé et comparé au seuil de planification de la mission ;
 4. Un dossier resté **sans réponse** ne peut être clos qu'après documentation des **procédures alternatives** mises en œuvre.
 
-**c) Sondages (NEP 530).** Créez un sondage par cycle : le logiciel calcule la taille d'échantillon (niveau de confiance, taux d'erreur toléré), tire l'échantillon de façon **reproductible** (graine enregistrée), et vous pointez chaque pièce (conforme / anomalie + montant). À la conclusion, l'erreur est **projetée sur la population** par extrapolation monétaire et l'IA rédige la conclusion du sondage.
+**c) Sondages (ISA 530).** Créez un sondage par cycle : le logiciel calcule la taille d'échantillon (niveau de confiance, taux d'erreur toléré), tire l'échantillon de façon **reproductible** (graine enregistrée), et vous pointez chaque pièce (conforme / anomalie + montant). À la conclusion, l'erreur est **projetée sur la population** par extrapolation monétaire et l'IA rédige la conclusion du sondage.
 
-### Étape 6 — Exceptions (NEP 450) : le cœur de votre travail
+### Étape 6 — Exceptions (ISA 450) : le cœur de votre travail
 
 Chaque exception levée est **automatiquement interprétée par l'IA** (si activée) : explication, hypothèses de cause, diligences à mener, et un **projet de décision rédigé au conditionnel** — il ne prétend jamais que des vérifications ont été faites : c'est à vous de les faire.
 
@@ -125,21 +138,21 @@ Pour trancher une exception :
    - **Non corrigée** : l'anomalie demeure — saisissez son **montant d'incidence** ;
 4. Signez de votre nom. Les exceptions **critiques** exigent en plus la saisie du mot VALIDER.
 
-> **Cumul NEP 450 :** Probare additionne les montants des anomalies **non corrigées** et les compare au seuil de signification. Si le cumul dépasse le seuil, le passage en génération est **bloqué** : soit vous enregistrez les corrections du client, soit vous confirmez explicitement le dépassement — en sachant qu'il devra se traduire dans l'opinion (réserve ou refus). Cette confirmation est journalisée.
+> **Cumul ISA 450 :** Probare additionne les montants des anomalies **non corrigées** et les compare au seuil de signification. Si le cumul dépasse le seuil, le passage en génération est **bloqué** : soit vous enregistrez les corrections du client, soit vous confirmez explicitement le dépassement — en sachant qu'il devra se traduire dans l'opinion (réserve ou refus). Cette confirmation est journalisée.
 
 ### Étape 7 — Rapport et génération
 
 Une fois toutes les exceptions tranchées :
 
 1. Générez les **feuilles de travail** par cycle (rédaction IA structurée : objectif, procédures, résultats, anomalies, conclusion). Tout montant rédigé par l'IA est vérifié contre les valeurs calculées ; les montants non tracés sont signalés en « avertissements de traçabilité » ;
-2. Exportez le **dossier de travail** (Word) : résultats des contrôles, exceptions et leur traitement, **synthèse des anomalies NEP 450**, contrôles non exécutés et motifs, feuilles de travail ;
+2. Exportez le **dossier de travail** (Word) : résultats des contrôles, exceptions et leur traitement, **synthèse des anomalies ISA 450**, contrôles non exécutés et motifs, feuilles de travail ;
 3. Exportez le **tableau des exceptions** (Excel) si besoin.
 
 L'export est **bloqué** s'il subsiste un chiffre sans provenance : c'est votre garantie qu'aucun montant inventé n'entre au dossier.
 
 ### Étape 8 — Opinion
 
-L'opinion (certification sans réserve, avec réserve, refus) se formule **hors de Probare**, sur la base du dossier généré — en particulier de la synthèse NEP 450. Probare ne signe rien à votre place.
+L'opinion (certification sans réserve, avec réserve, refus) se formule **hors de Probare**, sur la base du dossier généré — en particulier de la synthèse ISA 450. Probare ne signe rien à votre place.
 
 ---
 
@@ -148,14 +161,14 @@ L'opinion (certification sans réserve, avec réserve, refus) se formule **hors 
 - **Sauvegarder** (Tableau de bord, menu de la mission) : exporte la mission complète en ZIP (base + fichiers importés). Conservez ces archives hors de la machine.
 - **Restaurer** : réimporte un ZIP Probare ; refusé si la mission existe déjà.
 - **Archiver** : à la clôture, archivez la mission — elle passe en **lecture seule** (toute modification est refusée tant qu'elle n'est pas explicitement désarchivée).
-- **Journal** : consultez à tout moment la piste d'audit — imports, contrôles, appels IA (modèle et volumes), décisions, transitions.
+- **Historique** : consultez à tout moment la piste d'audit — imports, contrôles, appels IA (modèle et volumes), décisions, transitions.
 
 ---
 
 ## 6. Bonnes pratiques et limites à connaître
 
 1. **L'IA propose, vous disposez.** Ne validez jamais un projet de décision sans avoir réalisé les diligences : le texte est volontairement rédigé au conditionnel pour vous y obliger.
-2. **Typez toujours vos tranchements.** Le cumul NEP 450 ne fonctionne que si chaque anomalie non corrigée porte son montant d'incidence.
+2. **Typez toujours vos tranchements.** Le cumul ISA 450 ne fonctionne que si chaque anomalie non corrigée porte son montant d'incidence.
 3. **Rapprochement bancaire :** le solde du relevé est détecté par heuristique (plus grand montant) — vérifiez-le systématiquement contre le relevé papier.
 4. **Anonymisation :** seuls le nom du client et le NIF sont pseudonymisés. Les libellés d'écritures (noms de fournisseurs, de salariés) partent tels quels à l'IA — tenez-en compte dans le consentement client.
 5. **Sondages :** le tirage est aléatoire simple (non stratifié). Pour les populations très hétérogènes, complétez par une sélection ciblée des éléments majeurs.
@@ -173,9 +186,9 @@ L'opinion (certification sans réserve, avec réserve, refus) se formule **hors 
 | « Consentement client requis » | Case non cochée au cadrage | Activez le consentement (avec l'accord du client) |
 | « Ce fichier a déjà été importé » | Import strictement identique | Supprimez l'import existant avant de réimporter |
 | « Seuil de signification non défini » | Passage aux travaux sans seuil | Calculez le seuil à l'étape Planification |
-| « NEP 450 : le cumul… dépasse le seuil » | Anomalies non corrigées > seuil | Enregistrez les corrections du client ou confirmez le dépassement en connaissance de cause |
+| « ISA 450 : le cumul… dépasse le seuil » | Anomalies non corrigées > seuil | Enregistrez les corrections du client ou confirmez le dépassement en connaissance de cause |
 | « Dossier archivé — lecture seule » | Mission archivée | Désarchivez-la depuis le tableau de bord |
-| « NEP 505 : … documentez les procédures alternatives » | Clôture d'une circularisation sans réponse | Renseignez les procédures alternatives avant de clore |
+| « ISA 505 : … documentez les procédures alternatives » | Clôture d'une circularisation sans réponse | Renseignez les procédures alternatives avant de clore |
 
 ---
 

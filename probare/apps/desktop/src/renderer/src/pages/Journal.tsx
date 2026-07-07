@@ -46,7 +46,7 @@ export function Journal() {
   return (
     <div className="flex flex-col h-full">
       <Header
-        title="Journal d'audit"
+        title="Historique"
         subtitle="Traçabilité complète de toutes les actions"
         actions={
           <button onClick={load} disabled={loading} className="btn-ghost">
@@ -60,7 +60,7 @@ export function Journal() {
           {journal.length === 0 ? (
             <EmptyState
               icon={Activity}
-              title="Journal vide"
+              title="Historique vide"
               description="Les actions seront enregistrées ici au fur et à mesure de la mission."
             />
           ) : (

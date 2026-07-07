@@ -38,8 +38,9 @@ def _result_ok(projet_id: str, controle_ref: str, valeur: Any,
 
 def _result_exception(projet_id: str, controle_ref: str, valeur: Any,
                       details: str, sources: list[str]) -> tuple[dict, dict]:
+    from ..normes import norme
     defn = REGISTRE.get(controle_ref)
-    nep_ref = defn.nep_ref if defn else "NEP 500"
+    nep_ref = defn.nep_ref if defn else norme(500)
     severite = defn.severite_defaut if defn else "significative"
     res = {
         "id": str(uuid.uuid4()),

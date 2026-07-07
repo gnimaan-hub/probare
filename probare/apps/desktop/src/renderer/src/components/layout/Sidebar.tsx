@@ -29,7 +29,7 @@ const projetNavItems: NavItemDef[] = [
   { to: 'controles',        icon: BarChart2,     label: 'Travaux substantifs',  minEtat: 'planification' },
   { to: 'exceptions',       icon: AlertTriangle, label: 'Exceptions',           minEtat: 'travaux_substantifs' },
   { to: 'rapport',          icon: FileText,      label: 'Rapport',              minEtat: 'revue' },
-  { to: 'journal',          icon: Activity,      label: 'Journal',              minEtat: 'cadrage' },
+  { to: 'journal',          icon: Activity,      label: 'Historique',           minEtat: 'cadrage' },
 ]
 
 function PipelineProgress({ etatCourant }: { etatCourant: string }) {

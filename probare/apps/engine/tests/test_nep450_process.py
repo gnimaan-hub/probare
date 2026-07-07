@@ -104,7 +104,9 @@ class TestGardesPipeline:
         e1 = _exception(db, pid)
         db.trancher_exception(e1, "Non corrigée", "Auditeur",
                               type_resolution="non_corrigee", montant_incidence=200_000)
-        with pytest.raises(PipelineError, match="NEP 450"):
+        # Le message porte le code structuré (détecté par l'UI) et la référence 450
+        # rendue dans le référentiel actif (ISA par défaut, NEP en option).
+        with pytest.raises(PipelineError, match=r"ANOMALIES_SEUIL_DEPASSE.*450"):
             transition(db, pid, "generation")
         # Confirmation explicite → passe, et le journal en garde trace
         p = transition(db, pid, "generation", confirmer_depassement_seuil=True)

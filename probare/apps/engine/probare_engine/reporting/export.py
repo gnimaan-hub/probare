@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ..normes import norme, prefixe_actif
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
@@ -108,7 +110,7 @@ def generer_dossier_travail(
     _seuil_txt = f"{_seuil:,.0f} FDJ" if isinstance(_seuil, (int, float)) else "Non défini"
     info.add_run(f"Seuil de signification : {_seuil_txt}\n")
     info.add_run(f"Généré le : {_now()}\n")
-    info.add_run(f"Référence NEP 230 : Dossier de travail\n")
+    info.add_run(f"Référence {norme(230)} : Dossier de travail\n")
 
     doc.add_paragraph("─" * 60)
 
@@ -171,13 +173,13 @@ def generer_dossier_travail(
             mi = exc.get("montant_incidence")
             if type_res == "non_corrigee" and isinstance(mi, (int, float)):
                 txt_res += f" — incidence : {mi:,.2f}"
-            p.add_run(f"\n   Résolution (NEP 450) : {txt_res}")
+            p.add_run(f"\n   Résolution ({norme(450)}) : {txt_res}")
         if exc.get("interpretation_llm"):
             p.add_run(f"\n   Interprétation : {exc['interpretation_llm'][:200]}...")
 
     # Section synthèse NEP 450 — cumul des anomalies non corrigées vs seuil
     if synthese_anomalies:
-        doc.add_heading(_titre_section("Synthèse des anomalies (NEP 450)"), level=1)
+        doc.add_heading(_titre_section(f"Synthèse des anomalies ({norme(450)})"), level=1)
         sa = synthese_anomalies
         p_syn = doc.add_paragraph()
         p_syn.add_run(
@@ -197,7 +199,7 @@ def generer_dossier_travail(
             p_alerte = doc.add_paragraph()
             r = p_alerte.add_run(
                 "⚠ Le cumul des anomalies non corrigées DÉPASSE le seuil de signification. "
-                "Conformément à la NEP 450, ce dépassement doit être pris en compte dans "
+                f"Conformément à la norme {norme(450)}, ce dépassement doit être pris en compte dans "
                 "la formulation de l'opinion (réserve ou refus de certifier à envisager)."
             )
             r.bold = True
@@ -219,10 +221,10 @@ def generer_dossier_travail(
 
     # Section contrôles non exécutés (NEP 230)
     if controles_ignores:
-        doc.add_heading(_titre_section("Contrôles prévus non exécutés (NEP 230)"), level=1)
+        doc.add_heading(_titre_section(f"Contrôles prévus non exécutés ({norme(230)})"), level=1)
         doc.add_paragraph(
             "Les contrôles suivants n'ont pas pu être exécutés lors de la dernière "
-            "passe ; le motif est documenté conformément à la NEP 230."
+            f"passe ; le motif est documenté conformément à la norme {norme(230)}."
         )
         for ci in controles_ignores:
             doc.add_paragraph(
@@ -394,7 +396,7 @@ def generer_note_planification(
         ("Entité auditée",    client_nom),
         ("Exercice",          exercice),
         ("Date d'émission",   _now()),
-        ("Référence NEP",     "300 — Planification"),
+        ("Référentiel",       f"{norme(300)} — Planification"),
         ("Statut",            "Document de travail — CONFIDENTIEL"),
     ]:
         r2 = garde.add_run(f"{lbl} : {val}\n")
@@ -410,11 +412,11 @@ def generer_note_planification(
     h1("Sommaire")
     for item in [
         "1. Cadre et objectifs de la mission",
-        "2. Connaissance de l'entité (NEP 315)",
-        "3. Procédures analytiques préliminaires (NEP 520)",
-        "4. Seuil de signification (NEP 320)",
-        "5. Cartographie des risques (NEP 315)",
-        "6. Programme de travail (NEP 300 / NEP 330)",
+        f"2. Connaissance de l'entité ({norme(315)})",
+        f"3. Procédures analytiques préliminaires ({norme(520)})",
+        f"4. Seuil de signification ({norme(320)})",
+        f"5. Cartographie des risques ({norme(315)})",
+        f"6. Programme de travail ({norme(300)} / {norme(330)})",
         "7. Synthèse et conclusion",
     ]:
         doc.add_paragraph(item, style="List Number")
@@ -425,7 +427,7 @@ def generer_note_planification(
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     h1("1. Cadre et objectifs de la mission")
     para(
-        f"La présente note de planification est établie conformément à la NEP 300 "
+        f"La présente note de planification est établie conformément à la norme {norme(300)} "
         f"pour la mission d'audit des comptes de l'exercice {exercice} "
         f"de l'entité {client_nom}. Elle constitue un document de travail confidentiel "
         "intégré au dossier d'audit et doit être conservée pendant la durée légale (5 ans)."
@@ -439,12 +441,12 @@ def generer_note_planification(
     )
     h2("1.2 Référentiels applicables")
     for nep in [
-        "NEP 300 — Planification de la mission",
-        "NEP 315 — Connaissance de l'entité et identification des risques",
-        "NEP 320 — Seuil de signification",
-        "NEP 330 — Procédures d'audit mises en œuvre en réponse aux risques évalués",
-        "NEP 520 — Procédures analytiques",
-        "NEP 230 — Documentation des travaux",
+        f"{norme(300)} — Planification de la mission",
+        f"{norme(315)} — Connaissance de l'entité et identification des risques",
+        f"{norme(320)} — Seuil de signification",
+        f"{norme(330)} — Procédures d'audit mises en œuvre en réponse aux risques évalués",
+        f"{norme(520)} — Procédures analytiques",
+        f"{norme(230)} — Documentation des travaux",
     ]:
         doc.add_paragraph(nep, style="List Bullet")
     doc.add_page_break()
@@ -452,7 +454,7 @@ def generer_note_planification(
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 2. CONNAISSANCE DE L'ENTITÉ
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    h1("2. Connaissance de l'entité (NEP 315)")
+    h1(f"2. Connaissance de l'entité ({norme(315)})")
 
     contenu_entite = ia("connaissance")
     if contenu_entite:
@@ -506,7 +508,7 @@ def generer_note_planification(
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 3. PROCÉDURES ANALYTIQUES
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    h1("3. Procédures analytiques préliminaires (NEP 520)")
+    h1(f"3. Procédures analytiques préliminaires ({norme(520)})")
 
     contenu_analytique = ia("analytique") or ia("variations")
     if contenu_analytique:
@@ -592,7 +594,7 @@ def generer_note_planification(
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 4. SEUIL DE SIGNIFICATION
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    h1("4. Seuil de signification (NEP 320)")
+    h1(f"4. Seuil de signification ({norme(320)})")
 
     contenu_seuil = ia("seuil") or ia("risque")
     if contenu_seuil:
@@ -611,7 +613,7 @@ def generer_note_planification(
     para(
         f"Le seuil de signification de {fmt_montant(seuil_calc)} ({taux_sig or '—'} % "
         f"de {agregat_type}) est le montant au-delà duquel une anomalie, prise "
-        "isolément ou EN CUMUL avec les autres anomalies non corrigées (NEP 450), "
+        f"isolément ou EN CUMUL avec les autres anomalies non corrigées ({norme(450)}), "
         "est susceptible d'influencer le jugement d'un utilisateur des comptes et "
         "d'affecter l'opinion d'audit. Une anomalie inférieure au seuil ne peut être "
         "considérée comme sans incidence qu'après agrégation avec l'ensemble des "
@@ -620,14 +622,14 @@ def generer_note_planification(
         f"{fmt_montant(seuil_plan)} ({taux_plan or '—'} %) est appliqué pour les "
         "tests de détail afin de conserver une marge de sécurité permettant d'absorber "
         "les anomalies non détectées. Ces paramètres sont conformes aux pratiques "
-        "professionnelles et aux exigences de la NEP 320."
+        f"professionnelles et aux exigences de la norme {norme(320)}."
     )
     doc.add_page_break()
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 5. CARTOGRAPHIE DES RISQUES
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    h1("5. Cartographie des risques (NEP 315)")
+    h1(f"5. Cartographie des risques ({norme(315)})")
     para(f"{len(risques)} risque(s) identifié(s) et validé(s) pour cette mission.")
 
     eleve  = [r for r in risques if r.get("niveau") == "eleve"]
@@ -664,7 +666,7 @@ def generer_note_planification(
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 6. PROGRAMME DE TRAVAIL
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    h1("6. Programme de travail (NEP 300 / NEP 330)")
+    h1(f"6. Programme de travail ({norme(300)} / {norme(330)})")
 
     contenu_programme = ia("programme") or ia("justification")
     if contenu_programme:
@@ -737,7 +739,7 @@ def generer_note_planification(
     footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     r_f = footer_p.add_run(
         f"Document généré par Probare le {_now()} · "
-        "Document confidentiel · Dossier de travail NEP 230"
+        f"Document confidentiel · Dossier de travail {norme(230)}"
     )
     r_f.font.size = Pt(9)
     r_f.italic = True

@@ -1,13 +1,20 @@
-"""Registre des contrôles déterministes — NEP en données, pas en dur."""
+"""Registre des contrôles déterministes — normes en données, pas en dur.
+
+Les définitions ci-dessous sont écrites avec le préfixe historique « NEP » ;
+`enregistrer()` les normalise au chargement dans le référentiel actif du
+cabinet (ISA par défaut, NEP en option — voir probare_engine.normes).
+La numérotation étant identique entre NEP et ISA, seule la présentation change.
+"""
 from __future__ import annotations
 from dataclasses import dataclass
+from ..normes import reformater_refs
 
 
 @dataclass
 class ControleDefinition:
     ref: str
     libelle: str
-    nep_ref: str
+    nep_ref: str  # référence de norme, rendue dans le référentiel actif
     cycle: str
     description: str
     severite_defaut: str = "significative"
@@ -17,6 +24,8 @@ REGISTRE: dict[str, ControleDefinition] = {}
 
 
 def enregistrer(defn: ControleDefinition) -> ControleDefinition:
+    defn.nep_ref = reformater_refs(defn.nep_ref)
+    defn.description = reformater_refs(defn.description)
     REGISTRE[defn.ref] = defn
     return defn
 

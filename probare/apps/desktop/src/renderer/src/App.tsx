@@ -66,8 +66,22 @@ function ConnectionError({ onRetry }: { onRetry: () => void }) {
 }
 
 export default function App() {
-  const { setApiPort, setApiToken } = useProjetStore()
+  const { setApiPort, setApiToken, setReferentiel } = useProjetStore()
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+
+  // Charge le référentiel de normes (ISA/NEP) actif au démarrage du moteur.
+  const chargerReferentiel = async (port: number) => {
+    try {
+      const token = useProjetStore.getState().apiToken
+      const res = await fetch(`http://127.0.0.1:${port}/api/config`, {
+        headers: token ? { 'X-Probare-Token': token } : {},
+      })
+      if (res.ok) {
+        const cfg = await res.json()
+        setReferentiel(cfg.referentiel_actif === 'nep' ? 'NEP' : 'ISA')
+      }
+    } catch { /* défaut ISA */ }
+  }
 
   const init = async () => {
     setStatus('loading')
@@ -81,14 +95,14 @@ export default function App() {
           try { setApiToken(await window.electron.getApiToken()) } catch { /* dev sans jeton */ }
         }
         const res = await fetch(`http://127.0.0.1:${port}/api/health`)
-        if (res.ok) { setStatus('ready'); return }
+        if (res.ok) { await chargerReferentiel(port); setStatus('ready'); return }
       }
 
       // En mode browser/dev sans Electron, chercher le sidecar sur plusieurs ports
       for (const p of [8767, 8766, 8765]) {
         try {
           const res = await fetch(`http://127.0.0.1:${p}/api/health`)
-          if (res.ok) { setApiPort(p); setStatus('ready'); return }
+          if (res.ok) { setApiPort(p); await chargerReferentiel(p); setStatus('ready'); return }
         } catch { /* continuer */ }
       }
       setStatus('error')

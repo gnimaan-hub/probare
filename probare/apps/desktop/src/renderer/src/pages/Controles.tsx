@@ -14,7 +14,7 @@ import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore, type ResultatControle } from '../stores/projetStore'
 import { useSyncProjet } from '../hooks/useProjet'
-import { formatDate } from '../lib/utils'
+import { formatDate, normeLabel } from '../lib/utils'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -25,56 +25,56 @@ const CYCLES: { id: Cycle; label: string; icon: any; nep: string; accounts: stri
     id: 'tresorerie',
     label: 'Trésorerie',
     icon: Shield,
-    nep: 'NEP 500, 330, 520',
+    nep: '500, 330, 520',
     accounts: 'Comptes 5xx',
   },
   {
     id: 'achats',
     label: 'Achats-Fournisseurs',
     icon: ShoppingCart,
-    nep: 'NEP 500, 330, 520',
+    nep: '500, 330, 520',
     accounts: 'Comptes 40x + 60x-63x',
   },
   {
     id: 'ventes',
     label: 'Ventes-Clients',
     icon: TrendingUp,
-    nep: 'NEP 500, 330, 520',
+    nep: '500, 330, 520',
     accounts: 'Comptes 41x + 70x-73x',
   },
   {
     id: 'immobilisations',
     label: 'Immobilisations',
     icon: Landmark,
-    nep: 'NEP 500, 330, 520',
+    nep: '500, 330, 520',
     accounts: 'Comptes 2xx',
   },
   {
     id: 'stocks',
     label: 'Stocks',
     icon: Package,
-    nep: 'NEP 500, 330, 520',
+    nep: '500, 330, 520',
     accounts: 'Comptes 3xx',
   },
   {
     id: 'paie',
     label: 'Paie / Personnel',
     icon: Users,
-    nep: 'NEP 500, 330, 520',
+    nep: '500, 330, 520',
     accounts: 'Comptes 42x + 64x',
   },
   {
     id: 'impots',
     label: 'Impôts & Taxes',
     icon: Receipt,
-    nep: 'NEP 500, 330, 520',
+    nep: '500, 330, 520',
     accounts: 'Comptes 44x + 63x',
   },
   {
     id: 'capitaux_propres',
     label: 'Capitaux propres',
     icon: PieChart,
-    nep: 'NEP 500, 330, 520',
+    nep: '500, 330, 520',
     accounts: 'Comptes 10x-15x',
   },
 ]
@@ -227,7 +227,7 @@ function CyclePanel({
       {/* En-tête du cycle */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs text-slate-500">{cycle.accounts} — {cycle.nep}</p>
+          <p className="text-xs text-slate-500">{cycle.accounts} — {normeLabel(cycle.nep)}</p>
         </div>
         {canRun && (
           <button onClick={handleLancer} disabled={isBlocked} className="btn-secondary text-sm">
@@ -472,7 +472,7 @@ function CircularisationPanel({
           <div>
             <h3 className="font-semibold text-slate-800 flex items-center gap-2">
               <Mail className="w-4 h-4 text-primary-500" />
-              Circularisation — NEP 505
+              Circularisation — {normeLabel('505')}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
               Confirmation externe des soldes auprès des tiers ({cycleCirc.length} tiers suivi{cycleCirc.length !== 1 ? 's' : ''})
@@ -908,7 +908,7 @@ function SondagesPanel({
         <div>
           <h3 className="font-semibold text-slate-800 flex items-center gap-2">
             <BarChart3 className="w-4 h-4 text-primary-500" />
-            Sondages sur pièces — NEP 530
+            Sondages sur pièces — {normeLabel('530')}
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
             Sélection statistique + projection d'erreur ({sondages.length} sondage{sondages.length !== 1 ? 's' : ''})
@@ -1148,7 +1148,7 @@ function SondagesPanel({
                           <div className="bg-primary-50 rounded-lg p-4 border border-primary-100 space-y-2 text-xs">
                             <div className="flex items-center gap-2">
                               <Wand2 className="w-3.5 h-3.5 text-primary-600" />
-                              <span className="font-semibold text-primary-800">Conclusion IA — NEP 530</span>
+                              <span className="font-semibold text-primary-800">Conclusion IA — {normeLabel('530')}</span>
                               <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${
                                 conclusion.conclusion === 'acceptable' ? 'bg-emerald-100 text-emerald-700' :
                                 conclusion.conclusion === 'exige_diligences' ? 'bg-amber-100 text-amber-700' :
@@ -1388,7 +1388,7 @@ export function Controles() {
                   }`}>
                   <Mail className="w-3.5 h-3.5" />
                   Circularisation
-                  <span className="text-xs text-slate-400">NEP 505</span>
+                  <span className="text-xs text-slate-400">{normeLabel('505')}</span>
                 </button>
                 <button onClick={() => setDetailOnglet('sondages')}
                   className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -1398,7 +1398,7 @@ export function Controles() {
                   }`}>
                   <BarChart3 className="w-3.5 h-3.5" />
                   Sondages sur pièces
-                  <span className="text-xs text-slate-400">NEP 530</span>
+                  <span className="text-xs text-slate-400">{normeLabel('530')}</span>
                 </button>
               </div>
             </div>

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 import anthropic
 from .client import LLMClient
+from ..normes import norme, prefixe_actif
 
 
 MODEL_DEFAULT = "claude-sonnet-4-6"
@@ -288,7 +289,7 @@ Si ce n'est pas une liasse (document unique), réponds avec est_liasse: false et
             if r.get("commentaire"):
                 reponses_txt += f"\n  → Commentaire auditeur : {r['commentaire']}"
 
-        prompt = f"""Tu es auditeur senior. Tu évalues le contrôle interne du cycle {cycle.upper()} d'une entité dans le cadre d'un audit contractuel (Djibouti, référentiel NEP 315).
+        prompt = f"""Tu es auditeur senior. Tu évalues le contrôle interne du cycle {cycle.upper()} d'une entité dans le cadre d'un audit contractuel (Djibouti, référentiel {norme(315)}).
 
 Entité : {contexte_projet.get('client', 'N/A')} — Exercice {contexte_projet.get('exercice', 'N/A')}
 
@@ -934,7 +935,7 @@ Risques validés par l'auditeur :
 
 Cycles couverts : {', '.join(cycles_couverts)}
 
-Registre des contrôles disponibles (réf → libellé → cycle → NEP) :
+Registre des contrôles disponibles (réf → libellé → cycle → norme) :
 {json.dumps(controles_registry, ensure_ascii=False, indent=2)}
 
 Pour chaque contrôle du registre que tu juges pertinent (en fonction des risques) :
@@ -992,7 +993,7 @@ Réponds UNIQUEMENT avec un JSON valide :
         }.get(type_circularisation, type_circularisation)
 
         prompt = f"""Tu es auditeur légal agréé. Rédige une lettre de confirmation externe
-à destination du {cycle_label} suivant, conformément à la NEP 505.
+à destination du {cycle_label} suivant, conformément à la norme {norme(505)}.
 
 Tiers : {tiers.get('libelle') or tiers.get('compte')}
 Compte comptable : {tiers.get('compte')}
@@ -1091,7 +1092,7 @@ Réponds UNIQUEMENT avec un JSON :
         Tous les chiffres proviennent de sondage + projection (calculés Python).
         Le LLM interprète uniquement, il ne recalcule pas.
         """
-        prompt = f"""Tu es auditeur légal. Rédige la conclusion du sondage sur pièces conformément à la NEP 530.
+        prompt = f"""Tu es auditeur légal. Rédige la conclusion du sondage sur pièces conformément à la norme {norme(530)}.
 
 Sondage : {sondage.get('libelle')} — cycle {sondage.get('cycle')}
 Population : {sondage.get('population')} éléments, montant total {sondage.get('montant_population')}
@@ -1147,7 +1148,7 @@ Réponds UNIQUEMENT avec un JSON :
     ) -> dict:
         """Rédige une feuille de travail à partir de résultats déjà calculés."""
         prompt = f"""Tu es auditeur senior. Rédige la feuille de travail pour le cycle {cycle}
-en français, conformément aux NEP, à partir des résultats déterministes suivants.
+en français, conformément au référentiel {prefixe_actif()}, à partir des résultats déterministes suivants.
 
 Résultats des contrôles (calculés par le code, ne les modifie pas) :
 {json.dumps(resultats[:20], ensure_ascii=False, indent=2)}

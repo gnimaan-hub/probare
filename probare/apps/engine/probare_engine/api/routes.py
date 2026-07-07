@@ -52,6 +52,8 @@ from ..reporting.export import (
     generer_note_planification, ProvenanceError,
 )
 from ..anonymization.anonymizer import Anonymizer
+from ..normes import norme, reformater_refs, lire_config, ecrire_config, \
+    REFERENTIEL_ACTIF, REFERENTIELS, LIBELLES_REFERENTIEL
 
 
 router = APIRouter()
@@ -319,6 +321,62 @@ def _preconditions_check(
 @router.get("/health")
 def health():
     return {"status": "ok", "service": "probare-engine", "version": "0.2.0"}
+
+
+# ─── Configuration cabinet (référentiel de normes) ───────────────────────────
+
+class ConfigBody(BaseModel):
+    referentiel_normes: str | None = None
+
+
+@router.get("/config")
+def get_config():
+    """Configuration globale du cabinet.
+
+    `referentiel_actif` est celui chargé au démarrage du moteur — c'est lui qui
+    régit tous les affichages et livrables de la session en cours.
+    `referentiel_normes` est celui écrit dans la configuration ; s'ils diffèrent,
+    un redémarrage de l'application est nécessaire pour appliquer le changement.
+    """
+    config = lire_config()
+    configure = str(config.get("referentiel_normes", "isa")).lower()
+    if configure not in REFERENTIELS:
+        configure = "isa"
+    return {
+        "referentiel_normes": configure,
+        "referentiel_actif": REFERENTIEL_ACTIF,
+        "redemarrage_requis": configure != REFERENTIEL_ACTIF,
+        "referentiels_disponibles": [
+            {"id": k, "libelle": LIBELLES_REFERENTIEL[k]} for k in REFERENTIELS
+        ],
+    }
+
+
+@router.patch("/config")
+def update_config(body: ConfigBody):
+    """Modifie la configuration cabinet. Le changement de référentiel ne prend
+    effet qu'au prochain démarrage de l'application (cohérence des livrables
+    générés pendant la session en cours)."""
+    updates: dict = {}
+    if body.referentiel_normes is not None:
+        ref = body.referentiel_normes.lower()
+        if ref not in REFERENTIELS:
+            raise HTTPException(400, f"Référentiel inconnu : {body.referentiel_normes}. "
+                                     f"Valeurs admises : {sorted(REFERENTIELS)}.")
+        updates["referentiel_normes"] = ref
+    if not updates:
+        raise HTTPException(400, "Aucun paramètre à modifier.")
+    config = ecrire_config(updates)
+    configure = config.get("referentiel_normes", "isa")
+    return {
+        "referentiel_normes": configure,
+        "referentiel_actif": REFERENTIEL_ACTIF,
+        "redemarrage_requis": configure != REFERENTIEL_ACTIF,
+        "message": ("Référentiel enregistré. Redémarrez l'application pour "
+                    "l'appliquer à l'ensemble du logiciel."
+                    if configure != REFERENTIEL_ACTIF
+                    else "Référentiel enregistré (déjà actif)."),
+    }
 
 
 # ─── Projets ──────────────────────────────────────────────────────────────────
@@ -1063,7 +1121,7 @@ def _seuils_ci(db, projet_id: str, cycle: str) -> dict:
         return {"facteur": 0.5, "note_ci": "CI élevé — seuils de détection réduits (approche substantive renforcée)"}
     elif niveau == "faible":
         return {"facteur": 1.0, "note_ci": "CI faible (déclaratif) — seuils standards maintenus : "
-                                           "aucun allègement sans test d'efficacité du CI (NEP 330)"}
+                                           f"aucun allègement sans test d'efficacité du CI ({norme(330)})"}
     else:
         return {"facteur": 1.0, "note_ci": "CI moyen ou non évalué — seuils standards"}
 
@@ -1164,7 +1222,7 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
 
     # ── 7. TRESOR-VARIATION : variations N/N-1 (si seuil défini et N-1 disponible) ──
     if seuil <= 0:
-        _skip("TRESOR-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
+        _skip("TRESOR-VARIATION", f"Seuil de signification non défini — contrôle de variation non exécuté ({norme(320)}).")
     if seuil > 0 and _check("TRESOR-VARIATION"):
         rows_pour_solde = rows_balance if rows_balance else rows_gl
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, ("5",))
@@ -1371,7 +1429,7 @@ def run_controles_achats(projet_id: str, body: dict = {}):
 
     # ── 9. ACHAT-VARIATION ──
     if seuil <= 0:
-        _skip("ACHAT-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
+        _skip("ACHAT-VARIATION", f"Seuil de signification non défini — contrôle de variation non exécuté ({norme(320)}).")
     if seuil > 0 and _check("ACHAT-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_ACHATS)
         if soldes_n:
@@ -1540,7 +1598,7 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
 
     # ── 10. VENTE-VARIATION ──
     if seuil <= 0:
-        _skip("VENTE-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
+        _skip("VENTE-VARIATION", f"Seuil de signification non défini — contrôle de variation non exécuté ({norme(320)}).")
     if seuil > 0 and _check("VENTE-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_VENTES)
         if soldes_n:
@@ -1655,7 +1713,7 @@ def run_controles_immobilisations(projet_id: str, body: dict = {}):
 
     # ── 5. IMO-VARIATION ──
     if seuil <= 0:
-        _skip("IMO-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
+        _skip("IMO-VARIATION", f"Seuil de signification non défini — contrôle de variation non exécuté ({norme(320)}).")
     if seuil > 0 and _check("IMO-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_IMO_ALL)
         if soldes_n:
@@ -1774,7 +1832,7 @@ def run_controles_stocks(projet_id: str, body: dict = {}):
 
     # ── 5. STOCK-VARIATION ──
     if seuil <= 0:
-        _skip("STOCK-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
+        _skip("STOCK-VARIATION", f"Seuil de signification non défini — contrôle de variation non exécuté ({norme(320)}).")
     if seuil > 0 and _check("STOCK-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_STOCK)
         if soldes_n:
@@ -1889,7 +1947,7 @@ def run_controles_paie(projet_id: str, body: dict = {}):
 
     # ── 5. PAIE-VARIATION ──
     if seuil <= 0:
-        _skip("PAIE-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
+        _skip("PAIE-VARIATION", f"Seuil de signification non défini — contrôle de variation non exécuté ({norme(320)}).")
     if seuil > 0 and _check("PAIE-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_CHARGES)
         if soldes_n:
@@ -2007,7 +2065,7 @@ def run_controles_impots(projet_id: str, body: dict = {}):
 
     # ── 5. TAXE-VARIATION ──
     if seuil <= 0:
-        _skip("TAXE-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
+        _skip("TAXE-VARIATION", f"Seuil de signification non défini — contrôle de variation non exécuté ({norme(320)}).")
     if seuil > 0 and _check("TAXE-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_CHARGES_FISC)
         if soldes_n:
@@ -2121,7 +2179,7 @@ def run_controles_capitaux_propres(projet_id: str, body: dict = {}):
 
     # ── 5. CP-VARIATION ──
     if seuil <= 0:
-        _skip("CP-VARIATION", "Seuil de signification non défini — contrôle de variation non exécuté (NEP 320).")
+        _skip("CP-VARIATION", f"Seuil de signification non défini — contrôle de variation non exécuté ({norme(320)}).")
     if seuil > 0 and _check("CP-VARIATION"):
         soldes_n = _aggreger_soldes_nets(rows_pour_solde, PREFIXES_CP)
         if soldes_n:
@@ -2217,7 +2275,7 @@ def trancher_exception(projet_id: str, exception_id: str, body: TrancheeBody):
                                  f"Valeurs admises : {sorted(_TYPES_RESOLUTION)}.")
     if body.type_resolution == "non_corrigee" and not (body.montant_incidence and body.montant_incidence > 0):
         raise HTTPException(400, "Une anomalie non corrigée doit porter un montant d'incidence "
-                                 "positif (NEP 450) pour entrer dans le cumul comparé au seuil.")
+                                 f"positif ({norme(450)}) pour entrer dans le cumul comparé au seuil.")
     montant = body.montant_incidence if body.type_resolution == "non_corrigee" else None
     exc = db.trancher_exception(
         exception_id, body.decision_humaine, body.decideur,
@@ -2317,7 +2375,7 @@ def generer_feuille(projet_id: str, body: dict = {}):
         "cycle": cycle,
         "contenu_redige": result.get("contenu", ""),
         "sources": [r["id"] for r in (resultats_cycle or resultats)[:20]],
-        "nep_ref": "NEP 230",
+        "nep_ref": norme(230),
         "genere_le": _now(),
     }
     db.save_feuille_travail(feuille)
@@ -3691,7 +3749,7 @@ def update_circularisation(projet_id: str, circ_id: str, body: dict):
         if not procedures or not str(procedures).strip():
             raise HTTPException(
                 400,
-                "NEP 505 : en l'absence de réponse du tiers, documentez les procédures "
+                f"{norme(505)} : en l'absence de réponse du tiers, documentez les procédures "
                 "alternatives mises en œuvre (champ procedures_alternatives) avant de clore."
             )
     item = db.update_circularisation(circ_id, body)

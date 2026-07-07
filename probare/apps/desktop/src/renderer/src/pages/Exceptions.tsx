@@ -12,7 +12,7 @@ import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore, type Exception, type FichierSource } from '../stores/projetStore'
 import { useSyncProjet } from '../hooks/useProjet'
-import { formatDate } from '../lib/utils'
+import { formatDate, normeLabel } from '../lib/utils'
 
 const severiteLabel: Record<string, string> = {
   mineure: 'Mineure',
@@ -314,7 +314,7 @@ interface TrancherModalProps {
 const TYPES_RESOLUTION = [
   { value: 'corrigee', label: 'Corrigée par le client', hint: 'L\'anomalie a été corrigée — aucune incidence résiduelle.' },
   { value: 'sans_incidence', label: 'Sans incidence', hint: 'Explication obtenue — aucune anomalie avérée.' },
-  { value: 'non_corrigee', label: 'Non corrigée', hint: 'Anomalie maintenue — son montant entre dans le cumul NEP 450 comparé au seuil.' },
+  { value: 'non_corrigee', label: 'Non corrigée', hint: 'Anomalie maintenue — son montant entre dans le cumul des anomalies (norme 450) comparé au seuil.' },
 ]
 
 function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) {
@@ -441,7 +441,7 @@ function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) 
           {/* Typologie NEP 450 — nature de la résolution */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Nature de la résolution (NEP 450) <span className="text-red-500">*</span>
+              Nature de la résolution ({normeLabel('450')}) <span className="text-red-500">*</span>
             </label>
             <div className="space-y-2">
               {TYPES_RESOLUTION.map((t) => (
@@ -487,7 +487,7 @@ function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) 
               />
               <p className="text-xs text-slate-500 mt-1">
                 Ce montant sera cumulé avec les autres anomalies non corrigées et comparé
-                au seuil de signification avant la génération du dossier (NEP 450).
+                au seuil de signification avant la génération du dossier ({normeLabel('450')}).
               </p>
             </div>
           )}
@@ -624,9 +624,9 @@ export function Exceptions() {
       setProjetActif(updated)
       navigate(`/projet/${projetId}/rapport`)
     } catch (e: any) {
-      // Verrou NEP 450 : le cumul des anomalies non corrigées dépasse le seuil.
+      // Verrou norme 450 : le cumul des anomalies non corrigées dépasse le seuil.
       // L'auditeur peut confirmer explicitement en acceptant l'incidence sur l'opinion.
-      if (String(e.message).includes('NEP 450')) {
+      if (String(e.message).includes('ANOMALIES_SEUIL_DEPASSE')) {
         const confirme = window.confirm(
           `${e.message}\n\nConfirmer le passage en génération en acceptant ` +
           `l'incidence de ce dépassement sur l'opinion d'audit ?`

@@ -370,6 +370,11 @@ class ProjectDB:
                     d[field] = []
             elif not val:
                 d[field] = []
+        # Références de normes re-rendues dans le référentiel actif du cabinet
+        # (les données peuvent avoir été écrites sous l'autre référentiel).
+        from ..normes import reformater_refs
+        if d.get("nep_ref"):
+            d["nep_ref"] = reformater_refs(d["nep_ref"])
         return d
 
     # --- Projet ---
@@ -953,6 +958,7 @@ class ProjectDB:
         return data
 
     def list_feuilles(self, projet_id: str) -> list[dict]:
+        from ..normes import reformater_refs
         rows = self.conn.execute(
             "SELECT * FROM feuille_travail WHERE projet_id=? ORDER BY genere_le",
             (projet_id,)
@@ -961,6 +967,8 @@ class ProjectDB:
         for r in rows:
             d = dict(r)
             d["sources"] = json.loads(d["sources"]) if d["sources"] else []
+            if d.get("nep_ref"):
+                d["nep_ref"] = reformater_refs(d["nep_ref"])
             result.append(d)
         return result
 

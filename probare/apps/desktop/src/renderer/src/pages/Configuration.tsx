@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Building2, Save, CheckCircle, Phone, Mail, Globe, MapPin,
-  User, Hash, Briefcase, Info, Upload, X,
+  User, Hash, Briefcase, Info, Upload, X, BookOpen, AlertTriangle,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { useToast } from '../hooks/useToast'
+import { useApi } from '../hooks/useApi'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,97 @@ function Field({ label, required, children }: {
   )
 }
 
+// ─── Référentiel de normes (ISA / NEP) ────────────────────────────────────────
+
+interface ReferentielInfo {
+  referentiel_normes: string
+  referentiel_actif: string
+  redemarrage_requis: boolean
+  referentiels_disponibles: { id: string; libelle: string }[]
+}
+
+function SectionReferentiel() {
+  const { get, patch } = useApi()
+  const toast = useToast()
+  const [info, setInfo] = useState<ReferentielInfo | null>(null)
+  const [changing, setChanging] = useState(false)
+
+  useEffect(() => {
+    get('/config').then(setInfo).catch(() => setInfo(null))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleChange = async (ref: string) => {
+    if (!info || ref === info.referentiel_normes) return
+    setChanging(true)
+    try {
+      const res = await patch('/config', { referentiel_normes: ref })
+      setInfo((prev) => prev ? {
+        ...prev,
+        referentiel_normes: res.referentiel_normes,
+        redemarrage_requis: res.redemarrage_requis,
+      } : prev)
+      toast.success(res.message || 'Référentiel enregistré.')
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setChanging(false)
+    }
+  }
+
+  if (!info) return null
+
+  return (
+    <Section
+      icon={BookOpen}
+      title="Référentiel de normes d'audit"
+      subtitle="Régit toutes les références normatives affichées et générées (contrôles, exceptions, livrables)"
+    >
+      <div className="space-y-2">
+        {info.referentiels_disponibles.map((r) => (
+          <label
+            key={r.id}
+            className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+              info.referentiel_normes === r.id
+                ? 'border-primary-400 bg-primary-50'
+                : 'border-border hover:border-slate-300'
+            }`}
+          >
+            <input
+              type="radio"
+              name="referentiel_normes"
+              value={r.id}
+              checked={info.referentiel_normes === r.id}
+              disabled={changing}
+              onChange={() => handleChange(r.id)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block text-sm font-medium text-slate-800">{r.libelle}</span>
+              {r.id === 'isa' && (
+                <span className="block text-xs text-slate-500">Référentiel par défaut — applicable à Djibouti.</span>
+              )}
+            </span>
+          </label>
+        ))}
+      </div>
+
+      {info.redemarrage_requis && (
+        <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-700">
+            <strong>Redémarrage requis.</strong> Le référentiel sélectionné sera appliqué à
+            l'ensemble du logiciel (affichages, messages, livrables) au prochain démarrage
+            de l'application. La session en cours reste en{' '}
+            <strong>{info.referentiel_actif === 'nep' ? 'NEP' : 'ISA'}</strong> pour garantir
+            la cohérence des documents générés.
+          </p>
+        </div>
+      )}
+    </Section>
+  )
+}
+
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 export function Configuration() {
@@ -189,6 +281,9 @@ export function Configuration() {
               Elles sont stockées localement sur votre poste.
             </p>
           </div>
+
+          {/* Section 0 : Référentiel de normes (ISA / NEP) */}
+          <SectionReferentiel />
 
           {/* Section 1 : Identité du cabinet */}
           <Section icon={Building2} title="Identité du cabinet" subtitle="Raison sociale et forme juridique">

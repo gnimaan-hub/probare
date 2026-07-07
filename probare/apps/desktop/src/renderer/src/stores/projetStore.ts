@@ -93,9 +93,13 @@ interface ProjetStore {
   journal: any[]
   apiPort: number
   apiToken: string
+  // Préfixe du référentiel de normes actif ('ISA' par défaut, 'NEP' en option),
+  // chargé au démarrage depuis la configuration cabinet du moteur.
+  referentiel: 'ISA' | 'NEP'
 
   setApiPort: (port: number) => void
   setApiToken: (token: string) => void
+  setReferentiel: (ref: 'ISA' | 'NEP') => void
   setLoading: (v: boolean) => void
   setError: (e: string | null) => void
   setProjets: (projets: Projet[]) => void
@@ -122,9 +126,11 @@ export const useProjetStore = create<ProjetStore>((set) => ({
   journal: [],
   apiPort: 8765,
   apiToken: '',
+  referentiel: 'ISA',
 
   setApiPort: (port) => set({ apiPort: port }),
   setApiToken: (token) => set({ apiToken: token }),
+  setReferentiel: (referentiel) => set({ referentiel }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
   setProjets: (projets) => set({ projets }),

@@ -2,6 +2,12 @@
 from __future__ import annotations
 from typing import Literal
 from ..storage.db import ProjectDB
+from ..normes import norme
+
+# Code structuré du blocage « cumul d'anomalies > seuil » (ISA/NEP 450).
+# Le frontend détecte CE code, jamais le libellé de la norme (qui dépend du
+# référentiel actif du cabinet).
+CODE_SEUIL_DEPASSE = "[ANOMALIES_SEUIL_DEPASSE]"
 
 ETATS = Literal[
     "cadrage", "evaluation_ci", "ingestion",
@@ -44,16 +50,16 @@ def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
                      confirmer_depassement_seuil: bool = False) -> None:
     """
     Gardes déterministes par transition (progression uniquement) :
-    - travaux_substantifs : seuil de signification défini (NEP 320).
-    - revue               : au moins un contrôle exécuté (NEP 330).
-    - generation          : exceptions tranchées + verrou NEP 450 sur le cumul
-                            des anomalies non corrigées.
+    - travaux_substantifs : seuil de signification défini (ISA/NEP 320).
+    - revue               : au moins un contrôle exécuté (ISA/NEP 330).
+    - generation          : exceptions tranchées + verrou ISA/NEP 450 sur le
+                            cumul des anomalies non corrigées.
     """
     if vers == "travaux_substantifs":
         seuil = projet.get("seuil_signification")
         if not seuil or float(seuil) <= 0:
             raise PipelineError(
-                "Seuil de signification non défini (NEP 320). "
+                f"Seuil de signification non défini ({norme(320)}). "
                 "Calculez ou saisissez le seuil dans Planification avant de lancer les travaux."
             )
 
@@ -61,7 +67,7 @@ def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
         resultats = db.list_resultats(projet_id)
         if not resultats:
             raise PipelineError(
-                "Aucun contrôle n'a encore été exécuté (NEP 330). "
+                f"Aucun contrôle n'a encore été exécuté ({norme(330)}). "
                 "Lancez au moins un cycle de contrôles avant de passer en revue."
             )
 
@@ -77,7 +83,7 @@ def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
         )
         if synthese["depasse_seuil_signification"] and not confirmer_depassement_seuil:
             raise PipelineError(
-                f"NEP 450 : le cumul des anomalies non corrigées "
+                f"{CODE_SEUIL_DEPASSE} {norme(450)} : le cumul des anomalies non corrigées "
                 f"({synthese['cumul_non_corrigees']:,.0f}) dépasse le seuil de signification "
                 f"({synthese['seuil_signification']:,.0f}). "
                 "Ce dépassement affecte l'opinion : enregistrez les corrections du client, "
