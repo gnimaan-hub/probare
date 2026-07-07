@@ -1,7 +1,7 @@
 import { app, BrowserWindow, shell, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { startSidecar, stopSidecar, getSidecarPort, waitForSidecar } from './sidecar'
+import { startSidecar, stopSidecar, getSidecarPort, getSidecarToken, waitForSidecar } from './sidecar'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -62,8 +62,9 @@ app.whenReady().then(async () => {
   })
 })
 
-// IPC : port du sidecar
+// IPC : port et jeton du sidecar
 ipcMain.handle('get-api-port', () => getSidecarPort())
+ipcMain.handle('get-api-token', () => getSidecarToken())
 
 app.on('window-all-closed', async () => {
   await stopSidecar()

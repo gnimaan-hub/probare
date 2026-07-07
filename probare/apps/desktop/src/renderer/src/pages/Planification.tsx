@@ -12,7 +12,7 @@ import { Spinner } from '../components/ui/Spinner'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore } from '../stores/projetStore'
-import { formatMontant, formatDate } from '../lib/utils'
+import { formatMontant, formatDate, normeLabel } from '../lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1213,7 +1213,7 @@ function RisquesSection({
   projetId: string
   onChanged: (r: Risque[]) => void
 }) {
-  const { post, patch } = useApi()
+  const { post, patch, del } = useApi()
   const toast = useToast()
   const [proposing, setProposing] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
@@ -1246,7 +1246,7 @@ function RisquesSection({
 
   const handleDelete = async (id: string) => {
     try {
-      await fetch(`/api/projets/${projetId}/planification/risques/${id}`, { method: 'DELETE' })
+      await del(`/projets/${projetId}/planification/risques/${id}`)
       onChanged(risques.filter((r) => r.id !== id))
     } catch { /* silencieux */ }
   }
@@ -1795,7 +1795,7 @@ function ProgrammeSection({
                 <div>
                   <p className="font-semibold">Rédaction de la Note de Planification…</p>
                   <p className="text-violet-500 text-xs mt-0.5">
-                    Sonnet analyse les risques et rédige le document NEP 300 complet.
+                    Sonnet analyse les risques et rédige le document {normeLabel('300')} complet.
                   </p>
                 </div>
               </div>
@@ -1808,7 +1808,7 @@ function ProgrammeSection({
                   <div>
                     <p className="text-sm font-semibold text-violet-900">Note de Planification de l'Audit</p>
                     <p className="text-xs text-violet-600 mt-0.5">
-                      Document .docx complet · NEP 300, 315, 320, 330, 520 · 7 sections rédigées par l'IA
+                      Document .docx complet · {normeLabel('300, 315, 320, 330, 520')} · 7 sections rédigées par l'IA
                     </p>
                     <p className="text-xs text-slate-500 mt-1">
                       Inclut : connaissance de l'entité, procédures analytiques, cartographie des risques,

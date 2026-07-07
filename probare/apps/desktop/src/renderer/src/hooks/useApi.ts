@@ -5,11 +5,22 @@ function useBaseUrl() {
   return `http://127.0.0.1:${port}/api`
 }
 
+/**
+ * En-têtes d'authentification pour l'API locale. Lit le jeton depuis le store
+ * (utilisable hors composant React via getState), et le combine avec des
+ * en-têtes supplémentaires éventuels. Retourne un objet vide si aucun jeton
+ * n'est configuré (mode dev/browser sans Electron).
+ */
+export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const token = useProjetStore.getState().apiToken
+  return token ? { ...extra, 'X-Probare-Token': token } : { ...extra }
+}
+
 export function useApi() {
   const base = useBaseUrl()
 
   async function get<T = any>(path: string): Promise<T> {
-    const res = await fetch(`${base}${path}`)
+    const res = await fetch(`${base}${path}`, { headers: authHeaders() })
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }))
       throw new Error(err.detail || res.statusText)
@@ -20,7 +31,7 @@ export function useApi() {
   async function post<T = any>(path: string, body?: any): Promise<T> {
     const res = await fetch(`${base}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: body !== undefined ? JSON.stringify(body) : undefined,
     })
     if (!res.ok) {
@@ -33,7 +44,7 @@ export function useApi() {
   async function patch<T = any>(path: string, body: any): Promise<T> {
     const res = await fetch(`${base}${path}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
     })
     if (!res.ok) {
@@ -46,6 +57,7 @@ export function useApi() {
   async function uploadFile(path: string, formData: FormData): Promise<any> {
     const res = await fetch(`${base}${path}`, {
       method: 'POST',
+      headers: authHeaders(),
       body: formData,
     })
     if (!res.ok) {
@@ -56,7 +68,7 @@ export function useApi() {
   }
 
   async function del<T = any>(path: string): Promise<T> {
-    const res = await fetch(`${base}${path}`, { method: 'DELETE' })
+    const res = await fetch(`${base}${path}`, { method: 'DELETE', headers: authHeaders() })
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }))
       throw new Error(err.detail || res.statusText)
@@ -65,7 +77,7 @@ export function useApi() {
   }
 
   async function downloadBlob(path: string, method: 'GET' | 'POST' = 'POST'): Promise<{ blob: Blob; filename: string }> {
-    const res = await fetch(`${base}${path}`, { method })
+    const res = await fetch(`${base}${path}`, { method, headers: authHeaders() })
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }))
       throw new Error(err.detail || res.statusText)

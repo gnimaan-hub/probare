@@ -29,11 +29,15 @@ Trois règles d'or :
 4. **Fournisseur LLM derrière une interface.** `LLMClient` (abstraction). L'implémentation Claude
    est derrière cette interface. Ne jamais appeler `anthropic.Anthropic()` hors de `llm/claude.py`.
 
-5. **NEP en données, pas en dur.** Chaque contrôle porte un champ `nep_ref`. Les contrôles sont
-   déclarés dans le registre `controls/registry.py`, pas dispersés dans le code.
+5. **Normes en données, pas en dur.** Chaque contrôle porte un champ `nep_ref` (référence de
+   norme, rendue dans le référentiel actif). Les contrôles sont déclarés dans le registre
+   `controls/registry.py`, pas dispersés dans le code. Aucune référence « NEP nnn » / « ISA nnn »
+   ne doit être écrite en dur dans un texte destiné à l'utilisateur : passer par
+   `normes.norme(nnn)` / `normes.reformater_refs()` (backend) ou `normeLabel()` (frontend).
 
 6. **Tout est journalisé.** Chaque transition d'état, chaque appel LLM et chaque action humaine
-   est écrit dans la piste d'audit (`journal`).
+   est écrit dans la piste d'audit (table `journal`, affichée « Historique » dans l'UI — ne pas
+   la confondre avec le journal comptable).
 
 7. **Tests unitaires pour chaque contrôle.** Chaque contrôle déterministe a un test avec des
    données équilibrées/correctes ET des données déséquilibrées/incorrectes.
@@ -74,14 +78,23 @@ probare/
 - On ne passe à `generation` que si toutes les exceptions sont `tranchee`.
 - `opinion` est manuel — Probare ne signe pas.
 
-## Référentiel NEP
+## Référentiel de normes : ISA (défaut) ou NEP (option)
 
-NEP applicables à Djibouti (autorité H2A, référentiel français) :
-- NEP 300 : Planification
-- NEP 315 : Connaissance de l'entité
-- NEP 320 : Seuil de signification
-- NEP 330 : Procédures d'audit
-- NEP 450 : Anomalies relevées
-- NEP 500 : Caractère probant des éléments collectés
-- NEP 520 : Procédures analytiques
-- NEP 230 : Documentation des travaux
+Djibouti applique les normes ISA (IAASB). Les NEP françaises en sont la transposition et
+conservent la même numérotation : l'équivalence est 1:1 sur les normes utilisées ici.
+Le choix du référentiel se fait dans le paramétrage Cabinet (`~/.probare/config.json`,
+module `probare_engine/normes.py`) ; il est chargé UNE FOIS au démarrage du moteur
+(`REFERENTIEL_ACTIF`) — un changement exige un redémarrage de l'application. Les données
+stockées sous un référentiel sont re-rendues dans l'actif à la lecture (pas de migration).
+
+Normes utilisées (numérotation commune ISA/NEP) :
+- 300 : Planification
+- 315 : Connaissance de l'entité
+- 320 : Seuil de signification
+- 330 : Procédures d'audit
+- 450 : Anomalies relevées
+- 500 : Caractère probant des éléments collectés
+- 505 : Confirmations externes (circularisation)
+- 520 : Procédures analytiques
+- 530 : Sondages
+- 230 : Documentation des travaux

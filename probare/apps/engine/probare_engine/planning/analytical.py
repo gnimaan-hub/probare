@@ -157,19 +157,16 @@ def calculer_agregats(conn, projet_id: str, fichier_n_id: str) -> dict[str, floa
     """
     balance = _reconstruire_balance(conn, projet_id, fichier_n_id)
 
-    total_debit = 0.0
-    total_credit = 0.0
     ca = 0.0
     charges_tot = 0.0
     produits_tot = 0.0
-    actif_net = 0.0  # comptes de bilan côté débit net
+    actif_net = 0.0   # soldes débiteurs des comptes de bilan (classes 1-5)
+    passif_net = 0.0  # soldes créditeurs des comptes de bilan (classes 1-5)
 
     for compte, b in balance.items():
         d = b.get("debit", 0.0) or 0.0
         c = b.get("credit", 0.0) or 0.0
         s = b.get("solde", 0.0) or 0.0
-        total_debit += d
-        total_credit += c
 
         if any(compte.startswith(p) for p in PREFIXE_CA):
             ca += c
@@ -180,10 +177,17 @@ def calculer_agregats(conn, projet_id: str, fichier_n_id: str) -> dict[str, floa
         if compte.startswith("7"):
             produits_tot += c
 
-        if compte[0] in "12345" and s > 0:
-            actif_net += s
+        # Total bilan : seuls les comptes de bilan (classes 1-5) comptent.
+        # Inclure les classes 6/7 (comme le faisait max(Σdébits, Σcrédits) sur
+        # toute la balance) gonfle la base du seuil de signification de tout le
+        # compte de résultat → seuil trop élevé → sous-audit (NEP 320).
+        if compte[0] in "12345":
+            if s > 0:
+                actif_net += s
+            elif s < 0:
+                passif_net += abs(s)
 
-    total_bilan = max(total_debit, total_credit)
+    total_bilan = max(actif_net, passif_net)
     resultat_net = round(produits_tot - charges_tot, 2)
 
     return {

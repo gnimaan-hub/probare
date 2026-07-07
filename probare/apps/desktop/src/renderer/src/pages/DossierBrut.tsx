@@ -10,7 +10,7 @@ import {
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
-import { useApi } from '../hooks/useApi'
+import { useApi, authHeaders } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore } from '../stores/projetStore'
 
@@ -440,6 +440,7 @@ export function DossierBrut() {
         form.append('fichier', file)
         const res = await fetch(`${baseUrl}/projets/${projetId}/dossier/fichiers`, {
           method: 'POST',
+          headers: authHeaders(),
           body: form,
         })
         if (!res.ok) throw new Error((await res.json()).detail || 'Erreur upload')
@@ -460,6 +461,7 @@ export function DossierBrut() {
     try {
       const res = await fetch(`${baseUrl}/projets/${projetId}/dossier/${docId}`, {
         method: 'DELETE',
+        headers: authHeaders(),
       })
       if (!res.ok) throw new Error((await res.json()).detail || 'Erreur suppression')
       setDocs((prev) => prev.filter((d) => d.id !== docId))

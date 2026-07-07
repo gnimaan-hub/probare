@@ -115,7 +115,9 @@ class TestEquilibreBalance:
         res, exc = controle_equilibre_balance(PID, debits, credits)
         assert res["statut"] == "exception"
         assert exc is not None
-        assert exc["nep_ref"] == "NEP 500"
+        # La référence est rendue dans le référentiel actif du cabinet (ISA par défaut)
+        from probare_engine.normes import norme
+        assert exc["nep_ref"] == norme(500)
         assert exc["severite"] == "critique"
         assert float(res["valeur"]) == pytest.approx(100.0)
 

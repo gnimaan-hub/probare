@@ -48,6 +48,8 @@ export interface Exception {
   statut: 'ouverte' | 'tranchee'
   decision_humaine?: string
   decideur?: string
+  type_resolution?: 'corrigee' | 'sans_incidence' | 'non_corrigee' | null
+  montant_incidence?: number | null
   interpretation_llm?: string
   hypotheses?: string[]
   diligences?: string[]
@@ -90,8 +92,14 @@ interface ProjetStore {
   documentsRequis: DocumentRequis[]
   journal: any[]
   apiPort: number
+  apiToken: string
+  // Préfixe du référentiel de normes actif ('ISA' par défaut, 'NEP' en option),
+  // chargé au démarrage depuis la configuration cabinet du moteur.
+  referentiel: 'ISA' | 'NEP'
 
   setApiPort: (port: number) => void
+  setApiToken: (token: string) => void
+  setReferentiel: (ref: 'ISA' | 'NEP') => void
   setLoading: (v: boolean) => void
   setError: (e: string | null) => void
   setProjets: (projets: Projet[]) => void
@@ -117,8 +125,12 @@ export const useProjetStore = create<ProjetStore>((set) => ({
   documentsRequis: [],
   journal: [],
   apiPort: 8765,
+  apiToken: '',
+  referentiel: 'ISA',
 
   setApiPort: (port) => set({ apiPort: port }),
+  setApiToken: (token) => set({ apiToken: token }),
+  setReferentiel: (referentiel) => set({ referentiel }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
   setProjets: (projets) => set({ projets }),

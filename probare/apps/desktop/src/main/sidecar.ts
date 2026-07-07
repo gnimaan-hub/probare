@@ -4,9 +4,12 @@ import { app } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import * as http from 'http'
 import * as net from 'net'
+import { randomBytes } from 'crypto'
 
 let sidecarProcess: ChildProcess | null = null
 let sidecarPort: number = 8765
+// Jeton partagé entre le renderer et le sidecar, régénéré à chaque démarrage.
+const sidecarToken: string = randomBytes(32).toString('hex')
 
 async function findFreePort(start = 8765): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -44,7 +47,7 @@ export async function startSidecar(): Promise<void> {
 
     sidecarProcess = spawn(pythonExe, args, {
       cwd: engineDir,
-      env: { ...process.env, PYTHONPATH: pythonPath },
+      env: { ...process.env, PYTHONPATH: pythonPath, PROBARE_API_TOKEN: sidecarToken },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
   } else {
@@ -56,6 +59,7 @@ export async function startSidecar(): Promise<void> {
     )
     args = ['--host', '127.0.0.1', '--port', String(sidecarPort)]
     sidecarProcess = spawn(sidecarBin, args, {
+      env: { ...process.env, PROBARE_API_TOKEN: sidecarToken },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
   }
@@ -90,6 +94,10 @@ export async function stopSidecar(): Promise<void> {
 
 export function getSidecarPort(): number {
   return sidecarPort
+}
+
+export function getSidecarToken(): string {
+  return sidecarToken
 }
 
 export async function waitForSidecar(timeoutSec = 30): Promise<void> {

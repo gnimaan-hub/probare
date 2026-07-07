@@ -1,8 +1,21 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { useProjetStore } from '../stores/projetStore'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+/**
+ * Rend une référence de norme dans le référentiel actif du cabinet.
+ * normeLabel('450') → 'ISA 450' ou 'NEP 450'.
+ * normeLabel('500, 330, 520') → 'ISA 500, 330, 520'.
+ * Le référentiel est chargé au démarrage ; un changement dans le paramétrage
+ * cabinet ne prend effet qu'au prochain redémarrage de l'application.
+ */
+export function normeLabel(numeros: string): string {
+  const prefix = useProjetStore.getState().referentiel
+  return `${prefix} ${numeros}`
 }
 
 export function formatMontant(val: number | undefined | null, devise = 'FDJ'): string {

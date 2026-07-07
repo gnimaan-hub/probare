@@ -7,6 +7,7 @@ import {
   Shield, ShoppingCart, TrendingUp, Loader2,
   Landmark, Package, Users, Receipt, PieChart
 } from 'lucide-react'
+import { normeLabel } from '../lib/utils'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { useApi } from '../hooks/useApi'
@@ -711,7 +712,7 @@ export function EvaluationCI() {
     <div className="flex flex-col h-full">
       <Header
         title="Évaluation du contrôle interne"
-        subtitle={`NEP 315 · ${cycles.length} cycle${cycles.length !== 1 ? 's' : ''}`}
+        subtitle={`${normeLabel('315')} · ${cycles.length} cycle${cycles.length !== 1 ? 's' : ''}`}
         actions={
           <div className="flex items-center gap-2">
             {saving && (
@@ -741,7 +742,7 @@ export function EvaluationCI() {
           <div className="flex items-start gap-2 max-w-3xl mx-auto">
             <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-blue-700 leading-relaxed">
-              <strong>NEP 315 — Connaissance de l'entité et de son environnement.</strong>{' '}
+              <strong>{normeLabel('315')} — Connaissance de l'entité et de son environnement.</strong>{' '}
               Ce questionnaire évalue le dispositif de contrôle interne par cycle.
               Les résultats alimentent directement le programme de travail : un risque CI élevé
               implique d'étendre les procédures analytiques et de prévoir des contrôles de détail renforcés.

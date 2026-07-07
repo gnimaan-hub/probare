@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 import anthropic
 from .client import LLMClient
+from ..normes import norme, prefixe_actif
 
 
 MODEL_DEFAULT = "claude-sonnet-4-6"
@@ -288,7 +289,7 @@ Si ce n'est pas une liasse (document unique), réponds avec est_liasse: false et
             if r.get("commentaire"):
                 reponses_txt += f"\n  → Commentaire auditeur : {r['commentaire']}"
 
-        prompt = f"""Tu es auditeur senior. Tu évalues le contrôle interne du cycle {cycle.upper()} d'une entité dans le cadre d'un audit contractuel (Djibouti, référentiel NEP 315).
+        prompt = f"""Tu es auditeur senior. Tu évalues le contrôle interne du cycle {cycle.upper()} d'une entité dans le cadre d'un audit contractuel (Djibouti, référentiel {norme(315)}).
 
 Entité : {contexte_projet.get('client', 'N/A')} — Exercice {contexte_projet.get('exercice', 'N/A')}
 
@@ -354,14 +355,19 @@ Ta tâche (sans jamais produire de calculs ni de montants non reçus ci-dessus) 
 1. Expliquer l'exception en langage clair pour l'auditeur responsable.
 2. Lister 2-3 hypothèses de cause les plus probables dans ce contexte.
 3. Proposer les diligences à effectuer (pièces à demander, vérifications à mener).
-4. Rédiger une décision de tranchement documentée, professionnelle et argumentée, prête à être validée ou modifiée par l'auditeur. Cette décision doit être rédigée à la première personne de l'auditeur.
+4. Rédiger un PROJET de décision de tranchement, professionnel et argumenté, que l'auditeur complétera après avoir réalisé les diligences.
+
+RÈGLE DÉONTOLOGIQUE IMPÉRATIVE pour le projet de décision :
+- N'affirme JAMAIS que des vérifications, examens ou diligences ont été réalisés — ils ne l'ont pas encore été au moment où tu écris.
+- Rédige au conditionnel ou au futur : « Sous réserve de… », « Après obtention de… il conviendra de… », « Si la pièce X confirme…, cette exception pourra être tranchée comme… ».
+- N'écris jamais « J'ai vérifié », « Après examen », « J'ai obtenu » : l'auditeur engagerait sa responsabilité sur des travaux non effectués.
 
 Réponds UNIQUEMENT avec un JSON valide :
 {{
   "explication": "explication claire en 2-3 phrases",
   "hypotheses": ["hypothèse 1", "hypothèse 2", "hypothèse 3"],
   "diligences": ["diligence 1", "diligence 2"],
-  "decision_proposee": "Texte complet de la décision rédigée, prêt à signer. Ex: J'ai examiné cette exception... L'écart s'explique par... Après vérification... Je tranche en faveur de...",
+  "decision_proposee": "Projet de décision conditionné aux diligences. Ex: Sous réserve de l'obtention de la pièce n°..., cette exception pourrait s'expliquer par... Il conviendra de vérifier... avant de la trancher comme corrigée, sans incidence ou non corrigée.",
   "urgence": "faible|moyenne|elevee"
 }}"""
 
@@ -929,7 +935,7 @@ Risques validés par l'auditeur :
 
 Cycles couverts : {', '.join(cycles_couverts)}
 
-Registre des contrôles disponibles (réf → libellé → cycle → NEP) :
+Registre des contrôles disponibles (réf → libellé → cycle → norme) :
 {json.dumps(controles_registry, ensure_ascii=False, indent=2)}
 
 Pour chaque contrôle du registre que tu juges pertinent (en fonction des risques) :
@@ -987,7 +993,7 @@ Réponds UNIQUEMENT avec un JSON valide :
         }.get(type_circularisation, type_circularisation)
 
         prompt = f"""Tu es auditeur légal agréé. Rédige une lettre de confirmation externe
-à destination du {cycle_label} suivant, conformément à la NEP 505.
+à destination du {cycle_label} suivant, conformément à la norme {norme(505)}.
 
 Tiers : {tiers.get('libelle') or tiers.get('compte')}
 Compte comptable : {tiers.get('compte')}
@@ -1086,7 +1092,7 @@ Réponds UNIQUEMENT avec un JSON :
         Tous les chiffres proviennent de sondage + projection (calculés Python).
         Le LLM interprète uniquement, il ne recalcule pas.
         """
-        prompt = f"""Tu es auditeur légal. Rédige la conclusion du sondage sur pièces conformément à la NEP 530.
+        prompt = f"""Tu es auditeur légal. Rédige la conclusion du sondage sur pièces conformément à la norme {norme(530)}.
 
 Sondage : {sondage.get('libelle')} — cycle {sondage.get('cycle')}
 Population : {sondage.get('population')} éléments, montant total {sondage.get('montant_population')}
@@ -1142,7 +1148,7 @@ Réponds UNIQUEMENT avec un JSON :
     ) -> dict:
         """Rédige une feuille de travail à partir de résultats déjà calculés."""
         prompt = f"""Tu es auditeur senior. Rédige la feuille de travail pour le cycle {cycle}
-en français, conformément aux NEP, à partir des résultats déterministes suivants.
+en français, conformément au référentiel {prefixe_actif()}, à partir des résultats déterministes suivants.
 
 Résultats des contrôles (calculés par le code, ne les modifie pas) :
 {json.dumps(resultats[:20], ensure_ascii=False, indent=2)}
@@ -1172,9 +1178,11 @@ Réponds UNIQUEMENT avec un JSON valide :
         result = self._parse_json(resp.content[0].text)
         if isinstance(result, dict) and "contenu" in result:
             return result
+        # Repli NEUTRE : un échec de parsing ne doit jamais produire une
+        # conclusion favorable par défaut — l'auditeur doit conclure lui-même.
         return {
             "titre": f"Feuille de travail — {cycle}",
             "contenu": resp.content[0].text,
             "nep_refs": [],
-            "conclusion": "sans_reserve",
+            "conclusion": "a_completer",
         }
