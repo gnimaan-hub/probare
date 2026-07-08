@@ -1,0 +1,30 @@
+﻿compte,libelle,debit,credit,exercice
+101,Capital social,0,40000000,2025
+106,Réserves légales,0,6500000,2025
+110,Report à nouveau,0,10350000,2025
+164,Emprunt BCIMR moyen terme,0,12000000,2025
+215,Matériel de transport,28000000,0,2025
+218,Matériel et mobilier de bureau,9900000,0,2025
+2815,Amort. matériel de transport,0,12712425,2025
+310,Stocks de marchandises,34450000,0,2025
+401,Fournisseurs,0,28798430,2025
+411,Clients,30986870,0,2025
+416,Clients douteux,1200000,0,2025
+421,Personnel - rémunérations dues,0,2050000,2025
+431,CNSS - cotisations dues,0,410000,2025
+444,État - impôt sur les bénéfices,0,2384150,2025
+512,Banque BCIMR,32714930,0,2025
+531,Caisse,1337300,0,2025
+601,Achats de marchandises,138768695,0,2025
+6031,Variation des stocks de march.,0,9450000,2025
+606,"Eau, électricité, fournitures",4315195,0,2025
+613,Locations,6000000,0,2025
+622,Honoraires et intermédiaires,975340,0,2025
+624,Transports de biens,6541775,0,2025
+641,Rémunérations du personnel,24600000,0,2025
+645,Charges de sécurité sociale,4920000,0,2025
+661,Charges d'intérêts,1493355,0,2025
+681,Dotations aux amortissements,2912425,0,2025
+695,Impôt sur les bénéfices,2384150,0,2025
+701,Ventes de marchandises,0,199599630,2025
+706,Prestations de services (livraison),0,7245400,2025

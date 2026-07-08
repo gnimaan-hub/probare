@@ -501,10 +501,13 @@ QCI_PAR_CYCLE: dict[str, list[dict]] = {
 }
 
 NIVEAUX_RISQUE_CI = {
-    "faible":  {"seuil_min": 0.70, "label": "Faible", "couleur": "emerald",
-                "implication": "Vous pouvez vous appuyer sur le contrôle interne et réduire l'étendue des tests substantifs."},
-    "moyen":   {"seuil_min": 0.40, "label": "Moyen", "couleur": "amber",
-                "implication": "Appui partiel possible. Renforcez les tests analytiques sur les zones de faiblesse identifiées."},
+    # Barème prudent : le questionnaire est déclaratif (aucun test d'efficacité).
+    # « Faible » exige en outre ZÉRO réponse « non » (voir calculer_niveau_risque).
+    "faible":  {"seuil_min": 0.85, "label": "Faible", "couleur": "emerald",
+                "implication": "Environnement de contrôle favorable. L'étendue des travaux substantifs "
+                               "n'est pas réduite pour autant sans test d'efficacité du contrôle interne."},
+    "moyen":   {"seuil_min": 0.50, "label": "Moyen", "couleur": "amber",
+                "implication": "Faiblesses identifiées. Renforcez les tests sur les zones concernées."},
     "eleve":   {"seuil_min": 0.00, "label": "Élevé", "couleur": "red",
                 "implication": "Pas d'appui sur le contrôle interne. Étendez significativement les travaux substantifs."},
 }
@@ -524,11 +527,15 @@ def calculer_niveau_risque(reponses: list[dict]) -> dict:
     nb_na  = sum(1 for r in reponses if r.get("reponse") == "na")
     score = nb_oui / total if total > 0 else 0.0
 
+    # Chaque « non » est une faiblesse avouée : un risque CI « faible »
+    # exige un score élevé ET aucune faiblesse déclarée.
     niveau = "eleve"
     for key, cfg in NIVEAUX_RISQUE_CI.items():
         if score >= cfg["seuil_min"]:
             niveau = key
             break
+    if niveau == "faible" and nb_non > 0:
+        niveau = "moyen"
 
     return {
         "score": round(score, 2),

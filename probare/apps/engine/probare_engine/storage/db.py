@@ -1004,6 +1004,9 @@ class ProjectDB:
         return self._deserialize_planification(dict(row))
 
     def update_planification(self, projet_id: str, data: dict) -> dict:
+        # Garantit l'existence de la ligne : un UPDATE sur une planification
+        # jamais initialisée serait un no-op silencieux (perte de la fiche entité).
+        self.get_or_create_planification(projet_id)
         allowed = {
             "forme_juridique", "date_creation_entreprise", "activites_principales",
             "marches_principaux", "dirigeants", "systeme_information", "effectif",

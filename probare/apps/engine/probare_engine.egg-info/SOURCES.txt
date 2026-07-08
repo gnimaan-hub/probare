@@ -2,6 +2,7 @@ pyproject.toml
 setup.cfg
 probare_engine/__init__.py
 probare_engine/main.py
+probare_engine/normes.py
 probare_engine.egg-info/PKG-INFO
 probare_engine.egg-info/SOURCES.txt
 probare_engine.egg-info/dependency_links.txt
@@ -41,4 +42,6 @@ probare_engine/storage/db.py
 tests/test_anonymization.py
 tests/test_circularisation_sondages.py
 tests/test_controls.py
+tests/test_nep450_process.py
 tests/test_new_features.py
+tests/test_normes.py

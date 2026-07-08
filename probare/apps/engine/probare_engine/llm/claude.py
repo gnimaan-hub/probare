@@ -273,10 +273,13 @@ Si ce n'est pas une liasse (document unique), réponds avec est_liasse: false et
         total  = nb_oui + nb_non
         score  = round(nb_oui / total, 2) if total > 0 else 0.0
 
+        # Barème prudent : le questionnaire est déclaratif (aucun test
+        # d'efficacité) — un risque CI « faible » exige un score élevé ET
+        # aucune faiblesse avouée ; chaque « non » est une faiblesse identifiée.
         niveau = "élevé"
-        if score >= 0.70:
+        if score >= 0.85 and nb_non == 0:
             niveau = "faible"
-        elif score >= 0.40:
+        elif score >= 0.50:
             niveau = "moyen"
 
         reponses_txt = ""
@@ -670,6 +673,8 @@ Réponds UNIQUEMENT avec un JSON valide :
         Ne calcule rien — les chiffres viennent tous de variations_significatives.
         """
         seuil_txt = f"{seuil_signification:,.0f} FDJ" if seuil_signification else "non défini"
+        cycles_ok = "|".join(list(contexte_projet.get("cycles_couverts")
+                                  or ["tresorerie", "achats", "ventes"]) + ["transversal"])
         prompt = f"""Tu es auditeur senior certifié. Le moteur d'analyse déterministe a calculé
 les variations N/N-1 significatives de la balance générale.
 
@@ -693,7 +698,7 @@ Réponds UNIQUEMENT avec un JSON valide :
 {{
   "synthese": "Paragraphe de synthèse (5-8 phrases).",
   "zones_risque": [
-    {{"cycle": "tresorerie|achats|ventes|transversal", "libelle": "...", "niveau": "eleve|moyen|faible", "explication": "..."}}
+    {{"cycle": "{cycles_ok}", "libelle": "...", "niveau": "eleve|moyen|faible", "explication": "..."}}
   ],
   "facteurs_contextuels": "Explication des variations par le contexte (2-3 phrases).",
   "alertes": ["Alerte 1 si applicable", "Alerte 2"]
@@ -745,7 +750,7 @@ Risques déjà renseignés (ne pas dupliquer) :
 {json.dumps([r.get('libelle') for r in risques_existants], ensure_ascii=False)}
 
 Assertions disponibles : {ASSERTIONS}
-Cycles valides : tresorerie, achats, ventes, transversal
+Cycles valides : {', '.join(list(cycles_couverts) + ['transversal'])}
 Niveaux : eleve, moyen, faible
 Sources : analytique, entite, inherent, ia
 
@@ -766,7 +771,7 @@ Réponds UNIQUEMENT avec un JSON valide :
     {{
       "libelle": "...",
       "description": "...",
-      "cycle": "tresorerie|achats|ventes|transversal",
+      "cycle": "{'|'.join(list(cycles_couverts) + ['transversal'])}",
       "niveau": "eleve|moyen|faible",
       "assertions": ["existence", "exhaustivite"],
       "source": "analytique|entite|inherent|ia"
@@ -905,16 +910,24 @@ Réponds UNIQUEMENT avec un JSON valide :
 
         resp = self._client.messages.create(
             model=MODEL_DEFAULT,
-            max_tokens=4000,
+            max_tokens=8000,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, "generer_note_synthese",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
+        if resp.stop_reason == "max_tokens":
+            raise RuntimeError(
+                "Réponse IA tronquée (limite de tokens de sortie atteinte) : "
+                "la note de synthèse n'a pas pu être générée. Relancez la génération."
+            )
         result = self._parse_json(resp.content[0].text)
-        if isinstance(result, dict) and "sections" in result:
+        if isinstance(result, dict) and result.get("sections"):
             return result
-        return {"titre": "Note de synthèse", "sections": [], "conclusion": ""}
+        raise RuntimeError(
+            "Réponse IA illisible (JSON invalide ou sections absentes) : "
+            "la note de synthèse n'a pas pu être générée. Relancez la génération."
+        )
 
     def generer_programme_travail(
         self,
@@ -963,16 +976,24 @@ Réponds UNIQUEMENT avec un JSON valide :
 
         resp = self._client.messages.create(
             model=MODEL_DEFAULT,
-            max_tokens=4000,
+            max_tokens=16000,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, "generer_programme_travail",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
+        if resp.stop_reason == "max_tokens":
+            raise RuntimeError(
+                "Réponse IA tronquée (limite de tokens de sortie atteinte) : "
+                "le programme de travail n'a pas pu être généré. Relancez la génération."
+            )
         result = self._parse_json(resp.content[0].text)
-        if isinstance(result, dict):
-            return result.get("items", [])
-        return []
+        if isinstance(result, dict) and isinstance(result.get("items"), list):
+            return result["items"]
+        raise RuntimeError(
+            "Réponse IA illisible (JSON invalide) : "
+            "le programme de travail n'a pas pu être généré. Relancez la génération."
+        )
 
     # ─── Circularisation ─────────────────────────────────────────────────────
 

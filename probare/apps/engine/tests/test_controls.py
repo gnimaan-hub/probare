@@ -620,7 +620,8 @@ class TestConcentrationCompte:
         donnees = (
             _make_row("401000", 2, credit=8000.0) +
             _make_row("401100", 3, credit=1000.0) +
-            _make_row("401200", 4, credit=1000.0)
+            _make_row("401200", 4, credit=500.0) +
+            _make_row("401300", 5, credit=500.0)
         )
         grouped = _rows(donnees)
         res, exc = controle_concentration_compte(PID, "ACHAT-CONCENTRATION", grouped, ("40",), "credit")
@@ -628,16 +629,21 @@ class TestConcentrationCompte:
         assert "401000" in exc["description"]
         assert "80.0%" in exc["description"]
 
-    def test_un_seul_fournisseur(self):
+    def test_compte_collectif_unique_neutralise(self):
+        # Un seul 401 collectif (pas d'auxiliaires) : « un compte = un tiers »
+        # ne tient pas — le contrôle se neutralise au lieu de crier à 100 %.
         donnees = _make_row("401000", 2, credit=5000.0)
         grouped = _rows(donnees)
         res, exc = controle_concentration_compte(PID, "ACHAT-CONCENTRATION", grouped, ("40",), "credit")
-        assert exc is not None
+        assert exc is None
+        assert "auxiliaire" in res["details"]
 
     def test_concentration_client_elevee(self):
         donnees = (
             _make_row("411000", 2, debit=9000.0) +
-            _make_row("411100", 3, debit=1000.0)
+            _make_row("411100", 3, debit=500.0) +
+            _make_row("411200", 4, debit=300.0) +
+            _make_row("411300", 5, debit=200.0)
         )
         grouped = _rows(donnees)
         res, exc = controle_concentration_compte(PID, "VENTE-CONCENTRATION", grouped, ("41",), "debit")
@@ -647,8 +653,10 @@ class TestConcentrationCompte:
     def test_seuil_custom(self):
         # 50% → exception avec seuil=40%, ok avec seuil=60%
         donnees = (
-            _make_row("401000", 2, credit=5000.0) +
-            _make_row("401100", 3, credit=5000.0)
+            _make_row("401000", 2, credit=6000.0) +
+            _make_row("401100", 3, credit=2000.0) +
+            _make_row("401200", 4, credit=2000.0) +
+            _make_row("401300", 5, credit=2000.0)
         )
         grouped = _rows(donnees)
         _, exc_40 = controle_concentration_compte(PID, "ACHAT-CONCENTRATION", grouped, ("40",),
@@ -661,59 +669,89 @@ class TestConcentrationCompte:
 
 
 class TestRatioAvoirs:
+    # Nouvelle sémantique : les avoirs se mesurent sur les comptes de FLUX
+    # (charges 60x / produits 70x), pas sur les comptes de tiers — en partie
+    # double, les crédits 41x sont des encaissements, pas des avoirs.
+
     def test_ratio_normal_achats(self):
         donnees = (
-            _make_row("401000", 2, credit=5000.0) +
-            _make_row("401000", 3, debit=200.0)
+            _make_row("601000", 2, debit=5000.0) +
+            _make_row("601000", 3, credit=200.0)   # avoir fournisseur 4%
         )
         grouped = _rows(donnees)
-        res, exc = controle_ratio_avoirs(PID, "ACHAT-AVOIR", grouped, ("40",), "debit")
+        res, exc = controle_ratio_avoirs(PID, "ACHAT-AVOIR", grouped, ("60",), "credit")
         assert exc is None
 
     def test_ratio_anormal_achats(self):
         donnees = (
-            _make_row("401000", 2, credit=3000.0) +
-            _make_row("401000", 3, debit=500.0)
+            _make_row("601000", 2, debit=3000.0) +
+            _make_row("601000", 3, credit=500.0)   # avoirs > 5% des achats
         )
         grouped = _rows(donnees)
-        res, exc = controle_ratio_avoirs(PID, "ACHAT-AVOIR", grouped, ("40",), "debit",
+        res, exc = controle_ratio_avoirs(PID, "ACHAT-AVOIR", grouped, ("60",), "credit",
                                          seuil_ratio=0.05)
         assert exc is not None
         assert "avoirs" in exc["description"].lower()
 
     def test_ratio_anormal_ventes(self):
         donnees = (
-            _make_row("411000", 2, debit=4000.0) +
-            _make_row("411000", 3, credit=800.0)
+            _make_row("701000", 2, credit=4000.0) +
+            _make_row("701000", 3, debit=800.0)    # notes de crédit clients
         )
         grouped = _rows(donnees)
-        res, exc = controle_ratio_avoirs(PID, "VENTE-AVOIR", grouped, ("41",), "credit",
+        res, exc = controle_ratio_avoirs(PID, "VENTE-AVOIR", grouped, ("70",), "debit",
                                          seuil_ratio=0.05)
         assert exc is not None
 
-    def test_aucun_avoir(self):
+    def test_encaissements_ne_sont_pas_des_avoirs(self):
+        # Partie double : les crédits 411 (règlements clients) ne doivent
+        # PAS être comptés comme avoirs — seuls les comptes 70x sont analysés.
         donnees = (
-            _make_row("401000", 2, credit=5000.0) +
-            _make_row("401000", 3, credit=3000.0)
+            _make_row("701000", 2, credit=4000.0) +
+            _make_row("411000", 3, debit=4000.0) +
+            _make_row("411000", 4, credit=4000.0) +   # encaissement intégral
+            _make_row("512000", 5, debit=4000.0)
         )
         grouped = _rows(donnees)
-        res, exc = controle_ratio_avoirs(PID, "ACHAT-AVOIR", grouped, ("40",), "debit")
+        res, exc = controle_ratio_avoirs(PID, "VENTE-AVOIR", grouped, ("70",), "debit",
+                                         seuil_ratio=0.05)
+        assert exc is None
+
+    def test_variation_stock_exclue_achats(self):
+        # Le 6031 (variation de stocks) est créditeur par nature : il ne doit
+        # pas passer pour un avoir fournisseur.
+        donnees = (
+            _make_row("601000", 2, debit=10000.0) +
+            _make_row("603100", 3, credit=3000.0)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_ratio_avoirs(PID, "ACHAT-AVOIR", grouped, ("60",), "credit",
+                                         seuil_ratio=0.05, exclure_prefixes=("603",))
+        assert exc is None
+
+    def test_aucun_avoir(self):
+        donnees = (
+            _make_row("601000", 2, debit=5000.0) +
+            _make_row("601000", 3, debit=3000.0)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_ratio_avoirs(PID, "ACHAT-AVOIR", grouped, ("60",), "credit")
         assert exc is None
 
     def test_libelle_avoir(self):
         donnees = (
-            _make_row("401000", 2, credit=5000.0) +
-            _make_row("401000", 3, debit=300.0, libelle="AVOIR FAC-2023-001")
+            _make_row("601000", 2, debit=5000.0) +
+            _make_row("601000", 3, credit=300.0, libelle="AVOIR FAC-2023-001")
         )
         grouped = _rows(donnees)
-        res, exc = controle_ratio_avoirs(PID, "ACHAT-AVOIR", grouped, ("40",), "debit",
+        res, exc = controle_ratio_avoirs(PID, "ACHAT-AVOIR", grouped, ("60",), "credit",
                                          seuil_ratio=0.05)
         assert exc is not None
 
     def test_aucun_compte_correspondant(self):
-        donnees = _make_row("607000", 2, debit=1000.0)
+        donnees = _make_row("512000", 2, debit=1000.0)
         grouped = _rows(donnees)
-        res, exc = controle_ratio_avoirs(PID, "ACHAT-AVOIR", grouped, ("40",), "debit")
+        res, exc = controle_ratio_avoirs(PID, "ACHAT-AVOIR", grouped, ("60",), "credit")
         assert exc is None
 
 
@@ -788,13 +826,16 @@ class TestScenarioAchatsFrauduleux:
             # Fournisseur principal 401000 = 85% + doublon FAC001
             _make_row("401000", 2, credit=8500.0, piece="FAC001") +
             _make_row("401000", 3, credit=8500.0, piece="FAC001") +
-            # Fournisseur secondaire 401100 = 15%
-            _make_row("401100", 4, credit=1500.0, piece="FAC020") +
+            # Fournisseurs secondaires (comptabilité auxiliaire : 4 comptes)
+            _make_row("401100", 4, credit=1000.0, piece="FAC020") +
+            _make_row("401200", 8, credit=300.0, piece="FAC021") +
+            _make_row("401300", 9, credit=200.0, piece="FAC022") +
             # Avoir important : 2000 sur 18500 = 10.8% > 5%
             _make_row("401000", 5, debit=2000.0, libelle="AVOIR FAC-OLD") +
-            # Charges correspondantes
+            # Charges correspondantes + avoir côté charges (nouvelle sémantique)
             _make_row("607000", 6, debit=10000.0) +
-            _make_row("607000", 7, debit=8500.0)
+            _make_row("607000", 7, debit=8500.0) +
+            _make_row("607000", 10, credit=2000.0, libelle="AVOIR FAC-OLD")
         )
         self.grouped = _rows(self.donnees)
 
@@ -808,7 +849,8 @@ class TestScenarioAchatsFrauduleux:
         assert exc is not None
 
     def test_avoir_anormal_detecte(self):
-        res, exc = controle_ratio_avoirs(PID, "ACHAT-AVOIR", self.grouped, ("40",), "debit",
+        # Nouvelle sémantique : avoirs = crédits sur les comptes de charges (60x)
+        res, exc = controle_ratio_avoirs(PID, "ACHAT-AVOIR", self.grouped, ("60",), "credit",
                                          seuil_ratio=0.05)
         assert exc is not None
 
@@ -820,8 +862,10 @@ class TestScenarioVentesRisquees:
         self.donnees = (
             # Client principal 411000 = 70% avec créance ancienne
             _make_row("411000", 2, debit=7000.0, date="2023-03-01", piece="FACT001") +
-            # Client secondaire 411100 = 30%
-            _make_row("411100", 3, debit=3000.0, date="2023-10-01", piece="FACT002") +
+            # Clients secondaires (comptabilité auxiliaire : 4 comptes)
+            _make_row("411100", 3, debit=2000.0, date="2023-10-01", piece="FACT002") +
+            _make_row("411200", 6, debit=600.0, date="2023-11-01", piece="FACT003") +
+            _make_row("411300", 7, debit=400.0, date="2023-11-15", piece="FACT004") +
             # Produits
             _make_row("707000", 4, credit=7000.0) +
             _make_row("707000", 5, credit=3000.0)
@@ -908,15 +952,29 @@ class TestAmortissementManquant:
         assert exc is None
 
     def test_plusieurs_imo_une_sans_amort(self):
-        # Même une seule immobilisation avec amortissement suffit pour que le contrôle passe
+        # Appariement PAR SOUS-COMPTE : le 2815 couvre le 215, pas le 218 —
+        # le 218 sans 2818 doit ressortir en exception (anomalie Harbi A5).
         donnees = (
             _make_row("215000", 2, debit=30000.0) +
             _make_row("218000", 3, debit=20000.0) +
-            _make_row("281500", 4, credit=5000.0)   # amortissement présent
+            _make_row("281500", 4, credit=5000.0)   # amortissement du 215 uniquement
         )
         grouped = _rows(donnees)
         res, exc = controle_amortissement_manquant(PID, grouped)
-        assert exc is None  # total_amort > 0 → contrôle passé
+        assert exc is not None
+        assert "218" in exc["description"]
+        assert "215000 " not in exc["description"]
+
+    def test_compte_281_generique_couvre_tout(self):
+        # Un 281 générique couvre tous les sous-comptes 21x
+        donnees = (
+            _make_row("215000", 2, debit=30000.0) +
+            _make_row("218000", 3, debit=20000.0) +
+            _make_row("281000", 4, credit=5000.0)
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_amortissement_manquant(PID, grouped)
+        assert exc is None
 
 
 class TestAmortExcedent:
@@ -1490,3 +1548,116 @@ class TestScenarioCapitauxPropresComplet:
         _, exc_prov = controle_mouvement_provisions(PID, grouped)
         assert exc_res is not None  # 120 et 129 tous deux non nuls
         assert exc_prov is not None  # provision sans charge 68x
+
+
+class TestCreancesEchuesLettrage:
+    """Lettrage débits/crédits (correctif C9) : les factures réglées ne sont
+    plus comptées comme créances anciennes."""
+
+    def test_facture_reglee_non_comptee(self):
+        # Vieille facture de 5000 intégralement réglée (lettrage exact) ;
+        # seule la facture récente reste ouverte → pas de créance ancienne.
+        donnees = (
+            _make_row("411000", 2, debit=5000.0, date="2023-03-01") +
+            _make_row("411000", 3, credit=5000.0, date="2023-04-15") +
+            _make_row("411000", 4, debit=3000.0, date="2023-12-01")
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_creances_echues(PID, grouped, "2023",
+                                            nb_jours_seuil=90, seuil_ratio=0.10)
+        assert exc is None
+
+    def test_facture_ancienne_impayee_detectee(self):
+        # Vieille facture NON réglée + facture récente réglée → exception,
+        # ratio honnête (100 % de l'ouvert est ancien).
+        donnees = (
+            _make_row("411000", 2, debit=2447.0, date="2023-02-12") +
+            _make_row("411000", 3, debit=8000.0, date="2023-11-20") +
+            _make_row("411000", 4, credit=8000.0, date="2023-12-05")
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_creances_echues(PID, grouped, "2023",
+                                            nb_jours_seuil=90, seuil_ratio=0.10)
+        assert exc is not None
+        assert "2447.00" in exc["description"]
+
+    def test_credits_fifo_sur_a_nouveaux(self):
+        # Un à-nouveau ancien soldé par des règlements groupés (pas de montant
+        # exact) : le FIFO l'impute en premier → plus de créance ancienne.
+        donnees = (
+            _make_row("411000", 2, debit=22000.0, date="2023-01-01") +
+            _make_row("411000", 3, credit=11500.0, date="2023-01-20") +
+            _make_row("411000", 4, credit=10500.0, date="2023-02-17") +
+            _make_row("411000", 5, debit=9000.0, date="2023-12-10")
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_creances_echues(PID, grouped, "2023",
+                                            nb_jours_seuil=90, seuil_ratio=0.10)
+        assert exc is None
+
+
+class TestSequenceCouverture:
+    """Heuristique de couverture (correctif C5) : numérotation partagée entre
+    journaux → les trous ne sont pas interprétables, les doublons restent."""
+
+    def test_numerotation_partagee_trous_neutralises(self):
+        # 5 pièces éparses sur une plage de 100 (couverture 5 %) : pas de
+        # fausse alerte « 95 trous ».
+        nums = [1, 25, 50, 75, 100]
+        pieces = [_ds_piece(f"p{n}", str(n), n) for n in nums]
+        res, exc = controle_sequence_pieces(PID, pieces)
+        assert exc is None
+        assert "partagée" in res["details"]
+
+    def test_doublon_detecte_meme_en_numerotation_partagee(self):
+        nums = [1, 25, 25, 50, 75, 100]
+        pieces = [_ds_piece(f"p{i}", str(n), i) for i, n in enumerate(nums, 1)]
+        res, exc = controle_sequence_pieces(PID, pieces)
+        assert exc is not None
+        assert "25" in exc["description"]
+        assert "trou" not in exc["description"].split("Doublons")[0].replace("0 trou(s)", "")
+
+
+class TestDoublonsPartieDouble:
+    def test_facture_et_reglement_meme_montant_pas_un_doublon(self):
+        # Facture (débit 411) puis règlement (crédit 411) du même montant :
+        # ce n'est pas un doublon (le sens du mouvement fait partie de la clé).
+        donnees = (
+            _make_row("411000", 2, debit=6845.25, piece="5010") +
+            _make_row("411000", 3, credit=6845.25, piece="5042")
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_doublons_factures(PID, "VENTE-DOUBLON", grouped, ("41",))
+        assert exc is None
+
+    def test_double_saisie_meme_sens_detectee(self):
+        donnees = (
+            _make_row("401000", 2, credit=2340.0, piece="5115") +
+            _make_row("401000", 3, credit=2340.0, piece="5115")
+        )
+        grouped = _rows(donnees)
+        res, exc = controle_doublons_factures(PID, "ACHAT-DOUBLON", grouped, ("40",))
+        assert exc is not None
+        assert "5115" in exc["description"]
+
+
+class TestBaremeQCI:
+    def test_score_correct_avec_non_reste_moyen(self):
+        from probare_engine.controls.qci import calculer_niveau_risque
+        reps = [{"reponse": "oui"}] * 8 + [{"reponse": "non"}] * 2
+        info = calculer_niveau_risque(reps)
+        assert info["score"] == 0.8
+        assert info["niveau"] == "moyen"   # score < 0.85 ET des « non »
+
+    def test_faible_exige_zero_non(self):
+        from probare_engine.controls.qci import calculer_niveau_risque
+        reps = [{"reponse": "oui"}] * 9 + [{"reponse": "non"}]
+        info = calculer_niveau_risque(reps)
+        assert info["score"] == 0.9
+        assert info["niveau"] == "moyen"   # 1 « non » interdit le niveau faible
+
+    def test_faible_si_parfait(self):
+        from probare_engine.controls.qci import calculer_niveau_risque
+        reps = [{"reponse": "oui"}] * 9 + [{"reponse": "na"}]
+        info = calculer_niveau_risque(reps)
+        assert info["niveau"] == "faible"

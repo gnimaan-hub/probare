@@ -1,0 +1,129 @@
+﻿date,libelle,debit,credit,solde
+2025-01-01,Solde d'ouverture,0,0,20000000
+2025-01-05,Loyer entrepôt Boulaos,500000,0,19500000
+2025-01-06,Virement salaires,1900000,0,17600000
+2025-01-06,Paiement cotisations CNSS,950000,0,16650000
+2025-01-20,Virements clients — solde exercice 2024,0,11500000,28150000
+2025-01-27,Virement fournisseurs — solde 2024,9300000,0,18850000
+2025-01-31,Facture EDD électricité,318425,0,18531575
+2025-01-31,Transport et manutention port,512340,0,18019235
+2025-02-03,Remise en banque espèces,0,400000,18419235
+2025-02-05,Virement salaires,2050000,0,16369235
+2025-02-05,Paiement cotisations CNSS,410000,0,15959235
+2025-02-05,Loyer entrepôt Boulaos,500000,0,15459235
+2025-02-17,Virements clients — solde exercice 2024,0,10500000,25959235
+2025-02-24,Virement fournisseurs — solde 2024,5000000,0,20959235
+2025-02-25,Règlement facture janvier,0,6845250,27804485
+2025-02-28,Facture EDD électricité,294310,0,27510175
+2025-02-28,Transport et manutention port,498215,0,27011960
+2025-03-03,Remise en banque espèces,0,380000,27391960
+2025-03-05,Virement salaires,2050000,0,25341960
+2025-03-05,Paiement cotisations CNSS,410000,0,24931960
+2025-03-05,Loyer entrepôt Boulaos,500000,0,24431960
+2025-03-13,Règlement facture janvier,4618340,0,19813620
+2025-03-18,Règlement facture janvier,0,5230480,25044100
+2025-03-27,Règlement facture janvier,4927255,0,20116845
+2025-03-28,Règlement facture février,0,7118320,27235165
+2025-03-31,Facture EDD électricité,331240,0,26903925
+2025-03-31,Transport et manutention port,534180,0,26369745
+2025-03-31,Échéance emprunt BCIMR,1927500,0,24442245
+2025-04-02,Remise en banque espèces,0,420000,24862245
+2025-04-05,Loyer entrepôt Boulaos,500000,0,24362245
+2025-04-07,Virement salaires,2050000,0,22312245
+2025-04-07,Paiement cotisations CNSS,410000,0,21902245
+2025-04-14,Règlement facture février,4753180,0,17149065
+2025-04-15,Règlement IS exercice 2024,1900000,0,15249065
+2025-04-22,Règlement facture mars,0,6530240,21779305
+2025-04-28,Règlement facture février,5112430,0,16666875
+2025-04-30,Facture EDD électricité,305185,0,16361690
+2025-04-30,Transport et manutention port,521425,0,15840265
+2025-05-05,Remise en banque espèces,0,390000,16230265
+2025-05-05,Virement salaires,2050000,0,14180265
+2025-05-05,Paiement cotisations CNSS,410000,0,13770265
+2025-05-05,Loyer entrepôt Boulaos,500000,0,13270265
+2025-05-06,Règlement facture mars,0,7842615,21112880
+2025-05-13,Règlement facture mars,4986215,0,16126665
+2025-05-26,Règlement facture avril,0,6920430,23047095
+2025-05-27,Règlement facture mars,5248370,0,17798725
+2025-05-30,Facture EDD électricité,342370,0,17456355
+2025-05-30,Transport et manutention port,547310,0,16909045
+2025-06-03,Remise en banque espèces,0,430000,17339045
+2025-06-05,Virement salaires,2050000,0,15289045
+2025-06-05,Paiement cotisations CNSS,410000,0,14879045
+2025-06-05,Loyer entrepôt Boulaos,500000,0,14379045
+2025-06-09,Règlement facture avril,0,7455280,21834325
+2025-06-12,Règlement facture avril,5134260,0,16700065
+2025-06-16,Rayonnages entrepôt + mobilier bureau,3500000,0,13200065
+2025-06-24,Règlement facture mai,0,7236140,20436205
+2025-06-26,Règlement facture avril,5396480,0,15039725
+2025-06-30,Facture EDD électricité,328415,0,14711310
+2025-06-30,Transport et manutention port,539240,0,14172070
+2025-06-30,Échéance emprunt BCIMR,1891250,0,12280820
+2025-07-02,Remise en banque espèces,0,400000,12680820
+2025-07-05,Loyer entrepôt Boulaos,500000,0,12180820
+2025-07-07,Virement salaires,2050000,0,10130820
+2025-07-07,Paiement cotisations CNSS,410000,0,9720820
+2025-07-08,Règlement facture mai,0,8012375,17733195
+2025-07-14,Règlement facture mai,5287325,0,12445870
+2025-07-22,Règlement facture juin,0,7648220,20094090
+2025-07-28,Règlement facture mai,5524190,0,14569900
+2025-07-31,Facture EDD électricité,356240,0,14213660
+2025-07-31,Transport et manutention port,561385,0,13652275
+2025-08-04,Remise en banque espèces,0,450000,14102275
+2025-08-05,Règlement facture juin,0,8237490,22339765
+2025-08-05,Virement salaires,2050000,0,20289765
+2025-08-05,Paiement cotisations CNSS,410000,0,19879765
+2025-08-05,Loyer entrepôt Boulaos,500000,0,19379765
+2025-08-12,Règlement facture juin,5412275,0,13967490
+2025-08-19,Règlement facture juillet,0,7925360,21892850
+2025-08-26,Règlement facture juin,5683420,0,16209430
+2025-08-29,Facture EDD électricité,349180,0,15860250
+2025-08-29,Transport et manutention port,553270,0,15306980
+2025-09-02,Remise en banque espèces,0,410000,15716980
+2025-09-04,Règlement facture juillet,0,8418245,24135225
+2025-09-05,Virement salaires,2050000,0,22085225
+2025-09-05,Paiement cotisations CNSS,410000,0,21675225
+2025-09-05,Loyer entrepôt Boulaos,500000,0,21175225
+2025-09-11,Règlement facture juillet,5578310,0,15596915
+2025-09-18,Règlement facture août,0,8146530,23743445
+2025-09-25,Règlement facture juillet,5812245,0,17931200
+2025-09-30,Facture EDD électricité,337425,0,17593775
+2025-09-30,Transport et manutention port,544425,0,17049350
+2025-09-30,Échéance emprunt BCIMR,1855425,0,15193925
+2025-10-02,Remise en banque espèces,0,460000,15653925
+2025-10-05,Loyer entrepôt Boulaos,500000,0,15153925
+2025-10-06,Règlement facture août,0,8659410,23813335
+2025-10-06,Virement salaires,2050000,0,21763335
+2025-10-06,Paiement cotisations CNSS,410000,0,21353335
+2025-10-13,Règlement facture août,5694380,0,15658955
+2025-10-20,Règlement facture septembre,0,8324275,23983230
+2025-10-27,Règlement facture août,5927150,0,18056080
+2025-10-31,Facture EDD électricité,322310,0,17733770
+2025-10-31,Transport et manutention port,568310,0,17165460
+2025-11-03,Remise en banque espèces,0,420000,17585460
+2025-11-05,Règlement facture septembre,0,8871620,26457080
+2025-11-05,Virement salaires,2050000,0,24407080
+2025-11-05,Paiement cotisations CNSS,410000,0,23997080
+2025-11-05,Loyer entrepôt Boulaos,500000,0,23497080
+2025-11-12,Règlement facture septembre,5836425,0,17660655
+2025-11-17,Honoraires cabinet comptable,975340,0,16685315
+2025-11-19,Règlement facture octobre,0,8562340,25247655
+2025-11-26,Règlement facture septembre,6048310,0,19199345
+2025-11-28,Facture EDD électricité,314270,0,18885075
+2025-11-28,Transport et manutention port,572245,0,18312830
+2025-12-02,Remise en banque espèces,0,470000,18782830
+2025-12-04,Règlement facture octobre,0,9148255,27931085
+2025-12-05,Virement salaires,2050000,0,25881085
+2025-12-05,Paiement cotisations CNSS,410000,0,25471085
+2025-12-05,Loyer entrepôt Boulaos,500000,0,24971085
+2025-12-11,Règlement facture octobre,5952270,0,19018815
+2025-12-16,Règlement facture novembre,0,8795430,27814245
+2025-12-19,Échéance emprunt BCIMR,1819180,0,25995065
+2025-12-22,Règlement facture octobre,6187435,0,19807630
+2025-12-23,Règlement facture novembre,0,9386215,29193845
+2025-12-29,Règlement prestation T1,0,1684250,30878095
+2025-12-30,Règlement prestation T2,0,1792430,32670525
+2025-12-31,Facture EDD électricité,361435,0,32309090
+2025-12-31,Transport et manutention port,589430,0,31719660
+2025-12-31,Règlement prestation T3,0,1845270,33564930
+2025-12-31,Frais de tenue de compte T4,12500,0,33552430

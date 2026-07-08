@@ -73,9 +73,13 @@ probare/
 
 ## États du pipeline
 
-`cadrage → ingestion → extraction → controles → revue → generation → opinion`
+`cadrage → evaluation_ci → ingestion → planification → travaux_substantifs → revue → generation → opinion`
 
-- On ne passe à `generation` que si toutes les exceptions sont `tranchee`.
+(`extraction` et `controles` subsistent en rétrocompatibilité pour les anciens projets.)
+
+- Les contrôles ne s'exécutent pas avant `planification` (garde `_exiger_etat_pour_controles`).
+- On ne passe à `generation` que si toutes les exceptions sont `tranchee` et que le
+  cumul des anomalies non corrigées respecte le seuil (NEP 450) ou est confirmé.
 - `opinion` est manuel — Probare ne signe pas.
 
 ## Référentiel de normes : ISA (défaut) ou NEP (option)

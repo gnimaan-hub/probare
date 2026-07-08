@@ -45,6 +45,7 @@ from ..controls.engine import (
     _group_rows,
     _filter_accounts,
     _get_amount,
+    _get_str,
 )
 from ..provenance.models import DonneeSourcee
 from ..reporting.export import (
@@ -223,7 +224,12 @@ def _get_donnees_segmentees(db, projet_id: str):
     Utilise type_document en priorité, avec fallback sur type (rétrocompatibilité).
     """
     fichiers = db.list_fichiers(projet_id)
-    ids_balance = {f["id"] for f in fichiers if _get_type_fichier(f) == "balance"}
+    # La balance N-1 (référencée en planification) sert aux procédures analytiques
+    # uniquement : l'inclure ici fusionnerait N et N-1 dans les agrégats des
+    # contrôles de l'exercice (faux écarts GL/Balance, soldes N doublés).
+    n1_id = db.get_or_create_planification(projet_id).get("balance_n1_fichier_id")
+    ids_balance = {f["id"] for f in fichiers
+                   if _get_type_fichier(f) == "balance" and f["id"] != n1_id}
     ids_gl = {f["id"] for f in fichiers if _get_type_fichier(f) == "grand_livre"}
     ids_releve = {f["id"] for f in fichiers if _get_type_fichier(f) == "releve_bancaire"}
 
@@ -244,6 +250,50 @@ def _get_donnees_segmentees(db, projet_id: str):
     rows_gl = _group_rows(donnees_gl) if donnees_gl else []
 
     return donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve
+
+
+_ETATS_AVANT_CONTROLES = ("cadrage", "evaluation_ci", "ingestion")
+
+
+def _exiger_etat_pour_controles(projet: dict) -> None:
+    """Garde de pipeline : les contrôles supposent l'ingestion terminée et la
+    planification posée (seuil, programme). Avant cela, leur exécution
+    produirait des résultats incomplets versés au dossier (NEP 230)."""
+    etat = projet.get("etat_courant") or ""
+    if etat in _ETATS_AVANT_CONTROLES:
+        raise HTTPException(
+            400,
+            f"Les contrôles ne peuvent pas être exécutés à l'étape « {etat} » : "
+            "terminez l'ingestion et la planification (seuil de signification, "
+            "programme de travail), puis passez aux travaux substantifs.",
+        )
+
+
+def _pieces_dedupliquees(rows: list, prefixes: tuple[str, ...] | None = None) -> list:
+    """Une pièce par (numéro, date) pour l'analyse de séquence.
+
+    Dans un grand livre en partie double, chaque pièce figure sur plusieurs
+    lignes (débit/crédit) : ce ne sont pas des doublons. En revanche, le même
+    numéro utilisé à DEUX dates différentes (double saisie) reste détecté.
+    `prefixes` restreint aux écritures touchant les comptes du cycle.
+    """
+    vus: set[tuple[str, str]] = set()
+    pieces = []
+    for row in rows:
+        p = row.get("numero_piece")
+        if not p:
+            continue
+        if prefixes:
+            c = row.get("compte")
+            num = str(c.valeur or "") if c else ""
+            if not num.startswith(prefixes):
+                continue
+        cle = (str(p.valeur or ""), _get_str(row, "date"))
+        if cle in vus:
+            continue
+        vus.add(cle)
+        pieces.append(p)
+    return pieces
 
 
 def _resoudre_fichiers_sources(exceptions: list[dict], donnees_all: list) -> None:
@@ -1135,6 +1185,7 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
     projet = db.get_projet(projet_id)
     if not projet:
         raise HTTPException(404, "Projet introuvable.")
+    _exiger_etat_pour_controles(projet)
 
     cycles_couverts = projet.get("cycles_couverts") or ["tresorerie", "achats", "ventes"]
     if "tresorerie" not in cycles_couverts:
@@ -1185,9 +1236,9 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
 
     # ── 3. TRESOR-SEQ-PIECES : continuité des numéros de pièces ──
     if _check("TRESOR-SEQ-PIECES"):
-        pieces = [d for d in donnees_all
-                  if d.type == "numero_piece"
-                  and (not ids_gl or d.fichier_source_id in ids_gl)]
+        # Séquence globale du journal : une pièce par (numéro, date) — la
+        # partie double répète chaque pièce sur ses lignes débit/crédit.
+        pieces = _pieces_dedupliquees(rows_gl)
         if pieces:
             res, exc = controle_sequence_pieces(projet_id, pieces, "TRESOR-SEQ-PIECES")
             resultats_total.append(res)
@@ -1256,17 +1307,32 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
                 s = _get_amount(row, "debit") - _get_amount(row, "credit")
             if abs(s) > abs(solde_compta_val):
                 solde_compta_val = s
-                solde_compta_src = row.get("compte") or row.get("solde")
+                # Source = la donnée MONTANT (le numéro de compte n'est pas un solde)
+                if row.get("solde"):
+                    solde_compta_src = row["solde"]
+                elif _get_amount(row, "debit") >= _get_amount(row, "credit"):
+                    solde_compta_src = row.get("debit")
+                else:
+                    solde_compta_src = row.get("credit")
 
-        # Extraire solde du relevé bancaire (dernier montant significatif)
-        montants_releve = [d for d in rows_releve_ds if d.type == "montant"]
+        # Extraire le solde du relevé : solde de la DERNIÈRE ligne datée
+        # (le solde de clôture), et non « le plus grand montant du fichier ».
         solde_releve_val = 0.0
         solde_releve_src = None
-        if montants_releve:
-            # Prendre le montant dont la valeur absolue est la plus grande (solde final probable)
-            montants_releve.sort(key=lambda d: abs(float(d.valeur or 0)), reverse=True)
-            solde_releve_src = montants_releve[0]
+        rows_releve = _group_rows(rows_releve_ds) if rows_releve_ds else []
+        lignes_soldees = [(r, _get_str(r, "date")) for r in rows_releve if r.get("solde")]
+        if lignes_soldees:
+            lignes_soldees.sort(key=lambda x: x[1])  # dates ISO : tri lexical = tri chronologique
+            derniere = lignes_soldees[-1][0]
+            solde_releve_src = derniere["solde"]
             solde_releve_val = float(solde_releve_src.valeur or 0)
+        else:
+            # Repli : ancien comportement (relevé sans colonne solde)
+            montants_releve = [d for d in rows_releve_ds if d.type == "montant"]
+            if montants_releve:
+                montants_releve.sort(key=lambda d: abs(float(d.valeur or 0)), reverse=True)
+                solde_releve_src = montants_releve[0]
+                solde_releve_val = float(solde_releve_src.valeur or 0)
 
         if solde_compta_src and solde_releve_src:
             res, exc = controle_rapprochement_bancaire(
@@ -1311,6 +1377,7 @@ def run_controles_achats(projet_id: str, body: dict = {}):
     projet = db.get_projet(projet_id)
     if not projet:
         raise HTTPException(404, "Projet introuvable.")
+    _exiger_etat_pour_controles(projet)
 
     cycles_couverts = projet.get("cycles_couverts") or ["tresorerie", "achats", "ventes"]
     if "achats" not in cycles_couverts:
@@ -1355,14 +1422,10 @@ def run_controles_achats(projet_id: str, body: dict = {}):
 
     # ── 2. ACHAT-SEQ-FACTURES ──
     if _check("ACHAT-SEQ-FACTURES"):
-        pieces_achats = [
-            d for d in donnees_all
-            if d.type == "numero_piece"
-            and any(row.get("compte") and str(row["compte"].valeur or "").startswith(PREFIXES_CYCLE)
-                    for row in rows_pour_mvt
-                    if row.get("numero_piece") and row["numero_piece"].id == d.id)
-        ]
-        pieces = pieces_achats or [d for d in donnees_all if d.type == "numero_piece"]
+        # Pièces des écritures du cycle uniquement, dédupliquées (partie double).
+        # Si la numérotation est partagée entre journaux, le contrôle neutralise
+        # de lui-même l'analyse des trous (heuristique de couverture).
+        pieces = _pieces_dedupliquees(rows_pour_mvt, PREFIXES_CYCLE)
         if pieces:
             res, exc = controle_sequence_pieces(projet_id, pieces, "ACHAT-SEQ-FACTURES")
             resultats_total.append(res)
@@ -1397,11 +1460,12 @@ def run_controles_achats(projet_id: str, body: dict = {}):
         if exc:
             exceptions_total.append(exc)
 
-    # ── 6. ACHAT-AVOIR ──
+    # ── 6. ACHAT-AVOIR : crédits sur comptes de charges (60x…), hors 603x
+    # (variations de stocks, créditrices par nature) ──
     if _check("ACHAT-AVOIR"):
         res, exc = controle_ratio_avoirs(
-            projet_id, "ACHAT-AVOIR", rows_pour_mvt, PREFIXES_FOURN, sens_avoir="debit",
-            sensibilite=ci_facteur,
+            projet_id, "ACHAT-AVOIR", rows_pour_mvt, PREFIXES_ACHATS, sens_avoir="credit",
+            sensibilite=ci_facteur, exclure_prefixes=("603",),
         )
         resultats_total.append(res)
         if exc:
@@ -1478,6 +1542,7 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
     projet = db.get_projet(projet_id)
     if not projet:
         raise HTTPException(404, "Projet introuvable.")
+    _exiger_etat_pour_controles(projet)
 
     cycles_couverts = projet.get("cycles_couverts") or ["tresorerie", "achats", "ventes"]
     if "ventes" not in cycles_couverts:
@@ -1522,7 +1587,8 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
 
     # ── 2. VENTE-SEQ-FACTURES ──
     if _check("VENTE-SEQ-FACTURES"):
-        pieces = [d for d in donnees_all if d.type == "numero_piece"]
+        # Pièces des écritures du cycle uniquement, dédupliquées (partie double).
+        pieces = _pieces_dedupliquees(rows_pour_mvt, PREFIXES_CYCLE)
         if pieces:
             res, exc = controle_sequence_pieces(projet_id, pieces, "VENTE-SEQ-FACTURES")
             resultats_total.append(res)
@@ -1557,10 +1623,10 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
         if exc:
             exceptions_total.append(exc)
 
-    # ── 6. VENTE-AVOIR ──
+    # ── 6. VENTE-AVOIR : débits sur comptes de produits (70x…) ──
     if _check("VENTE-AVOIR"):
         res, exc = controle_ratio_avoirs(
-            projet_id, "VENTE-AVOIR", rows_pour_mvt, PREFIXES_CLIENTS, sens_avoir="credit",
+            projet_id, "VENTE-AVOIR", rows_pour_mvt, PREFIXES_VENTES, sens_avoir="debit",
             sensibilite=ci_facteur,
         )
         resultats_total.append(res)
@@ -1647,6 +1713,7 @@ def run_controles_immobilisations(projet_id: str, body: dict = {}):
     projet = db.get_projet(projet_id)
     if not projet:
         raise HTTPException(404, "Projet introuvable.")
+    _exiger_etat_pour_controles(projet)
 
     cycles_couverts = projet.get("cycles_couverts") or []
     if "immobilisations" not in cycles_couverts:
@@ -1761,6 +1828,7 @@ def run_controles_stocks(projet_id: str, body: dict = {}):
     projet = db.get_projet(projet_id)
     if not projet:
         raise HTTPException(404, "Projet introuvable.")
+    _exiger_etat_pour_controles(projet)
 
     cycles_couverts = projet.get("cycles_couverts") or []
     if "stocks" not in cycles_couverts:
@@ -1880,6 +1948,7 @@ def run_controles_paie(projet_id: str, body: dict = {}):
     projet = db.get_projet(projet_id)
     if not projet:
         raise HTTPException(404, "Projet introuvable.")
+    _exiger_etat_pour_controles(projet)
 
     cycles_couverts = projet.get("cycles_couverts") or []
     if "paie" not in cycles_couverts:
@@ -1995,6 +2064,7 @@ def run_controles_impots(projet_id: str, body: dict = {}):
     projet = db.get_projet(projet_id)
     if not projet:
         raise HTTPException(404, "Projet introuvable.")
+    _exiger_etat_pour_controles(projet)
 
     cycles_couverts = projet.get("cycles_couverts") or []
     if "impots" not in cycles_couverts:
@@ -2113,6 +2183,7 @@ def run_controles_capitaux_propres(projet_id: str, body: dict = {}):
     projet = db.get_projet(projet_id)
     if not projet:
         raise HTTPException(404, "Projet introuvable.")
+    _exiger_etat_pour_controles(projet)
 
     cycles_couverts = projet.get("cycles_couverts") or []
     if "capitaux_propres" not in cycles_couverts:
@@ -3352,6 +3423,7 @@ def interpreter_variations(projet_id: str):
         "exercice": projet.get("exercice"),
         "client": anon_var.pseudonymiser(projet.get("client") or "", entites_var) if entites_var else projet.get("client"),
         "seuil_signification": projet.get("seuil_signification"),
+        "cycles_couverts": projet.get("cycles_couverts") or [],
     }
 
     try:
@@ -3574,9 +3646,16 @@ def generer_programme(projet_id: str):
         llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
         items_ia = llm.generer_programme_travail(risques_valides, cycles, registry)
     except Exception as e:
+        db.log(projet_id, "erreur", {"action": "generer_programme", "detail": str(e)})
         raise HTTPException(500, f"Erreur LLM : {e}")
 
-    # Remplacer le programme existant
+    if not items_ia:
+        db.log(projet_id, "erreur", {"action": "generer_programme",
+                                     "detail": "Aucun contrôle retourné par l'IA."})
+        raise HTTPException(502, "L'IA n'a retourné aucun contrôle pour le programme de travail. "
+                                 "Le programme existant est conservé — relancez la génération.")
+
+    # Remplacer le programme existant (uniquement après validation de la réponse IA)
     db.delete_programme_items(projet_id)
 
     risques_by_libelle = {r["libelle"]: r["id"] for r in risques_valides}
@@ -3633,6 +3712,9 @@ def generer_synthese(projet_id: str):
 
     if not risques_valides:
         raise HTTPException(400, "Aucun risque validé — impossible de générer la synthèse.")
+    if not programme_inclus:
+        raise HTTPException(400, "Aucun contrôle inclus dans le programme de travail — générez "
+                                 "d'abord le programme avant la note de synthèse.")
 
     interpretation = None
     raw = plan.get("interpretation_variations")
@@ -3649,7 +3731,14 @@ def generer_synthese(projet_id: str):
         llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
         note = llm.generer_note_synthese(projet, plan, interpretation, risques_valides, programme_inclus)
     except Exception as e:
+        db.log(projet_id, "erreur", {"action": "generer_note_synthese", "detail": str(e)})
         raise HTTPException(500, f"Erreur LLM : {e}")
+
+    if not note.get("sections"):
+        db.log(projet_id, "erreur", {"action": "generer_note_synthese",
+                                     "detail": "Note de synthèse vide (aucune section)."})
+        raise HTTPException(502, "La note de synthèse générée est vide — la note de planification "
+                                 "n'a pas été produite. Relancez la génération.")
 
     note_str = json.dumps(note, ensure_ascii=False)
     db.update_planification(projet_id, {"note_synthese": note_str})
@@ -3710,18 +3799,31 @@ def list_circularisations(projet_id: str, cycle: str | None = None):
     return {"circularisations": items}
 
 
+# Seuls les comptes de TIERS se circularisent (ISA 505) : clients, fournisseurs,
+# banques. Les comptes de flux (60x/70x…) ne sont pas des tiers à confirmer.
+_PREFIXES_TIERS_CIRCU = {
+    "ventes": ["41"],
+    "achats": ["40"],
+    "tresorerie": ["51", "52"],
+}
+
+
 @router.post("/projets/{projet_id}/circularisation/proposer")
 def proposer_tiers_circularisation(projet_id: str, body: dict):
     """Propose les N tiers à circulariser pour un cycle donné."""
     from ..controls.circularisation import proposer_tiers
     cycle = body.get("cycle", "ventes")
     n = int(body.get("n", 10))
-    prefixes = body.get("prefixes") or _cycle_prefixes(cycle)
+    prefixes = body.get("prefixes") or _PREFIXES_TIERS_CIRCU.get(cycle)
+    if not prefixes:
+        raise HTTPException(400, f"Cycle « {cycle} » sans comptes de tiers à circulariser "
+                                 f"(cycles possibles : {', '.join(_PREFIXES_TIERS_CIRCU)}).")
     db = _get_db(projet_id)
-    donnees_raw = db.get_donnees_by_projet(projet_id)
-    donnees = [_to_donnee(d) for d in donnees_raw]
-    rows = _group_rows(donnees) if donnees else []
-    tiers = proposer_tiers(rows, prefixes, n)
+    # Soldes de la balance N uniquement (la balance N-1 et le relevé
+    # fausseraient les soldes proposés à la confirmation).
+    _, rows_gl, rows_balance, *_ = _get_donnees_segmentees(db, projet_id)
+    rows = rows_balance if rows_balance else rows_gl
+    tiers = [t for t in proposer_tiers(rows, prefixes, n) if abs(t.get("solde") or 0) > 0.01]
     return {"tiers": tiers}
 
 
@@ -3736,12 +3838,18 @@ def create_circularisation(projet_id: str, body: CircularisationBody):
     return {"circularisation": item}
 
 
+_STATUTS_CIRCU = ("propose", "envoye", "reponse_recue", "sans_reponse", "clos")
+
+
 @router.patch("/projets/{projet_id}/circularisation/{circ_id}")
 def update_circularisation(projet_id: str, circ_id: str, body: dict):
     db = _get_db(projet_id)
     existant = db.get_circularisation(circ_id)
     if not existant:
         raise HTTPException(404, "Circularisation introuvable.")
+    if "statut" in body and body["statut"] not in _STATUTS_CIRCU:
+        raise HTTPException(400, f"Statut « {body['statut']} » invalide. "
+                                 f"Statuts possibles : {', '.join(_STATUTS_CIRCU)}.")
     # NEP 505 : une circularisation restée sans réponse ne peut être close
     # qu'après documentation des procédures alternatives mises en œuvre.
     if body.get("statut") == "clos" and existant.get("statut") == "sans_reponse":
@@ -3887,10 +3995,12 @@ def _cycle_prefixes(cycle: str) -> list[str]:
 
 class SondageCreateBody(BaseModel):
     cycle: str
-    libelle: str
+    libelle: str | None = None
     prefixes: list[str] = []
+    # Unités tolérantes : taux accepté en fraction (0.05) ou en % (5) ;
+    # niveau de confiance accepté en % (95) ou en fraction (0.95).
     taux_erreur_tolere: float = 0.05
-    niveau_confiance: int = 95
+    niveau_confiance: float = 95
 
 
 @router.get("/projets/{projet_id}/sondages")
@@ -3908,27 +4018,34 @@ def create_sondage(projet_id: str, body: SondageCreateBody):
     from ..controls.sondages import calculer_taille_echantillon
     db = _get_db(projet_id)
     prefixes = body.prefixes or _cycle_prefixes(body.cycle)
-    donnees_raw = db.get_donnees_by_projet(projet_id)
-    donnees = [_to_donnee(d) for d in donnees_raw]
-    rows = _group_rows(donnees) if donnees else []
+
+    # Normalisation des unités (voir SondageCreateBody)
+    taux = body.taux_erreur_tolere / 100 if body.taux_erreur_tolere >= 1 else body.taux_erreur_tolere
+    niveau = int(round(body.niveau_confiance * 100 if body.niveau_confiance <= 1 else body.niveau_confiance))
+    libelle = body.libelle or f"Sondage — cycle {body.cycle}"
+
+    # Population = écritures du grand livre du cycle (les balances N/N-1
+    # ne sont pas des pièces à sonder).
+    _, rows_gl, rows_balance, *_ = _get_donnees_segmentees(db, projet_id)
+    rows = rows_gl if rows_gl else rows_balance
     population_rows = _filter_accounts(rows, tuple(prefixes)) if prefixes else rows
     population = len(population_rows)
     montant_population = sum(
         abs(_get_amount(r, "solde") or (_get_amount(r, "debit") - _get_amount(r, "credit")))
         for r in population_rows
     )
-    calcul = calculer_taille_echantillon(population, body.taux_erreur_tolere, body.niveau_confiance)
+    calcul = calculer_taille_echantillon(population, taux, niveau)
     import time
     seed = int(time.time()) % 1000000
     data = {
         "projet_id": projet_id,
         "cycle": body.cycle,
-        "libelle": body.libelle,
+        "libelle": libelle,
         "prefixes": prefixes,
         "population": population,
         "taille_echantillon": calcul["taille_recommandee"],
-        "taux_erreur_tolere": body.taux_erreur_tolere,
-        "niveau_confiance": body.niveau_confiance,
+        "taux_erreur_tolere": taux,
+        "niveau_confiance": niveau,
         "montant_population": round(montant_population, 2),
         "seed": seed,
         "statut": "en_cours",
@@ -3953,9 +4070,10 @@ def selectionner_echantillon(projet_id: str, sondage_id: str, body: dict | None 
     if body and body.get("taille_echantillon"):
         n = int(body["taille_echantillon"])
         db.update_sondage(sondage_id, {"taille_echantillon": n})
-    donnees_raw = db.get_donnees_by_projet(projet_id)
-    donnees = [_to_donnee(d) for d in donnees_raw]
-    rows = _group_rows(donnees) if donnees else []
+    # Même population que le calcul de taille : écritures du grand livre
+    # (les balances N/N-1 ne sont pas des pièces à sonder).
+    _, rows_gl, rows_balance, *_ = _get_donnees_segmentees(db, projet_id)
+    rows = rows_gl if rows_gl else rows_balance
     elements = _selectionner(rows, prefixes, n, seed)
     db.delete_sondage_elements(sondage_id)
     for elt in elements:

@@ -292,6 +292,19 @@ def controle_sequence_pieces(
     trous = sorted(attendus - presents)
     doublons = sorted(set(n for n in nums if nums.count(n) > 1))
 
+    # Si les pièces analysées ne couvrent qu'une faible part de la plage
+    # qu'elles occupent, la numérotation est vraisemblablement partagée avec
+    # d'autres journaux/cycles : les « trous » ne sont pas interprétables.
+    couverture = len(presents) / (num_max - num_min + 1) if num_max >= num_min else 1.0
+    note_couverture = ""
+    if trous and couverture < 0.5:
+        trous = []
+        note_couverture = (
+            f" Couverture de la plage {num_min}-{num_max} : {couverture*100:.0f}% — "
+            "numérotation vraisemblablement partagée avec d'autres journaux, "
+            "l'analyse des trous n'est pas pertinente sur ce sous-ensemble."
+        )
+
     issues = []
     if trous:
         affichage = trous[:10]
@@ -305,14 +318,15 @@ def controle_sequence_pieces(
     if not issues:
         return _result_ok(
             projet_id, controle_ref, 0,
-            f"Séquence continue de {num_min} à {num_max}. {len(nums)} pièces vérifiées.",
+            f"Séquence continue de {num_min} à {num_max}. {len(nums)} pièces vérifiées."
+            + note_couverture,
             sources,
         ), None
     else:
         res, exc = _result_exception(
             projet_id, controle_ref, len(trous) + len(doublons),
             f"Anomalies de séquence détectées ({len(trous)} trou(s), {len(doublons)} doublon(s)). "
-            + " | ".join(issues),
+            + " | ".join(issues) + note_couverture,
             sources,
         )
         return res, exc
@@ -714,43 +728,48 @@ def controle_doublons_factures(
         return _result_ok(projet_id, controle_ref, 0,
                           f"Aucun compte {compte_prefixes} trouvé.", []), None
 
-    # Clé exacte : (compte, montant, numero_piece)
+    # Le SENS du mouvement fait partie des clés : dans un grand livre en
+    # partie double, une facture (débit 411) et son règlement (crédit 411)
+    # partagent compte et montant sans être un doublon.
+    # Clé exacte : (compte, montant, sens, numero_piece)
     vus_exact: dict[tuple, list[str]] = defaultdict(list)
-    # Clé large : (compte, montant) pour détecter doublons sans numéro de pièce
+    # Clé large : (compte, montant, sens) pour détecter doublons sans numéro de pièce
     vus_large: dict[tuple, list[str]] = defaultdict(list)
 
     for row in rows_f:
         compte_val = _get_str(row, "compte")
         piece_val = _get_str(row, "numero_piece")
-        montant = max(_get_amount(row, "debit"), _get_amount(row, "credit"),
-                      abs(_get_amount(row, "solde")))
+        debit = _get_amount(row, "debit")
+        credit = _get_amount(row, "credit")
+        montant = max(debit, credit, abs(_get_amount(row, "solde")))
         if montant <= 0:
             continue
+        sens = "debit" if debit >= credit else "credit"
         montant_arrondi = round(montant, 2)
         src = (row.get("compte") or row.get("debit") or row.get("credit"))
         src_id = src.id if src else str(uuid.uuid4())
 
         if piece_val:
-            vus_exact[(compte_val, montant_arrondi, piece_val)].append(src_id)
-        vus_large[(compte_val, montant_arrondi)].append(src_id)
+            vus_exact[(compte_val, montant_arrondi, sens, piece_val)].append(src_id)
+        vus_large[(compte_val, montant_arrondi, sens)].append(src_id)
 
     doublons = []
     all_sources = []
 
-    for (compte, montant, piece), ids in vus_exact.items():
+    for (compte, montant, sens, piece), ids in vus_exact.items():
         if len(ids) > 1:
             doublons.append(f"Compte {compte} | Pièce {piece} | Montant {montant:.2f} ({len(ids)} fois)")
             all_sources.extend(ids)
 
     # Doublons par montant uniquement (sans pièce ou pièce différente)
-    for (compte, montant), ids in vus_large.items():
+    for (compte, montant, sens), ids in vus_large.items():
         if len(ids) > 1 and len(ids) <= 5:  # Éviter les faux positifs sur petits montants répétitifs
             key_ids = set(ids)
             # Ne signaler que si non déjà couvert par doublon exact
             deja_exact = any(
                 set(v) == key_ids
-                for (c, m, _), v in vus_exact.items()
-                if c == compte and m == montant
+                for (c, m, s, _), v in vus_exact.items()
+                if c == compte and m == montant and s == sens
             )
             if not deja_exact:
                 doublons.append(f"Compte {compte} | Montant {montant:.2f} sans pièce distincte ({len(ids)} occurrences)")
@@ -808,6 +827,18 @@ def controle_concentration_compte(
         return _result_ok(projet_id, controle_ref, 0,
                           "Aucun flux dans le sens attendu.", []), None
 
+    # Avec des comptes collectifs (ex. un 401/411 unique, sans auxiliaires),
+    # « un compte = un tiers » ne tient plus : la concentration serait
+    # mécaniquement de 100 %. L'analyse exige une comptabilité auxiliaire.
+    if len(par_compte) < 4:
+        return _result_ok(
+            projet_id, controle_ref, 0,
+            f"{len(par_compte)} compte(s) distinct(s) seulement sous {compte_prefixes} : "
+            "comptes collectifs probables — l'analyse de concentration par tiers exige "
+            "une balance auxiliaire (analyse non applicable, aucun faux positif émis).",
+            [],
+        ), None
+
     total = sum(v for v, _ in par_compte.values())
     if total <= 0:
         return _result_ok(projet_id, controle_ref, 0, "Total nul.", []), None
@@ -837,24 +868,34 @@ def controle_ratio_avoirs(
     projet_id: str,
     controle_ref: str,
     rows: list[RowDict],
-    prefixe_tiers: tuple[str, ...],
-    sens_avoir: str,  # "debit" pour avoirs fournisseurs (débit sur 40x), "credit" pour avoirs clients
+    prefixes_flux: tuple[str, ...],
+    sens_avoir: str,  # "credit" pour avoirs fournisseurs (crédit sur 60x), "debit" pour avoirs clients (débit sur 70x)
     seuil_ratio: float = 0.05,
     sensibilite: float = 1.0,
+    exclure_prefixes: tuple[str, ...] = (),
 ) -> tuple[dict, dict | None]:
     """
-    Détecte un ratio avoirs/total anormal.
-    - Avoirs fournisseurs : mouvements débiteurs sur les comptes 40x (remboursements)
-    - Avoirs clients : mouvements créditeurs sur les comptes 41x (notes de crédit)
-    Complété par la détection de lignes avec "AVOIR" dans le libellé.
+    Détecte un ratio avoirs/total anormal, mesuré sur les comptes de FLUX
+    (charges 60x / produits 70x) — pas sur les comptes de tiers : dans un
+    grand livre en partie double, les crédits 41x sont surtout des
+    encaissements et les débits 40x des règlements, pas des avoirs.
+    - Avoirs fournisseurs : mouvements créditeurs sur les comptes d'achats (60x…)
+    - Avoirs clients : mouvements débiteurs sur les comptes de produits (70x…)
+    `exclure_prefixes` retire les comptes non pertinents (ex. 603x, variations
+    de stocks, créditrices par nature).
 
     `sensibilite` module le seuil selon le niveau de contrôle interne.
     """
     seuil_ratio = seuil_ratio * sensibilite
-    rows_f = _filter_accounts(rows, prefixe_tiers)
+    rows_f = _filter_accounts(rows, prefixes_flux)
+    if exclure_prefixes:
+        def _num_compte(r: RowDict) -> str:
+            c = r.get("compte")
+            return str(c.valeur or "") if c else ""
+        rows_f = [r for r in rows_f if not _num_compte(r).startswith(exclure_prefixes)]
     if not rows_f:
         return _result_ok(projet_id, controle_ref, 0,
-                          f"Aucun compte {prefixe_tiers} trouvé.", []), None
+                          f"Aucun compte {prefixes_flux} trouvé.", []), None
 
     total = 0.0
     avoirs = 0.0
@@ -914,43 +955,74 @@ def controle_amortissement_manquant(
         return _result_ok(projet_id, "IMO-AMORTISSEMENT", 0,
                           "Aucune immobilisation corporelle/incorporelle (21x-25x) détectée.", []), None
 
-    total_imo = 0.0
-    sources_imo = []
+    def _racine(compte: str) -> str:
+        return compte.rstrip("0") or compte
+
+    # Soldes bruts agrégés par compte d'immobilisation
+    bruts: dict[str, dict] = {}
     for row in rows_imo:
+        c = row.get("compte")
+        if not c:
+            continue
+        num = str(c.valeur or "")
+        s = _get_amount(row, "solde")
+        if s == 0:
+            s = _get_amount(row, "debit") - _get_amount(row, "credit")
+        bloc = bruts.setdefault(num, {"solde": 0.0, "sources": []})
+        bloc["solde"] += s
+        bloc["sources"].append(c.id)
+
+    bruts = {num: b for num, b in bruts.items() if b["solde"] > tolerance}
+    if not bruts:
+        return _result_ok(projet_id, "IMO-AMORTISSEMENT", 0,
+                          "Aucune immobilisation nette positive à amortir.", []), None
+
+    total_imo = sum(b["solde"] for b in bruts.values())
+    sources_imo = [sid for b in bruts.values() for sid in b["sources"]]
+
+    # Racines des comptes 28x réellement mouvementés
+    racines_amort: set[str] = set()
+    total_amort = 0.0
+    for row in rows_amort:
         c = row.get("compte")
         s = _get_amount(row, "solde")
         if s == 0:
             s = _get_amount(row, "debit") - _get_amount(row, "credit")
-        if s > 0:
-            total_imo += s
-            if c:
-                sources_imo.append(c.id)
-
-    if total_imo <= tolerance:
-        return _result_ok(projet_id, "IMO-AMORTISSEMENT", 0,
-                          "Aucune immobilisation nette positive à amortir.", []), None
-
-    total_amort = 0.0
-    for row in rows_amort:
-        s = _get_amount(row, "solde")
-        if s == 0:
-            s = _get_amount(row, "debit") - _get_amount(row, "credit")
         total_amort += abs(s)
+        if c and abs(s) > tolerance:
+            racines_amort.add(_racine(str(c.valeur or "")))
 
-    if total_amort <= tolerance:
+    # Appariement PAR SOUS-COMPTE : l'amortissement du compte 21X… est 281X…
+    # (« 28 » + racine du brut privée de son « 2 » initial). Un compte 28x plus
+    # générique (ex. 281) couvre tous ses sous-comptes.
+    non_amortis: list[tuple[str, float]] = []
+    sources_non_amortis: list[str] = []
+    for num, bloc in bruts.items():
+        attendu = "28" + _racine(num)[1:]
+        couvert = any(
+            attendu == r or attendu.startswith(r) or r.startswith(attendu)
+            for r in racines_amort
+        )
+        if not couvert:
+            non_amortis.append((num, bloc["solde"]))
+            sources_non_amortis.extend(bloc["sources"])
+
+    if non_amortis:
+        detail = ", ".join(f"{num} ({solde:.2f})" for num, solde in non_amortis)
+        montant = sum(s for _, s in non_amortis)
         res, exc = _result_exception(
-            projet_id, "IMO-AMORTISSEMENT", total_imo,
-            f"Immobilisations amortissables de {total_imo:.2f} (21x-25x) sans aucun amortissement "
-            f"cumulé (28xx). Risque de sous-amortissement ou d'omission du plan d'amortissement.",
-            sources_imo[:20],
+            projet_id, "IMO-AMORTISSEMENT", montant,
+            f"Immobilisations sans amortissement cumulé correspondant (28xx) : {detail}. "
+            f"Risque de sous-amortissement ou d'omission du plan d'amortissement.",
+            sources_non_amortis[:20],
         )
         return res, exc
 
-    taux = total_amort / total_imo
+    taux = total_amort / total_imo if total_imo > 0 else 0.0
     return _result_ok(
         projet_id, "IMO-AMORTISSEMENT", taux,
         f"Amortissements cumulés : {total_amort:.2f} pour {total_imo:.2f} d'immobilisations "
-        f"({taux*100:.1f}%).",
+        f"({taux*100:.1f}%) — chaque compte brut a son compte 28x correspondant.",
         sources_imo[:10],
     ), None
 
@@ -1378,33 +1450,69 @@ def controle_creances_echues(
 
     seuil_date = fin_exercice - timedelta(days=nb_jours_seuil)
 
-    total_debit = 0.0
-    ancien_debit = 0.0
-    sources_anciens = []
-
+    # Lettrage débits/crédits par compte : sans lui, chaque facture déjà
+    # RÉGLÉE dans l'exercice serait comptée comme créance ancienne.
+    # 1) rapprochement exact par montant (une facture ↔ son règlement) ;
+    # 2) le reliquat de crédits non appariés est imputé en FIFO sur les
+    #    débits ouverts les plus anciens (à-nouveaux, règlements groupés).
+    par_compte: dict[str, dict] = {}
     for row in rows_41x:
+        c = row.get("compte")
+        num = str(c.valeur or "") if c else ""
+        bloc = par_compte.setdefault(num, {"debits": [], "credits": []})
         debit = _get_amount(row, "debit")
-        if debit <= 0:
-            continue
-        total_debit += debit
+        credit = _get_amount(row, "credit")
         dt = _parse_date(_get_str(row, "date"))
-        if dt and dt <= seuil_date:
-            ancien_debit += debit
-            c = row.get("compte") or row.get("debit")
-            if c:
-                sources_anciens.append(c.id)
+        if debit > 0:
+            bloc["debits"].append({"montant": debit, "date": dt,
+                                   "source": (c.id if c else None)})
+        if credit > 0:
+            bloc["credits"].append(credit)
 
-    if total_debit <= 0:
+    total_ouvert = 0.0
+    ancien_ouvert = 0.0
+    sources_anciens: list[str] = []
+
+    for bloc in par_compte.values():
+        debits = sorted(bloc["debits"], key=lambda d: d["date"] or fin_exercice)
+        credits_restants = list(bloc["credits"])
+        # 1) lettrage exact par montant
+        for d in debits:
+            for i, cr in enumerate(credits_restants):
+                if abs(cr - d["montant"]) <= 0.01:
+                    d["montant"] = 0.0
+                    credits_restants.pop(i)
+                    break
+        # 2) reliquat de crédits en FIFO sur les débits ouverts les plus anciens
+        pool = sum(credits_restants)
+        for d in debits:
+            if pool <= 0:
+                break
+            impute = min(pool, d["montant"])
+            d["montant"] -= impute
+            pool -= impute
+        # cumul des créances restées ouvertes
+        for d in debits:
+            if d["montant"] <= 0.01:
+                continue
+            total_ouvert += d["montant"]
+            if d["date"] and d["date"] <= seuil_date:
+                ancien_ouvert += d["montant"]
+                if d["source"]:
+                    sources_anciens.append(d["source"])
+
+    if total_ouvert <= 0:
         return _result_ok(projet_id, "VENTE-CREANCES-ECHUES", 0,
-                          "Aucune créance client (41x) à analyser.", []), None
+                          "Aucune créance client (41x) ouverte après lettrage.", []), None
 
-    ratio = ancien_debit / total_debit
+    ratio = ancien_ouvert / total_ouvert
 
     if ratio >= seuil_ratio:
         res, exc = _result_exception(
             projet_id, "VENTE-CREANCES-ECHUES", ratio,
-            f"{ancien_debit:.2f} / {total_debit:.2f} ({ratio*100:.1f}%) de créances clients "
-            f"ont plus de {nb_jours_seuil} jours (antérieures au {seuil_date.strftime('%d/%m/%Y')}). "
+            f"{ancien_ouvert:.2f} / {total_ouvert:.2f} ({ratio*100:.1f}%) de créances clients "
+            f"OUVERTES après lettrage ont plus de {nb_jours_seuil} jours "
+            f"(antérieures au {seuil_date.strftime('%d/%m/%Y')}). "
             f"Risque d'irrécouvrabilité non provisionné à évaluer.",
             sources_anciens[:30],
         )
@@ -1412,6 +1520,6 @@ def controle_creances_echues(
     else:
         return _result_ok(
             projet_id, "VENTE-CREANCES-ECHUES", ratio,
-            f"Créances > {nb_jours_seuil}j : {ratio*100:.1f}% — dans la norme.",
+            f"Créances ouvertes > {nb_jours_seuil}j : {ratio*100:.1f}% — dans la norme.",
             sources_anciens[:10],
         ), None
