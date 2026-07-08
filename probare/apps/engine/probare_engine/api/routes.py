@@ -3574,9 +3574,16 @@ def generer_programme(projet_id: str):
         llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
         items_ia = llm.generer_programme_travail(risques_valides, cycles, registry)
     except Exception as e:
+        db.log(projet_id, "erreur", {"action": "generer_programme", "detail": str(e)})
         raise HTTPException(500, f"Erreur LLM : {e}")
 
-    # Remplacer le programme existant
+    if not items_ia:
+        db.log(projet_id, "erreur", {"action": "generer_programme",
+                                     "detail": "Aucun contrôle retourné par l'IA."})
+        raise HTTPException(502, "L'IA n'a retourné aucun contrôle pour le programme de travail. "
+                                 "Le programme existant est conservé — relancez la génération.")
+
+    # Remplacer le programme existant (uniquement après validation de la réponse IA)
     db.delete_programme_items(projet_id)
 
     risques_by_libelle = {r["libelle"]: r["id"] for r in risques_valides}
@@ -3633,6 +3640,9 @@ def generer_synthese(projet_id: str):
 
     if not risques_valides:
         raise HTTPException(400, "Aucun risque validé — impossible de générer la synthèse.")
+    if not programme_inclus:
+        raise HTTPException(400, "Aucun contrôle inclus dans le programme de travail — générez "
+                                 "d'abord le programme avant la note de synthèse.")
 
     interpretation = None
     raw = plan.get("interpretation_variations")
@@ -3649,7 +3659,14 @@ def generer_synthese(projet_id: str):
         llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
         note = llm.generer_note_synthese(projet, plan, interpretation, risques_valides, programme_inclus)
     except Exception as e:
+        db.log(projet_id, "erreur", {"action": "generer_note_synthese", "detail": str(e)})
         raise HTTPException(500, f"Erreur LLM : {e}")
+
+    if not note.get("sections"):
+        db.log(projet_id, "erreur", {"action": "generer_note_synthese",
+                                     "detail": "Note de synthèse vide (aucune section)."})
+        raise HTTPException(502, "La note de synthèse générée est vide — la note de planification "
+                                 "n'a pas été produite. Relancez la génération.")
 
     note_str = json.dumps(note, ensure_ascii=False)
     db.update_planification(projet_id, {"note_synthese": note_str})

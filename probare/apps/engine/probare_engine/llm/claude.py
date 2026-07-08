@@ -905,16 +905,24 @@ Réponds UNIQUEMENT avec un JSON valide :
 
         resp = self._client.messages.create(
             model=MODEL_DEFAULT,
-            max_tokens=4000,
+            max_tokens=8000,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, "generer_note_synthese",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
+        if resp.stop_reason == "max_tokens":
+            raise RuntimeError(
+                "Réponse IA tronquée (limite de tokens de sortie atteinte) : "
+                "la note de synthèse n'a pas pu être générée. Relancez la génération."
+            )
         result = self._parse_json(resp.content[0].text)
-        if isinstance(result, dict) and "sections" in result:
+        if isinstance(result, dict) and result.get("sections"):
             return result
-        return {"titre": "Note de synthèse", "sections": [], "conclusion": ""}
+        raise RuntimeError(
+            "Réponse IA illisible (JSON invalide ou sections absentes) : "
+            "la note de synthèse n'a pas pu être générée. Relancez la génération."
+        )
 
     def generer_programme_travail(
         self,
@@ -963,16 +971,24 @@ Réponds UNIQUEMENT avec un JSON valide :
 
         resp = self._client.messages.create(
             model=MODEL_DEFAULT,
-            max_tokens=4000,
+            max_tokens=16000,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, "generer_programme_travail",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
+        if resp.stop_reason == "max_tokens":
+            raise RuntimeError(
+                "Réponse IA tronquée (limite de tokens de sortie atteinte) : "
+                "le programme de travail n'a pas pu être généré. Relancez la génération."
+            )
         result = self._parse_json(resp.content[0].text)
-        if isinstance(result, dict):
-            return result.get("items", [])
-        return []
+        if isinstance(result, dict) and isinstance(result.get("items"), list):
+            return result["items"]
+        raise RuntimeError(
+            "Réponse IA illisible (JSON invalide) : "
+            "le programme de travail n'a pas pu être généré. Relancez la génération."
+        )
 
     # ─── Circularisation ─────────────────────────────────────────────────────
 
