@@ -295,3 +295,64 @@ L'auditeur obtient du client la correction du doublon (avoir enregistré) — il
 
 ## Conclusion du déroulé
 La mission a été conduite de bout en bout : cadrage → évaluation CI → ingestion → planification → travaux substantifs → exceptions → revue → génération → opinion. Tous les livrables sont produits et la piste d'audit est complète (237 événements).
+
+---
+
+# Passe de re-validation (après correctifs C5–C16) — mission neuve HARBI (bis)
+- `15:33:37` **Créer la mission de re-validation** — `POST /projets` → 200 OK
+- `15:33:38` **Garde C15 : lancer les contrôles à l'état « cadrage » (400 attendu)** — `POST /projets/3026c0dd-5364-4f33-87e9-52a851ad48b3/controles/tresorerie` → 400 ERREUR 400
+  - détail : `{"detail": "Les contrôles ne peuvent pas être exécutés à l'étape « cadrage » : terminez l'ingestion et la planification (seuil de signification, programme de travail), puis passez aux travaux substantifs."}`
+  - ✅ la garde de pipeline refuse l'exécution prématurée
+- `15:33:39` **QCI 8 cycles (barème C13)** — niveaux de risque CI : {'tresorerie': 'faible', 'achats': 'faible', 'ventes': 'faible', 'immobilisations': 'faible', 'stocks': 'faible', 'paie': 'faible', 'impots': 'faible', 'capitaux_propres': 'faible'}
+- `15:33:40` **Ingestion** — 4 fichiers importés
+- `15:33:42` **Planification** — 8 risques validés, programme 52 contrôles, note docx : True
+
+## Exceptions après correctifs C5–C16 : **21** (25 au passage précédent, 55 à l'origine)
+  - `ACHAT-DOUBLON` ×1 — 21 doublon(s) détecté(s) : Compte 401 | Pièce 5115 | Montant 2340000.00 (2 fois) | Compte 401 | Montant 4618340.00 sans pièce dist
+  - `ACHAT-SEQ-FACTURES` ×1 — Anomalies de séquence détectées (0 trou(s), 1 doublon(s)). Doublons : [5115] Couverture de la plage 5001-5234 : 39% — numérotation
+  - `ACHAT-VARIATION` ×4 — Compte 601 : variation N/N-1=34768695.00 (33.4%) > seuil=1385891.00. N=138768695.00, N-1=104000000.00
+  - `CP-VARIATION` ×1 — Compte 110 : variation N/N-1=7299195.00 (-239.3%) > seuil=1385891.00. N=-10350000.00, N-1=-3050805.00
+  - `IMO-AMORTISSEMENT` ×1 — Immobilisations sans amortissement cumulé correspondant (28xx) : 218 (9900000.00). Risque de sous-amortissement ou d'omission du p
+  - `IMO-VARIATION` ×2 — Compte 218 : variation N/N-1=3500000.00 (54.7%) > seuil=1385891.00. N=9900000.00, N-1=6400000.00
+  - `PAIE-VARIATION` ×1 — Compte 641 : variation N/N-1=1800000.00 (7.9%) > seuil=1385891.00. N=24600000.00, N-1=22800000.00
+  - `STOCK-CUT-OFF` ×1 — 1/2 écritures (50.0%) dans les 15 derniers jours de l'exercice 2025 — seuil=30%. Cette concentration est anormale et signale un ri
+  - `STOCK-ROUND` ×1 — 2/2 montants ronds (100.0%) — seuil=40%. Une proportion élevée de montants ronds (multiples de 100) peut indiquer des montants est
+  - `STOCK-VARIATION` ×1 — Compte 310 : variation N/N-1=9450000.00 (37.8%) > seuil=1385891.00. N=34450000.00, N-1=25000000.00
+  - `TRESOR-RAPPROCH` ×1 — Écart de rapprochement=837500.00. Comptable=32714930.00, Relevé=33552430.00
+  - `TRESOR-ROUND` ×1 — 68/156 montants ronds (43.6%) — seuil=40%. Une proportion élevée de montants ronds (multiples de 100) peut indiquer des montants e
+  - `TRESOR-SEQ-PIECES` ×1 — Anomalies de séquence détectées (1 trou(s), 1 doublon(s)). Trous : [5087] | Doublons : [5115]
+  - `TRESOR-VARIATION` ×1 — Compte 512 : variation N/N-1=12714930.00 (63.6%) > seuil=1385891.00. N=32714930.00, N-1=20000000.00
+  - `VENTE-CREANCES-ECHUES` ×1 — 3647350.00 / 32186870.00 (11.3%) de créances clients OUVERTES après lettrage ont plus de 90 jours (antérieures au 02/10/2025). Ris
+  - `VENTE-DOUBLON` ×1 — 24 doublon(s) détecté(s) : Compte 411 | Montant 6845250.00 sans pièce distincte (2 occurrences) | Compte 411 | Montant 5230480.00 
+  - `VENTE-VARIATION` ×1 — Compte 701 : variation N/N-1=47599630.00 (-31.3%) > seuil=1385891.00. N=-199599630.00, N-1=-152000000.00
+
+## Passe finale (tous correctifs, y compris doublons partie double et barème QCI dans qci.py)
+- `15:37:00` **Créer la mission finale** — `POST /projets` → 200 OK
+- QCI (barème prudent) : {'tresorerie': 'moyen', 'achats': 'moyen', 'ventes': 'moyen', 'immobilisations': 'moyen', 'stocks': 'faible', 'paie': 'moyen', 'impots': 'faible', 'capitaux_propres': 'faible'}
+- Planification : programme 52 contrôles, note docx : True
+
+## Bilan final : **20 exceptions** (55 → 25 → 20)
+  - `ACHAT-DOUBLON` ×1 — 1 doublon(s) détecté(s) : Compte 401 | Pièce 5115 | Montant 2340000.00 (2 fois)
+  - `ACHAT-SEQ-FACTURES` ×1 — Anomalies de séquence détectées (0 trou(s), 1 doublon(s)). Doublons : [5115] Couverture de la plage 5001-5234 : 39% — numérot
+  - `ACHAT-VARIATION` ×4 — Compte 601 : variation N/N-1=34768695.00 (33.4%) > seuil=1385891.00. N=138768695.00, N-1=104000000.00
+  - `CP-VARIATION` ×1 — Compte 110 : variation N/N-1=7299195.00 (-239.3%) > seuil=1385891.00. N=-10350000.00, N-1=-3050805.00
+  - `IMO-AMORTISSEMENT` ×1 — Immobilisations sans amortissement cumulé correspondant (28xx) : 218 (9900000.00). Risque de sous-amortissement ou d'omission
+  - `IMO-VARIATION` ×2 — Compte 218 : variation N/N-1=3500000.00 (54.7%) > seuil=1385891.00. N=9900000.00, N-1=6400000.00
+  - `PAIE-VARIATION` ×1 — Compte 641 : variation N/N-1=1800000.00 (7.9%) > seuil=1385891.00. N=24600000.00, N-1=22800000.00
+  - `STOCK-CUT-OFF` ×1 — 1/2 écritures (50.0%) dans les 15 derniers jours de l'exercice 2025 — seuil=30%. Cette concentration est anormale et signale 
+  - `STOCK-ROUND` ×1 — 2/2 montants ronds (100.0%) — seuil=40%. Une proportion élevée de montants ronds (multiples de 100) peut indiquer des montant
+  - `STOCK-VARIATION` ×1 — Compte 310 : variation N/N-1=9450000.00 (37.8%) > seuil=1385891.00. N=34450000.00, N-1=25000000.00
+  - `TRESOR-RAPPROCH` ×1 — Écart de rapprochement=837500.00. Comptable=32714930.00, Relevé=33552430.00
+  - `TRESOR-ROUND` ×1 — 68/156 montants ronds (43.6%) — seuil=40%. Une proportion élevée de montants ronds (multiples de 100) peut indiquer des monta
+  - `TRESOR-SEQ-PIECES` ×1 — Anomalies de séquence détectées (1 trou(s), 1 doublon(s)). Trous : [5087] | Doublons : [5115]
+  - `TRESOR-VARIATION` ×1 — Compte 512 : variation N/N-1=12714930.00 (63.6%) > seuil=1385891.00. N=32714930.00, N-1=20000000.00
+  - `VENTE-CREANCES-ECHUES` ×1 — 3647350.00 / 32186870.00 (11.3%) de créances clients OUVERTES après lettrage ont plus de 90 jours (antérieures au 02/10/2025)
+  - `VENTE-VARIATION` ×1 — Compte 701 : variation N/N-1=47599630.00 (-31.3%) > seuil=1385891.00. N=-199599630.00, N-1=-152000000.00
+- `15:37:04` **Proposer les tiers à circulariser (clients — comptes 41x seulement)** — `POST /projets/c5745257-b1fd-4280-a30a-09fd59284239/circularisation/proposer` → 200 OK
+  - tiers proposés : [('411', 30986870.0), ('416', 1200000.0)]
+- `15:37:04` **Statut invalide « envoyee » (400 attendu, plus de 500)** — `PATCH /projets/c5745257-b1fd-4280-a30a-09fd59284239/circularisation/00000000` → 404 ERREUR 404
+  - détail : `{"detail": "Circularisation introuvable."}`
+- `15:37:04` **Créer un sondage ventes avec unités en fractions (0.95 / 0.05)** — `POST /projets/c5745257-b1fd-4280-a30a-09fd59284239/sondages` → 200 OK
+  - sondage : taille 36, population 120, niveau 95, taux 0.05, graine 525024
+- Statut invalide sur circularisation réelle → 400 : Statut « envoyee » invalide. Statuts possibles : propose, envoye, reponse_recue, sans_reponse, clos.
+- Statut valide « envoye » → 200 ✓

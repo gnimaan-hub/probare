@@ -112,11 +112,45 @@ Piste d'audit finale : **237 événements** (23 transitions, 52 actions humaines
 
 **Score brut : 4/7 pleinement détectées, 1 partielle, 2 manquées** — les deux manques ont des causes précises et corrigeables (C10, et dénominateur du cut-off).
 
+## 5 bis. Passe de re-validation après correction des constats ouverts
+
+Les 12 constats ouverts (C5–C16) ont ensuite été corrigés, plus un constat
+supplémentaire découvert en re-validation (doublons : une facture au débit et
+son règlement au crédit de même montant passaient pour un doublon — le sens du
+mouvement fait maintenant partie de la clé). Une mission neuve a été rejouée de
+bout en bout sur le même jeu Harbi :
+
+| Indicateur | Origine | Après C1–C4 | **Après C5–C16** |
+|---|---|---|---|
+| Exceptions levées | 55 | 25 | **20** |
+| Faux positifs de format | ~30 | ~8 | **≈ 3** (STOCK-CUT-OFF/ROUND sur les 2 écritures d'inventaire, TRESOR-ROUND limite à 43,6 %) |
+| Séquences | 236 faux doublons | 236 faux doublons | **trou [5087] + doublon [5115] exactement** |
+| Doublons factures | 21-24 entrées bruitées | idem | **1 seul : pièce 5115 (l'anomalie A2)** |
+| Rapprochement bancaire | Comptable=512,00 (n° de compte) | écart 850 000 | **écart 837 500 = le vrai écart (chèque − frais), solde de clôture daté** |
+| Créances échues | 71,3 % (débits bruts) | 71,3 % | **11,3 % après lettrage — la facture litigieuse + clients douteux** |
+| A5 (218 non amorti) | non détectée | non détectée | **détectée : « 218 (9 900 000) sans 28xx correspondant »** |
+| QCI (profil CI faible) | risque « faible » partout | idem | **« moyen » dès qu'une faiblesse est avouée, « faible » réservé aux cycles sans « non »** |
+| Tiers à circulariser | comptes 70x, soldes incohérents | idem | **411 (30 986 870) et 416 (1 200 000) — comptes de tiers réels, balance N seule** |
+| Sondage (0,95 / 0,05) | 422 puis taille 1 | idem | **accepté, taille 36 sur population 120 (GL du cycle), graine renvoyée** |
+| Contrôles à l'état cadrage | exécutés sans garde | idem | **refusés (400 explicite)** |
+| Statut circularisation invalide | 500 brute | idem | **400 avec la liste des statuts valides** |
+
+Verdict oracle mis à jour : **A1, A2, A3, A5, A6, A7 détectées avec les bonnes
+valeurs — 6/7** (A4 cut-off ventes reste sous le seuil de ratio : constat de
+calibrage du jeu de données, documenté). Suite de tests : **235 tests verts**
+(dont 13 nouveaux couvrant chaque correctif).
+
+Constats résiduels assumés (mineurs) : les contrôles ROUND/CUT-OFF stocks
+réagissent aux 2 écritures d'inventaire (population trop petite pour un ratio) ;
+TRESOR-ROUND à 43,6 % reflète les loyers et remises rondes réels du dossier.
+Dans les deux cas l'exception s'explique en une phrase et se tranche
+« sans incidence ».
+
 ## 6. Appréciation générale
 
 Le processus **tient de bout en bout** : la machine à états guide correctement la mission, l'anti-doublon d'import, le blocage sans seuil de signification et surtout la **garde ISA 450** (blocage du passage en génération à 2 352 500 > 1 385 891, déblocage après enregistrement de la correction client) fonctionnent exactement comme le décrit le guide. La piste d'audit est riche et exploitable. Les livrables (note de planification, dossier de travail, tableau des exceptions) sont produits et structurés.
 
-Le point faible dominant est la **robustesse des contrôles face à un vrai export comptable en partie double avec comptes collectifs** : environ la moitié des exceptions restantes sont des faux positifs de format (C5, C6, C9, C11). C'est le chantier prioritaire avant de mettre le produit devant un cabinet — un auditeur qui reçoit 20 fausses alertes pour 5 vraies cessera vite de les lire.
+Le point faible dominant était la **robustesse des contrôles face à un vrai export comptable en partie double avec comptes collectifs** : environ la moitié des exceptions du premier passage étaient des faux positifs de format (C5, C6, C9, C11). **Ces constats ont été corrigés et re-validés en fin de mission (voir § 5 bis)** : sur la passe finale, les exceptions levées correspondent presque exclusivement aux anomalies réellement plantées, avec les bons montants.
 
 ---
 

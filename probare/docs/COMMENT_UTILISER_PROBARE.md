@@ -114,7 +114,7 @@ C'est l'étape la plus structurante. Dans l'ordre :
 
 ### Étape 5 — Travaux substantifs (ISA 330 / 500 / 505 / 530)
 
-**a) Contrôles déterministes.** Lancez les contrôles cycle par cycle. Pour chaque cycle, Probare exécute sa batterie (équilibre de balance, cohérence grand livre/balance, séquences de pièces, soldes anormaux, doublons de factures, concentration, avoirs, montants ronds, cut-off, variations, amortissements, TVA, paie…). Chaque résultat est soit **OK**, soit une **exception** ; les contrôles qui n'ont pas pu s'exécuter (document manquant, seuil absent) sont **documentés avec leur motif** et figureront au dossier.
+**a) Contrôles déterministes.** Lancez les contrôles cycle par cycle. Pour chaque cycle, Probare exécute sa batterie (équilibre de balance, cohérence grand livre/balance, séquences de pièces, soldes anormaux, doublons de factures, concentration, avoirs, montants ronds, cut-off, variations, amortissements, TVA, paie…). Chaque résultat est soit **OK**, soit une **exception** ; les contrôles qui n'ont pas pu s'exécuter (document manquant, seuil absent) sont **documentés avec leur motif** et figureront au dossier. Les contrôles ne peuvent pas être lancés avant la fin de la planification (le moteur le refuse).
 
 **b) Circularisation (ISA 505).** Probare propose les tiers à circulariser (plus gros soldes clients/fournisseurs). Pour chaque tiers :
 1. Générez la lettre de confirmation (IA) — *générer n'est pas envoyer* ;

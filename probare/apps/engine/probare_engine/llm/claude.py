@@ -273,10 +273,13 @@ Si ce n'est pas une liasse (document unique), réponds avec est_liasse: false et
         total  = nb_oui + nb_non
         score  = round(nb_oui / total, 2) if total > 0 else 0.0
 
+        # Barème prudent : le questionnaire est déclaratif (aucun test
+        # d'efficacité) — un risque CI « faible » exige un score élevé ET
+        # aucune faiblesse avouée ; chaque « non » est une faiblesse identifiée.
         niveau = "élevé"
-        if score >= 0.70:
+        if score >= 0.85 and nb_non == 0:
             niveau = "faible"
-        elif score >= 0.40:
+        elif score >= 0.50:
             niveau = "moyen"
 
         reponses_txt = ""
@@ -670,6 +673,8 @@ Réponds UNIQUEMENT avec un JSON valide :
         Ne calcule rien — les chiffres viennent tous de variations_significatives.
         """
         seuil_txt = f"{seuil_signification:,.0f} FDJ" if seuil_signification else "non défini"
+        cycles_ok = "|".join(list(contexte_projet.get("cycles_couverts")
+                                  or ["tresorerie", "achats", "ventes"]) + ["transversal"])
         prompt = f"""Tu es auditeur senior certifié. Le moteur d'analyse déterministe a calculé
 les variations N/N-1 significatives de la balance générale.
 
@@ -693,7 +698,7 @@ Réponds UNIQUEMENT avec un JSON valide :
 {{
   "synthese": "Paragraphe de synthèse (5-8 phrases).",
   "zones_risque": [
-    {{"cycle": "tresorerie|achats|ventes|transversal", "libelle": "...", "niveau": "eleve|moyen|faible", "explication": "..."}}
+    {{"cycle": "{cycles_ok}", "libelle": "...", "niveau": "eleve|moyen|faible", "explication": "..."}}
   ],
   "facteurs_contextuels": "Explication des variations par le contexte (2-3 phrases).",
   "alertes": ["Alerte 1 si applicable", "Alerte 2"]
@@ -745,7 +750,7 @@ Risques déjà renseignés (ne pas dupliquer) :
 {json.dumps([r.get('libelle') for r in risques_existants], ensure_ascii=False)}
 
 Assertions disponibles : {ASSERTIONS}
-Cycles valides : tresorerie, achats, ventes, transversal
+Cycles valides : {', '.join(list(cycles_couverts) + ['transversal'])}
 Niveaux : eleve, moyen, faible
 Sources : analytique, entite, inherent, ia
 
@@ -766,7 +771,7 @@ Réponds UNIQUEMENT avec un JSON valide :
     {{
       "libelle": "...",
       "description": "...",
-      "cycle": "tresorerie|achats|ventes|transversal",
+      "cycle": "{'|'.join(list(cycles_couverts) + ['transversal'])}",
       "niveau": "eleve|moyen|faible",
       "assertions": ["existence", "exhaustivite"],
       "source": "analytique|entite|inherent|ia"
