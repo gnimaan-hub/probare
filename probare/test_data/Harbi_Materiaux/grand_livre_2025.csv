@@ -1,0 +1,493 @@
+﻿compte,libelle,date,numero_piece,debit,credit
+101,À nouveau — Capital social,2025-01-01,5001,0,40000000
+106,À nouveau — Réserves légales,2025-01-01,5001,0,6500000
+110,À nouveau — Report à nouveau,2025-01-01,5001,0,10350000
+164,À nouveau — Emprunt BCIMR moyen terme,2025-01-01,5001,0,18000000
+215,À nouveau — Matériel de transport,2025-01-01,5001,28000000,0
+218,À nouveau — Matériel et mobilier de bureau,2025-01-01,5001,6400000,0
+2815,À nouveau — Amort. matériel de transport,2025-01-01,5001,0,9800000
+310,À nouveau — Stocks de marchandises,2025-01-01,5001,25000000,0
+401,À nouveau — Fournisseurs,2025-01-01,5001,0,14300000
+411,À nouveau — Clients,2025-01-01,5001,22000000,0
+416,À nouveau — Clients douteux,2025-01-01,5001,1200000,0
+421,À nouveau — Personnel - rémunérations dues,2025-01-01,5001,0,1900000
+431,À nouveau — CNSS - cotisations dues,2025-01-01,5001,0,950000
+444,À nouveau — État - impôt sur les bénéfices,2025-01-01,5001,0,1900000
+512,À nouveau — Banque BCIMR,2025-01-01,5001,20000000,0
+531,À nouveau — Caisse,2025-01-01,5001,1100000,0
+613,Loyer entrepôt Boulaos,2025-01-05,5187,500000,0
+512,Loyer entrepôt Boulaos,2025-01-05,5187,0,500000
+421,Virement salaires,2025-01-06,5163,1900000,0
+512,Virement salaires,2025-01-06,5163,0,1900000
+431,Paiement cotisations CNSS,2025-01-06,5164,950000,0
+512,Paiement cotisations CNSS,2025-01-06,5164,0,950000
+601,Facture fournisseur marchandises,2025-01-09,5091,4618340,0
+401,Facture fournisseur marchandises,2025-01-09,5091,0,4618340
+411,Facture client négoce matériaux,2025-01-16,5002,6845250,0
+701,Vente de marchandises,2025-01-16,5002,0,6845250
+512,Virements clients — solde exercice 2024,2025-01-20,5065,11500000,0
+411,Virements clients — solde exercice 2024,2025-01-20,5065,0,11500000
+601,Facture fournisseur marchandises,2025-01-23,5092,4927255,0
+401,Facture fournisseur marchandises,2025-01-23,5092,0,4927255
+401,Virement fournisseurs — solde 2024,2025-01-27,5116,9300000,0
+512,Virement fournisseurs — solde 2024,2025-01-27,5116,0,9300000
+411,Facture client négoce matériaux,2025-01-28,5003,5230480,0
+701,Vente de marchandises,2025-01-28,5003,0,5230480
+531,Ventes comptant du mois,2025-01-31,5042,412350,0
+701,Ventes de marchandises au comptant,2025-01-31,5042,0,412350
+641,Salaires du mois,2025-01-31,5139,2050000,0
+421,Salaires du mois,2025-01-31,5139,0,2050000
+645,Cotisations CNSS du mois,2025-01-31,5140,410000,0
+431,Cotisations CNSS du mois,2025-01-31,5140,0,410000
+606,Facture EDD électricité,2025-01-31,5199,318425,0
+512,Facture EDD électricité,2025-01-31,5199,0,318425
+624,Transport et manutention port,2025-01-31,5211,512340,0
+512,Transport et manutention port,2025-01-31,5211,0,512340
+512,Remise en banque espèces,2025-02-03,5054,400000,0
+531,Remise en banque espèces,2025-02-03,5054,0,400000
+421,Virement salaires,2025-02-05,5165,2050000,0
+512,Virement salaires,2025-02-05,5165,0,2050000
+431,Paiement cotisations CNSS,2025-02-05,5166,410000,0
+512,Paiement cotisations CNSS,2025-02-05,5166,0,410000
+613,Loyer entrepôt Boulaos,2025-02-05,5188,500000,0
+512,Loyer entrepôt Boulaos,2025-02-05,5188,0,500000
+601,Facture fournisseur marchandises,2025-02-06,5093,4753180,0
+401,Facture fournisseur marchandises,2025-02-06,5093,0,4753180
+411,Facture client négoce matériaux,2025-02-12,5004,2447350,0
+701,Vente de marchandises,2025-02-12,5004,0,2447350
+512,Virements clients — solde exercice 2024,2025-02-17,5066,10500000,0
+411,Virements clients — solde exercice 2024,2025-02-17,5066,0,10500000
+601,Facture fournisseur marchandises,2025-02-19,5094,5112430,0
+401,Facture fournisseur marchandises,2025-02-19,5094,0,5112430
+411,Facture client négoce matériaux,2025-02-20,5005,7118320,0
+701,Vente de marchandises,2025-02-20,5005,0,7118320
+401,Virement fournisseurs — solde 2024,2025-02-24,5117,5000000,0
+512,Virement fournisseurs — solde 2024,2025-02-24,5117,0,5000000
+512,Règlement facture janvier,2025-02-25,5067,6845250,0
+411,Règlement facture janvier,2025-02-25,5067,0,6845250
+531,Ventes comptant du mois,2025-02-28,5043,386240,0
+701,Ventes de marchandises au comptant,2025-02-28,5043,0,386240
+641,Salaires du mois,2025-02-28,5141,2050000,0
+421,Salaires du mois,2025-02-28,5141,0,2050000
+645,Cotisations CNSS du mois,2025-02-28,5142,410000,0
+431,Cotisations CNSS du mois,2025-02-28,5142,0,410000
+606,Facture EDD électricité,2025-02-28,5200,294310,0
+512,Facture EDD électricité,2025-02-28,5200,0,294310
+624,Transport et manutention port,2025-02-28,5212,498215,0
+512,Transport et manutention port,2025-02-28,5212,0,498215
+512,Remise en banque espèces,2025-03-03,5055,380000,0
+531,Remise en banque espèces,2025-03-03,5055,0,380000
+421,Virement salaires,2025-03-05,5167,2050000,0
+512,Virement salaires,2025-03-05,5167,0,2050000
+431,Paiement cotisations CNSS,2025-03-05,5168,410000,0
+512,Paiement cotisations CNSS,2025-03-05,5168,0,410000
+613,Loyer entrepôt Boulaos,2025-03-05,5189,500000,0
+512,Loyer entrepôt Boulaos,2025-03-05,5189,0,500000
+601,Facture fournisseur marchandises,2025-03-06,5095,4986215,0
+401,Facture fournisseur marchandises,2025-03-06,5095,0,4986215
+411,Facture client négoce matériaux,2025-03-11,5006,6530240,0
+701,Vente de marchandises,2025-03-11,5006,0,6530240
+401,Règlement facture janvier,2025-03-13,5118,4618340,0
+512,Règlement facture janvier,2025-03-13,5118,0,4618340
+606,Petites fournitures payées en espèces,2025-03-14,5230,87425,0
+531,Petites fournitures payées en espèces,2025-03-14,5230,0,87425
+512,Règlement facture janvier,2025-03-18,5068,5230480,0
+411,Règlement facture janvier,2025-03-18,5068,0,5230480
+601,Facture fournisseur marchandises,2025-03-20,5096,5248370,0
+401,Facture fournisseur marchandises,2025-03-20,5096,0,5248370
+411,Facture client négoce matériaux,2025-03-27,5007,7842615,0
+701,Vente de marchandises,2025-03-27,5007,0,7842615
+401,Règlement facture janvier,2025-03-27,5119,4927255,0
+512,Règlement facture janvier,2025-03-27,5119,0,4927255
+512,Règlement facture février,2025-03-28,5069,7118320,0
+411,Règlement facture février,2025-03-28,5069,0,7118320
+411,Facture prestation livraison chantier,2025-03-31,5038,1684250,0
+706,Prestation de livraison,2025-03-31,5038,0,1684250
+531,Ventes comptant du mois,2025-03-31,5044,428615,0
+701,Ventes de marchandises au comptant,2025-03-31,5044,0,428615
+641,Salaires du mois,2025-03-31,5143,2050000,0
+421,Salaires du mois,2025-03-31,5143,0,2050000
+645,Cotisations CNSS du mois,2025-03-31,5144,410000,0
+431,Cotisations CNSS du mois,2025-03-31,5144,0,410000
+606,Facture EDD électricité,2025-03-31,5201,331240,0
+512,Facture EDD électricité,2025-03-31,5201,0,331240
+624,Transport et manutention port,2025-03-31,5213,534180,0
+512,Transport et manutention port,2025-03-31,5213,0,534180
+164,Échéance emprunt BCIMR — capital,2025-03-31,5224,1500000,0
+661,Échéance emprunt BCIMR — intérêts,2025-03-31,5224,427500,0
+512,Échéance emprunt BCIMR,2025-03-31,5224,0,1927500
+512,Remise en banque espèces,2025-04-02,5056,420000,0
+531,Remise en banque espèces,2025-04-02,5056,0,420000
+613,Loyer entrepôt Boulaos,2025-04-05,5190,500000,0
+512,Loyer entrepôt Boulaos,2025-04-05,5190,0,500000
+421,Virement salaires,2025-04-07,5169,2050000,0
+512,Virement salaires,2025-04-07,5169,0,2050000
+431,Paiement cotisations CNSS,2025-04-07,5170,410000,0
+512,Paiement cotisations CNSS,2025-04-07,5170,0,410000
+601,Facture fournisseur marchandises,2025-04-09,5097,5134260,0
+401,Facture fournisseur marchandises,2025-04-09,5097,0,5134260
+401,Règlement facture février,2025-04-14,5120,4753180,0
+512,Règlement facture février,2025-04-14,5120,0,4753180
+411,Facture client négoce matériaux,2025-04-15,5008,6920430,0
+701,Vente de marchandises,2025-04-15,5008,0,6920430
+444,Règlement IS exercice 2024,2025-04-15,5229,1900000,0
+512,Règlement IS exercice 2024,2025-04-15,5229,0,1900000
+512,Règlement facture mars,2025-04-22,5070,6530240,0
+411,Règlement facture mars,2025-04-22,5070,0,6530240
+601,Facture fournisseur marchandises,2025-04-24,5098,5396480,0
+401,Facture fournisseur marchandises,2025-04-24,5098,0,5396480
+401,Règlement facture février,2025-04-28,5121,5112430,0
+512,Règlement facture février,2025-04-28,5121,0,5112430
+411,Facture client négoce matériaux,2025-04-29,5009,7455280,0
+701,Vente de marchandises,2025-04-29,5009,0,7455280
+531,Ventes comptant du mois,2025-04-30,5045,395480,0
+701,Ventes de marchandises au comptant,2025-04-30,5045,0,395480
+641,Salaires du mois,2025-04-30,5145,2050000,0
+421,Salaires du mois,2025-04-30,5145,0,2050000
+645,Cotisations CNSS du mois,2025-04-30,5146,410000,0
+431,Cotisations CNSS du mois,2025-04-30,5146,0,410000
+606,Facture EDD électricité,2025-04-30,5202,305185,0
+512,Facture EDD électricité,2025-04-30,5202,0,305185
+624,Transport et manutention port,2025-04-30,5214,521425,0
+512,Transport et manutention port,2025-04-30,5214,0,521425
+512,Remise en banque espèces,2025-05-05,5057,390000,0
+531,Remise en banque espèces,2025-05-05,5057,0,390000
+421,Virement salaires,2025-05-05,5171,2050000,0
+512,Virement salaires,2025-05-05,5171,0,2050000
+431,Paiement cotisations CNSS,2025-05-05,5172,410000,0
+512,Paiement cotisations CNSS,2025-05-05,5172,0,410000
+613,Loyer entrepôt Boulaos,2025-05-05,5191,500000,0
+512,Loyer entrepôt Boulaos,2025-05-05,5191,0,500000
+512,Règlement facture mars,2025-05-06,5071,7842615,0
+411,Règlement facture mars,2025-05-06,5071,0,7842615
+601,Facture fournisseur marchandises,2025-05-08,5099,5287325,0
+401,Facture fournisseur marchandises,2025-05-08,5099,0,5287325
+401,Règlement facture mars,2025-05-13,5122,4986215,0
+512,Règlement facture mars,2025-05-13,5122,0,4986215
+411,Facture client négoce matériaux,2025-05-14,5010,7236140,0
+701,Vente de marchandises,2025-05-14,5010,0,7236140
+601,Facture fournisseur marchandises,2025-05-22,5100,5524190,0
+401,Facture fournisseur marchandises,2025-05-22,5100,0,5524190
+512,Règlement facture avril,2025-05-26,5072,6920430,0
+411,Règlement facture avril,2025-05-26,5072,0,6920430
+401,Règlement facture mars,2025-05-27,5123,5248370,0
+512,Règlement facture mars,2025-05-27,5123,0,5248370
+411,Facture client négoce matériaux,2025-05-28,5011,8012375,0
+701,Vente de marchandises,2025-05-28,5011,0,8012375
+531,Ventes comptant du mois,2025-05-30,5046,441270,0
+701,Ventes de marchandises au comptant,2025-05-30,5046,0,441270
+641,Salaires du mois,2025-05-30,5147,2050000,0
+421,Salaires du mois,2025-05-30,5147,0,2050000
+645,Cotisations CNSS du mois,2025-05-30,5148,410000,0
+431,Cotisations CNSS du mois,2025-05-30,5148,0,410000
+606,Facture EDD électricité,2025-05-30,5203,342370,0
+512,Facture EDD électricité,2025-05-30,5203,0,342370
+624,Transport et manutention port,2025-05-30,5215,547310,0
+512,Transport et manutention port,2025-05-30,5215,0,547310
+512,Remise en banque espèces,2025-06-03,5058,430000,0
+531,Remise en banque espèces,2025-06-03,5058,0,430000
+601,Facture fournisseur marchandises,2025-06-05,5101,5412275,0
+401,Facture fournisseur marchandises,2025-06-05,5101,0,5412275
+421,Virement salaires,2025-06-05,5173,2050000,0
+512,Virement salaires,2025-06-05,5173,0,2050000
+431,Paiement cotisations CNSS,2025-06-05,5174,410000,0
+512,Paiement cotisations CNSS,2025-06-05,5174,0,410000
+613,Loyer entrepôt Boulaos,2025-06-05,5192,500000,0
+512,Loyer entrepôt Boulaos,2025-06-05,5192,0,500000
+512,Règlement facture avril,2025-06-09,5073,7455280,0
+411,Règlement facture avril,2025-06-09,5073,0,7455280
+411,Facture client négoce matériaux,2025-06-10,5012,7648220,0
+701,Vente de marchandises,2025-06-10,5012,0,7648220
+401,Règlement facture avril,2025-06-12,5124,5134260,0
+512,Règlement facture avril,2025-06-12,5124,0,5134260
+606,Petites fournitures payées en espèces,2025-06-12,5231,92310,0
+531,Petites fournitures payées en espèces,2025-06-12,5231,0,92310
+218,Rayonnages entrepôt + mobilier bureau,2025-06-16,5228,3500000,0
+512,Rayonnages entrepôt + mobilier bureau,2025-06-16,5228,0,3500000
+601,Facture fournisseur marchandises,2025-06-19,5102,5683420,0
+401,Facture fournisseur marchandises,2025-06-19,5102,0,5683420
+512,Règlement facture mai,2025-06-24,5074,7236140,0
+411,Règlement facture mai,2025-06-24,5074,0,7236140
+411,Facture client négoce matériaux,2025-06-25,5013,8237490,0
+701,Vente de marchandises,2025-06-25,5013,0,8237490
+401,Règlement facture avril,2025-06-26,5125,5396480,0
+512,Règlement facture avril,2025-06-26,5125,0,5396480
+411,Facture prestation livraison chantier,2025-06-30,5039,1792430,0
+706,Prestation de livraison,2025-06-30,5039,0,1792430
+531,Ventes comptant du mois,2025-06-30,5047,407935,0
+701,Ventes de marchandises au comptant,2025-06-30,5047,0,407935
+641,Salaires du mois,2025-06-30,5149,2050000,0
+421,Salaires du mois,2025-06-30,5149,0,2050000
+645,Cotisations CNSS du mois,2025-06-30,5150,410000,0
+431,Cotisations CNSS du mois,2025-06-30,5150,0,410000
+606,Facture EDD électricité,2025-06-30,5204,328415,0
+512,Facture EDD électricité,2025-06-30,5204,0,328415
+624,Transport et manutention port,2025-06-30,5216,539240,0
+512,Transport et manutention port,2025-06-30,5216,0,539240
+164,Échéance emprunt BCIMR — capital,2025-06-30,5225,1500000,0
+661,Échéance emprunt BCIMR — intérêts,2025-06-30,5225,391250,0
+512,Échéance emprunt BCIMR,2025-06-30,5225,0,1891250
+512,Remise en banque espèces,2025-07-02,5059,400000,0
+531,Remise en banque espèces,2025-07-02,5059,0,400000
+613,Loyer entrepôt Boulaos,2025-07-05,5193,500000,0
+512,Loyer entrepôt Boulaos,2025-07-05,5193,0,500000
+421,Virement salaires,2025-07-07,5175,2050000,0
+512,Virement salaires,2025-07-07,5175,0,2050000
+431,Paiement cotisations CNSS,2025-07-07,5176,410000,0
+512,Paiement cotisations CNSS,2025-07-07,5176,0,410000
+512,Règlement facture mai,2025-07-08,5075,8012375,0
+411,Règlement facture mai,2025-07-08,5075,0,8012375
+601,Facture fournisseur marchandises,2025-07-10,5103,5578310,0
+401,Facture fournisseur marchandises,2025-07-10,5103,0,5578310
+401,Règlement facture mai,2025-07-14,5126,5287325,0
+512,Règlement facture mai,2025-07-14,5126,0,5287325
+411,Facture client négoce matériaux,2025-07-15,5014,7925360,0
+701,Vente de marchandises,2025-07-15,5014,0,7925360
+512,Règlement facture juin,2025-07-22,5076,7648220,0
+411,Règlement facture juin,2025-07-22,5076,0,7648220
+601,Facture fournisseur marchandises,2025-07-24,5104,5812245,0
+401,Facture fournisseur marchandises,2025-07-24,5104,0,5812245
+401,Règlement facture mai,2025-07-28,5127,5524190,0
+512,Règlement facture mai,2025-07-28,5127,0,5524190
+411,Facture client négoce matériaux,2025-07-30,5015,8418245,0
+701,Vente de marchandises,2025-07-30,5015,0,8418245
+531,Ventes comptant du mois,2025-07-31,5048,452340,0
+701,Ventes de marchandises au comptant,2025-07-31,5048,0,452340
+641,Salaires du mois,2025-07-31,5151,2050000,0
+421,Salaires du mois,2025-07-31,5151,0,2050000
+645,Cotisations CNSS du mois,2025-07-31,5152,410000,0
+431,Cotisations CNSS du mois,2025-07-31,5152,0,410000
+606,Facture EDD électricité,2025-07-31,5205,356240,0
+512,Facture EDD électricité,2025-07-31,5205,0,356240
+624,Transport et manutention port,2025-07-31,5217,561385,0
+512,Transport et manutention port,2025-07-31,5217,0,561385
+512,Remise en banque espèces,2025-08-04,5060,450000,0
+531,Remise en banque espèces,2025-08-04,5060,0,450000
+512,Règlement facture juin,2025-08-05,5077,8237490,0
+411,Règlement facture juin,2025-08-05,5077,0,8237490
+421,Virement salaires,2025-08-05,5177,2050000,0
+512,Virement salaires,2025-08-05,5177,0,2050000
+431,Paiement cotisations CNSS,2025-08-05,5178,410000,0
+512,Paiement cotisations CNSS,2025-08-05,5178,0,410000
+613,Loyer entrepôt Boulaos,2025-08-05,5194,500000,0
+512,Loyer entrepôt Boulaos,2025-08-05,5194,0,500000
+601,Facture fournisseur marchandises,2025-08-07,5105,5694380,0
+401,Facture fournisseur marchandises,2025-08-07,5105,0,5694380
+401,Règlement facture juin,2025-08-12,5128,5412275,0
+512,Règlement facture juin,2025-08-12,5128,0,5412275
+411,Facture client négoce matériaux,2025-08-13,5016,8146530,0
+701,Vente de marchandises,2025-08-13,5016,0,8146530
+601,Facture ETS OMAR & FRÈRES n°OF-2025-118,2025-08-14,5115,2340000,0
+401,Facture ETS OMAR & FRÈRES n°OF-2025-118,2025-08-14,5115,0,2340000
+512,Règlement facture juillet,2025-08-19,5078,7925360,0
+411,Règlement facture juillet,2025-08-19,5078,0,7925360
+601,Facture fournisseur marchandises,2025-08-21,5106,5927150,0
+401,Facture fournisseur marchandises,2025-08-21,5106,0,5927150
+401,Règlement facture juin,2025-08-26,5129,5683420,0
+512,Règlement facture juin,2025-08-26,5129,0,5683420
+411,Facture client négoce matériaux,2025-08-27,5017,8659410,0
+701,Vente de marchandises,2025-08-27,5017,0,8659410
+531,Ventes comptant du mois,2025-08-29,5049,418265,0
+701,Ventes de marchandises au comptant,2025-08-29,5049,0,418265
+641,Salaires du mois,2025-08-29,5153,2050000,0
+421,Salaires du mois,2025-08-29,5153,0,2050000
+645,Cotisations CNSS du mois,2025-08-29,5154,410000,0
+431,Cotisations CNSS du mois,2025-08-29,5154,0,410000
+606,Facture EDD électricité,2025-08-29,5206,349180,0
+512,Facture EDD électricité,2025-08-29,5206,0,349180
+624,Transport et manutention port,2025-08-29,5218,553270,0
+512,Transport et manutention port,2025-08-29,5218,0,553270
+512,Remise en banque espèces,2025-09-02,5061,410000,0
+531,Remise en banque espèces,2025-09-02,5061,0,410000
+512,Règlement facture juillet,2025-09-04,5079,8418245,0
+411,Règlement facture juillet,2025-09-04,5079,0,8418245
+601,Facture fournisseur marchandises,2025-09-04,5107,5836425,0
+401,Facture fournisseur marchandises,2025-09-04,5107,0,5836425
+421,Virement salaires,2025-09-05,5179,2050000,0
+512,Virement salaires,2025-09-05,5179,0,2050000
+431,Paiement cotisations CNSS,2025-09-05,5180,410000,0
+512,Paiement cotisations CNSS,2025-09-05,5180,0,410000
+613,Loyer entrepôt Boulaos,2025-09-05,5195,500000,0
+512,Loyer entrepôt Boulaos,2025-09-05,5195,0,500000
+411,Facture client négoce matériaux,2025-09-10,5018,8324275,0
+701,Vente de marchandises,2025-09-10,5018,0,8324275
+601,Facture ETS OMAR & FRÈRES n°OF-2025-118,2025-09-11,5115,2340000,0
+401,Facture ETS OMAR & FRÈRES n°OF-2025-118,2025-09-11,5115,0,2340000
+401,Règlement facture juillet,2025-09-11,5130,5578310,0
+512,Règlement facture juillet,2025-09-11,5130,0,5578310
+606,Petites fournitures payées en espèces,2025-09-15,5232,78240,0
+531,Petites fournitures payées en espèces,2025-09-15,5232,0,78240
+512,Règlement facture août,2025-09-18,5080,8146530,0
+411,Règlement facture août,2025-09-18,5080,0,8146530
+601,Facture fournisseur marchandises,2025-09-18,5108,6048310,0
+401,Facture fournisseur marchandises,2025-09-18,5108,0,6048310
+411,Facture client négoce matériaux,2025-09-24,5019,8871620,0
+701,Vente de marchandises,2025-09-24,5019,0,8871620
+401,Règlement facture juillet,2025-09-25,5131,5812245,0
+512,Règlement facture juillet,2025-09-25,5131,0,5812245
+411,Facture prestation livraison chantier,2025-09-30,5040,1845270,0
+706,Prestation de livraison,2025-09-30,5040,0,1845270
+531,Ventes comptant du mois,2025-09-30,5050,463180,0
+701,Ventes de marchandises au comptant,2025-09-30,5050,0,463180
+641,Salaires du mois,2025-09-30,5155,2050000,0
+421,Salaires du mois,2025-09-30,5155,0,2050000
+645,Cotisations CNSS du mois,2025-09-30,5156,410000,0
+431,Cotisations CNSS du mois,2025-09-30,5156,0,410000
+606,Facture EDD électricité,2025-09-30,5207,337425,0
+512,Facture EDD électricité,2025-09-30,5207,0,337425
+624,Transport et manutention port,2025-09-30,5219,544425,0
+512,Transport et manutention port,2025-09-30,5219,0,544425
+164,Échéance emprunt BCIMR — capital,2025-09-30,5226,1500000,0
+661,Échéance emprunt BCIMR — intérêts,2025-09-30,5226,355425,0
+512,Échéance emprunt BCIMR,2025-09-30,5226,0,1855425
+512,Remise en banque espèces,2025-10-02,5062,460000,0
+531,Remise en banque espèces,2025-10-02,5062,0,460000
+613,Loyer entrepôt Boulaos,2025-10-05,5196,500000,0
+512,Loyer entrepôt Boulaos,2025-10-05,5196,0,500000
+512,Règlement facture août,2025-10-06,5081,8659410,0
+411,Règlement facture août,2025-10-06,5081,0,8659410
+421,Virement salaires,2025-10-06,5181,2050000,0
+512,Virement salaires,2025-10-06,5181,0,2050000
+431,Paiement cotisations CNSS,2025-10-06,5182,410000,0
+512,Paiement cotisations CNSS,2025-10-06,5182,0,410000
+601,Facture fournisseur marchandises,2025-10-09,5109,5952270,0
+401,Facture fournisseur marchandises,2025-10-09,5109,0,5952270
+401,Règlement facture août,2025-10-13,5132,5694380,0
+512,Règlement facture août,2025-10-13,5132,0,5694380
+411,Facture client négoce matériaux,2025-10-15,5020,8562340,0
+701,Vente de marchandises,2025-10-15,5020,0,8562340
+512,Règlement facture septembre,2025-10-20,5082,8324275,0
+411,Règlement facture septembre,2025-10-20,5082,0,8324275
+601,Facture fournisseur marchandises,2025-10-23,5110,6187435,0
+401,Facture fournisseur marchandises,2025-10-23,5110,0,6187435
+401,Règlement facture août,2025-10-27,5133,5927150,0
+512,Règlement facture août,2025-10-27,5133,0,5927150
+411,Facture client négoce matériaux,2025-10-29,5021,9148255,0
+701,Vente de marchandises,2025-10-29,5021,0,9148255
+531,Ventes comptant du mois,2025-10-31,5051,429450,0
+701,Ventes de marchandises au comptant,2025-10-31,5051,0,429450
+641,Salaires du mois,2025-10-31,5157,2050000,0
+421,Salaires du mois,2025-10-31,5157,0,2050000
+645,Cotisations CNSS du mois,2025-10-31,5158,410000,0
+431,Cotisations CNSS du mois,2025-10-31,5158,0,410000
+606,Facture EDD électricité,2025-10-31,5208,322310,0
+512,Facture EDD électricité,2025-10-31,5208,0,322310
+624,Transport et manutention port,2025-10-31,5220,568310,0
+512,Transport et manutention port,2025-10-31,5220,0,568310
+512,Remise en banque espèces,2025-11-03,5063,420000,0
+531,Remise en banque espèces,2025-11-03,5063,0,420000
+512,Règlement facture septembre,2025-11-05,5083,8871620,0
+411,Règlement facture septembre,2025-11-05,5083,0,8871620
+421,Virement salaires,2025-11-05,5183,2050000,0
+512,Virement salaires,2025-11-05,5183,0,2050000
+431,Paiement cotisations CNSS,2025-11-05,5184,410000,0
+512,Paiement cotisations CNSS,2025-11-05,5184,0,410000
+613,Loyer entrepôt Boulaos,2025-11-05,5197,500000,0
+512,Loyer entrepôt Boulaos,2025-11-05,5197,0,500000
+601,Facture fournisseur marchandises,2025-11-06,5111,6074320,0
+401,Facture fournisseur marchandises,2025-11-06,5111,0,6074320
+411,Facture client négoce matériaux,2025-11-12,5022,8795430,0
+701,Vente de marchandises,2025-11-12,5022,0,8795430
+401,Règlement facture septembre,2025-11-12,5134,5836425,0
+512,Règlement facture septembre,2025-11-12,5134,0,5836425
+622,Honoraires cabinet comptable,2025-11-17,5223,975340,0
+512,Honoraires cabinet comptable,2025-11-17,5223,0,975340
+512,Règlement facture octobre,2025-11-19,5084,8562340,0
+411,Règlement facture octobre,2025-11-19,5084,0,8562340
+601,Facture fournisseur marchandises,2025-11-20,5112,6298255,0
+401,Facture fournisseur marchandises,2025-11-20,5112,0,6298255
+411,Facture client négoce matériaux,2025-11-26,5023,9386215,0
+701,Vente de marchandises,2025-11-26,5023,0,9386215
+401,Règlement facture septembre,2025-11-26,5135,6048310,0
+512,Règlement facture septembre,2025-11-26,5135,0,6048310
+531,Ventes comptant du mois,2025-11-28,5052,474325,0
+701,Ventes de marchandises au comptant,2025-11-28,5052,0,474325
+641,Salaires du mois,2025-11-28,5159,2050000,0
+421,Salaires du mois,2025-11-28,5159,0,2050000
+645,Cotisations CNSS du mois,2025-11-28,5160,410000,0
+431,Cotisations CNSS du mois,2025-11-28,5160,0,410000
+606,Facture EDD électricité,2025-11-28,5209,314270,0
+512,Facture EDD électricité,2025-11-28,5209,0,314270
+624,Transport et manutention port,2025-11-28,5221,572245,0
+512,Transport et manutention port,2025-11-28,5221,0,572245
+512,Remise en banque espèces,2025-12-02,5064,470000,0
+531,Remise en banque espèces,2025-12-02,5064,0,470000
+512,Règlement facture octobre,2025-12-04,5085,9148255,0
+411,Règlement facture octobre,2025-12-04,5085,0,9148255
+601,Facture fournisseur marchandises,2025-12-04,5113,6183470,0
+401,Facture fournisseur marchandises,2025-12-04,5113,0,6183470
+411,Facture client négoce matériaux,2025-12-05,5024,6218340,0
+701,Vente de marchandises,2025-12-05,5024,0,6218340
+421,Virement salaires,2025-12-05,5185,2050000,0
+512,Virement salaires,2025-12-05,5185,0,2050000
+431,Paiement cotisations CNSS,2025-12-05,5186,410000,0
+512,Paiement cotisations CNSS,2025-12-05,5186,0,410000
+613,Loyer entrepôt Boulaos,2025-12-05,5198,500000,0
+512,Loyer entrepôt Boulaos,2025-12-05,5198,0,500000
+411,Facture client négoce matériaux,2025-12-10,5025,5442180,0
+701,Vente de marchandises,2025-12-10,5025,0,5442180
+401,Règlement facture octobre,2025-12-11,5136,5952270,0
+512,Règlement facture octobre,2025-12-11,5136,0,5952270
+606,Petites fournitures payées en espèces,2025-12-12,5233,96415,0
+531,Petites fournitures payées en espèces,2025-12-12,5233,0,96415
+411,Facture prestation livraison chantier,2025-12-15,5041,1923450,0
+706,Prestation de livraison,2025-12-15,5041,0,1923450
+512,Règlement facture novembre,2025-12-16,5086,8795430,0
+411,Règlement facture novembre,2025-12-16,5086,0,8795430
+411,Facture client négoce matériaux,2025-12-18,5026,1284150,0
+701,Vente de marchandises,2025-12-18,5026,0,1284150
+601,Facture fournisseur marchandises,2025-12-18,5114,6412385,0
+401,Facture fournisseur marchandises,2025-12-18,5114,0,6412385
+411,Facture client négoce matériaux,2025-12-19,5027,1147325,0
+701,Vente de marchandises,2025-12-19,5027,0,1147325
+164,Échéance emprunt BCIMR — capital,2025-12-19,5227,1500000,0
+661,Échéance emprunt BCIMR — intérêts,2025-12-19,5227,319180,0
+512,Échéance emprunt BCIMR,2025-12-19,5227,0,1819180
+411,Facture client négoce matériaux,2025-12-22,5028,1318240,0
+701,Vente de marchandises,2025-12-22,5028,0,1318240
+401,Règlement facture octobre,2025-12-22,5137,6187435,0
+512,Règlement facture octobre,2025-12-22,5137,0,6187435
+411,Facture client négoce matériaux,2025-12-23,5029,1164380,0
+701,Vente de marchandises,2025-12-23,5029,0,1164380
+512,Règlement facture novembre,2025-12-23,5088,9386215,0
+411,Règlement facture novembre,2025-12-23,5088,0,9386215
+411,Facture client négoce matériaux,2025-12-26,5030,1292465,0
+701,Vente de marchandises,2025-12-26,5030,0,1292465
+411,Facture client négoce matériaux,2025-12-27,5031,1171240,0
+701,Vente de marchandises,2025-12-27,5031,0,1171240
+411,Facture client négoce matériaux,2025-12-29,5032,1346180,0
+701,Vente de marchandises,2025-12-29,5032,0,1346180
+411,Facture client négoce matériaux,2025-12-29,5033,1158430,0
+701,Vente de marchandises,2025-12-29,5033,0,1158430
+512,Règlement prestation T1,2025-12-29,5089,1684250,0
+411,Règlement prestation T1,2025-12-29,5089,0,1684250
+411,Facture client négoce matériaux,2025-12-30,5034,1314260,0
+701,Vente de marchandises,2025-12-30,5034,0,1314260
+411,Facture client négoce matériaux,2025-12-30,5035,1189375,0
+701,Vente de marchandises,2025-12-30,5035,0,1189375
+512,Règlement prestation T2,2025-12-30,5090,1792430,0
+411,Règlement prestation T2,2025-12-30,5090,0,1792430
+401,Chèque n°5138 — ETS DARYEEL BTP,2025-12-30,5138,850000,0
+512,Chèque n°5138 — ETS DARYEEL BTP,2025-12-30,5138,0,850000
+411,Facture client négoce matériaux,2025-12-31,5036,1357120,0
+701,Vente de marchandises,2025-12-31,5036,0,1357120
+411,Facture client négoce matériaux,2025-12-31,5037,1212385,0
+701,Vente de marchandises,2025-12-31,5037,0,1212385
+531,Ventes comptant du mois,2025-12-31,5053,512240,0
+701,Ventes de marchandises au comptant,2025-12-31,5053,0,512240
+641,Salaires du mois,2025-12-31,5161,2050000,0
+421,Salaires du mois,2025-12-31,5161,0,2050000
+645,Cotisations CNSS du mois,2025-12-31,5162,410000,0
+431,Cotisations CNSS du mois,2025-12-31,5162,0,410000
+606,Facture EDD électricité,2025-12-31,5210,361435,0
+512,Facture EDD électricité,2025-12-31,5210,0,361435
+624,Transport et manutention port,2025-12-31,5222,589430,0
+512,Transport et manutention port,2025-12-31,5222,0,589430
+310,Variation de stock — inventaire au 31/12,2025-12-31,5234,9450000,0
+6031,Variation de stock — inventaire au 31/12,2025-12-31,5234,0,9450000
+681,Dotation amortissement matériel transport,2025-12-31,5235,2912425,0
+2815,Dotation amortissement matériel transport,2025-12-31,5235,0,2912425
+695,Impôt sur les bénéfices — exercice 2025,2025-12-31,5236,2384150,0
+444,Impôt sur les bénéfices — exercice 2025,2025-12-31,5236,0,2384150
+512,Règlement prestation T3,2025-12-31,5237,1845270,0
+411,Règlement prestation T3,2025-12-31,5237,0,1845270
