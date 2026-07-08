@@ -124,3 +124,18 @@ def test_synthese_sections_vides_leve_erreur():
     client = _fake_client(reponse)
     with pytest.raises(RuntimeError, match="illisible|sections"):
         client.generer_note_synthese(PROJET, PLAN, None, RISQUES, [{"statut": "inclus"}])
+
+
+# ─── update_planification sur ligne inexistante (trouvé au test E2E Harbi) ──
+
+def test_update_planification_cree_la_ligne_si_absente(tmp_path):
+    """Le premier PATCH de la fiche entité (avant tout GET /planification)
+    doit persister — pas être un UPDATE no-op silencieux."""
+    from probare_engine.storage.db import ProjectDB
+
+    db = ProjectDB(tmp_path / "test.db")
+    db.connect()
+    db.create_projet({"id": "p1", "nom": "T", "etat_courant": "cadrage"})
+    plan = db.update_planification("p1", {"forme_juridique": "SARL", "effectif": 14})
+    assert plan["forme_juridique"] == "SARL"
+    assert plan["effectif"] == 14

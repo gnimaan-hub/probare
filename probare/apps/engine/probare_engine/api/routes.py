@@ -223,7 +223,12 @@ def _get_donnees_segmentees(db, projet_id: str):
     Utilise type_document en priorité, avec fallback sur type (rétrocompatibilité).
     """
     fichiers = db.list_fichiers(projet_id)
-    ids_balance = {f["id"] for f in fichiers if _get_type_fichier(f) == "balance"}
+    # La balance N-1 (référencée en planification) sert aux procédures analytiques
+    # uniquement : l'inclure ici fusionnerait N et N-1 dans les agrégats des
+    # contrôles de l'exercice (faux écarts GL/Balance, soldes N doublés).
+    n1_id = db.get_or_create_planification(projet_id).get("balance_n1_fichier_id")
+    ids_balance = {f["id"] for f in fichiers
+                   if _get_type_fichier(f) == "balance" and f["id"] != n1_id}
     ids_gl = {f["id"] for f in fichiers if _get_type_fichier(f) == "grand_livre"}
     ids_releve = {f["id"] for f in fichiers if _get_type_fichier(f) == "releve_bancaire"}
 
@@ -1256,7 +1261,13 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
                 s = _get_amount(row, "debit") - _get_amount(row, "credit")
             if abs(s) > abs(solde_compta_val):
                 solde_compta_val = s
-                solde_compta_src = row.get("compte") or row.get("solde")
+                # Source = la donnée MONTANT (le numéro de compte n'est pas un solde)
+                if row.get("solde"):
+                    solde_compta_src = row["solde"]
+                elif _get_amount(row, "debit") >= _get_amount(row, "credit"):
+                    solde_compta_src = row.get("debit")
+                else:
+                    solde_compta_src = row.get("credit")
 
         # Extraire solde du relevé bancaire (dernier montant significatif)
         montants_releve = [d for d in rows_releve_ds if d.type == "montant"]
