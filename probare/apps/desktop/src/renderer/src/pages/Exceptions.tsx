@@ -654,7 +654,7 @@ export function Exceptions() {
     setTransitioning(true)
     try {
       const etat = projetActif?.etat_courant
-      if (etat === 'controles') {
+      if (etat === 'controles' || etat === 'travaux_substantifs') {
         await post(`/projets/${projetId}/transition`, { vers: 'revue', acteur: 'utilisateur' })
       }
       const updated = await post(`/projets/${projetId}/transition`, { vers: 'generation', acteur: 'utilisateur' })
