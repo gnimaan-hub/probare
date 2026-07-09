@@ -2653,6 +2653,28 @@ def exporter_exceptions(projet_id: str):
     )
 
 
+@router.post("/projets/{projet_id}/qci/exporter-questionnaire")
+def exporter_questionnaire_vierge(projet_id: str):
+    """Génère le questionnaire de contrôle interne vierge .docx à imprimer (#2)."""
+    from ..reporting.export import generer_questionnaire_vierge
+    from ..controls.qci import QCI_PAR_CYCLE
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    cycles = projet.get("cycles_couverts") or list(QCI_PAR_CYCLE.keys())
+    output_dir = DATA_DIR / projet_id / "exports"
+    output_path = output_dir / f"questionnaire_ci_{projet_id[:8]}.docx"
+    generer_questionnaire_vierge(projet, QCI_PAR_CYCLE, cycles, output_path)
+    db.log(projet_id, "action_humaine", {"action": "exporter_questionnaire_ci"})
+    client_slug = (projet.get("client") or "client").replace(" ", "_")[:20]
+    return FileResponse(
+        str(output_path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=f"Questionnaire_CI_{client_slug}.docx",
+    )
+
+
 @router.post("/projets/{projet_id}/exporter-diligences")
 def exporter_diligences(projet_id: str, seulement_ouvertes: bool = True):
     """Génère la demande de diligences .docx à présenter au client (#9)."""

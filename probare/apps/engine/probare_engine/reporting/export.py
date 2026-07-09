@@ -933,3 +933,88 @@ def generer_demande_diligences(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(output_path))
     return output_path
+
+
+# ─── Questionnaire de contrôle interne vierge, à imprimer (#2) ─────────────────
+
+_QCI_CYCLE_LABELS = {
+    "tresorerie": "Trésorerie", "achats": "Achats-Fournisseurs", "ventes": "Ventes-Clients",
+    "immobilisations": "Immobilisations", "stocks": "Stocks", "paie": "Personnel-Paie",
+    "impots": "Impôts et taxes", "capitaux_propres": "Capitaux propres et provisions",
+}
+
+
+def generer_questionnaire_vierge(
+    projet: dict,
+    qci_par_cycle: dict,
+    cycles: list[str],
+    output_path: Path,
+) -> Path:
+    """Génère le questionnaire de contrôle interne VIERGE en .docx, prêt à imprimer
+    et à faire remplir sur le terrain (#2). Colonnes Oui / Non / N.A. + commentaire."""
+    try:
+        from docx import Document
+        from docx.shared import Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+    except ImportError:
+        raise ImportError("python-docx est requis pour la génération docx.")
+
+    VIOLET = RGBColor(0x4F, 0x46, 0xE5)
+    doc = Document()
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(10)
+
+    titre = doc.add_heading("QUESTIONNAIRE DE CONTRÔLE INTERNE", 0)
+    titre.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    info = doc.add_paragraph()
+    info.add_run(f"Client : {projet.get('client', 'N/A')}").bold = True
+    info.add_run(f"          Exercice : {projet.get('exercice', 'N/A')}\n")
+    info.add_run("Rempli par : ____________________     Fonction : ____________________     "
+                 "Date : ____________")
+
+    doc.add_paragraph(
+        "Pour chaque question, cochez Oui, Non ou N.A. (non applicable) et précisez un "
+        "commentaire si nécessaire.", style=None
+    ).italic = True
+
+    cycles = [c for c in cycles if c in qci_par_cycle] or list(qci_par_cycle.keys())
+    for cycle in cycles:
+        questions = qci_par_cycle.get(cycle, [])
+        if not questions:
+            continue
+        h = doc.add_heading(level=1)
+        h.add_run(f"Cycle : {_QCI_CYCLE_LABELS.get(cycle, cycle.capitalize())}").font.color.rgb = VIOLET
+
+        table = doc.add_table(rows=1, cols=5)
+        table.style = "Table Grid"
+        widths = ["N°", "Question", "Oui", "Non", "N.A."]
+        hdr = table.rows[0].cells
+        for i, col in enumerate(widths):
+            hdr[i].text = col
+            if hdr[i].paragraphs[0].runs:
+                hdr[i].paragraphs[0].runs[0].bold = True
+        for idx, q in enumerate(questions, 1):
+            row = table.add_row().cells
+            row[0].text = str(idx)
+            row[1].text = q.get("question", "")
+            row[2].text = "☐"
+            row[3].text = "☐"
+            row[4].text = "☐"
+        # Ligne de commentaires par cycle
+        c = doc.add_paragraph()
+        c.add_run("Commentaires / observations : ").italic = True
+        c.add_run("_" * 70)
+        doc.add_paragraph()
+
+    doc.add_paragraph("─" * 60)
+    footer = doc.add_paragraph()
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = footer.add_run(f"Questionnaire généré par Probare le {_now()} · À remplir sur le terrain")
+    r.font.size = Pt(9)
+    r.italic = True
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(output_path))
+    return output_path
