@@ -37,7 +37,18 @@ def _result_ok(projet_id: str, controle_ref: str, valeur: Any,
 
 
 def _result_exception(projet_id: str, controle_ref: str, valeur: Any,
-                      details: str, sources: list[str]) -> tuple[dict, dict]:
+                      details: str, sources: list[str],
+                      est_montant: bool = True) -> tuple[dict, dict]:
+    """Construit un couple (résultat, exception).
+
+    `est_montant` indique si `valeur` représente une incidence monétaire
+    (écart, variation, solde anormal). Dans ce cas, elle est reportée dans
+    `montant_estime` pour pré-remplir le « montant de l'incidence » à la
+    validation. Pour les contrôles dont la valeur est un ratio ou un
+    dénombrement (montants ronds, séquences, cut-off…), passer
+    `est_montant=False` : aucun montant n'est proposé.
+    """
+    import math
     from ..normes import norme
     defn = REGISTRE.get(controle_ref)
     nep_ref = defn.nep_ref if defn else norme(500)
@@ -52,6 +63,9 @@ def _result_exception(projet_id: str, controle_ref: str, valeur: Any,
         "sources": sources,
         "calcule_le": _now(),
     }
+    montant_estime = None
+    if est_montant and isinstance(valeur, (int, float)) and math.isfinite(valeur):
+        montant_estime = round(abs(float(valeur)), 2)
     exc = {
         "id": str(uuid.uuid4()),
         "projet_id": projet_id,
@@ -61,6 +75,7 @@ def _result_exception(projet_id: str, controle_ref: str, valeur: Any,
         "description": details,
         "statut": "ouverte",
         "sources": sources,
+        "montant_estime": montant_estime,
         "horodatage": _now(),
     }
     return res, exc
@@ -328,6 +343,7 @@ def controle_sequence_pieces(
             f"Anomalies de séquence détectées ({len(trous)} trou(s), {len(doublons)} doublon(s)). "
             + " | ".join(issues) + note_couverture,
             sources,
+            est_montant=False,  # valeur = nombre d'anomalies de séquence
         )
         return res, exc
 
@@ -644,6 +660,7 @@ def controle_montants_ronds(
             f"Une proportion élevée de montants ronds (multiples de {diviseur:.0f}) peut indiquer "
             f"des montants estimés, fictifs ou arrondis avant comptabilisation.",
             sources[:50],
+            est_montant=False,  # valeur = ratio de montants ronds
         )
         return res, exc
     else:
@@ -703,6 +720,7 @@ def controle_cut_off(
             f"de l'exercice {exercice or ''} — seuil={seuil_ratio*100:.0f}%. "
             f"Cette concentration est anormale et signale un risque de cut-off.",
             sources[:50],
+            est_montant=False,  # valeur = ratio d'écritures en fin d'exercice
         )
         return res, exc
     else:
@@ -780,6 +798,7 @@ def controle_doublons_factures(
             projet_id, controle_ref, len(doublons),
             f"{len(doublons)} doublon(s) détecté(s) : " + " | ".join(doublons[:5]),
             list(dict.fromkeys(all_sources))[:50],
+            est_montant=False,  # valeur = nombre de doublons
         )
         return res, exc
     else:
@@ -854,6 +873,7 @@ def controle_concentration_compte(
             f"({montant_max:.2f} / {total:.2f}) — seuil={seuil_concentration*100:.0f}%. "
             f"Concentration élevée sur un seul tiers : risque de dépendance ou de fraude.",
             srcs_max[:20],
+            est_montant=False,  # valeur = ratio de concentration
         )
         return res, exc
     else:
@@ -929,6 +949,7 @@ def controle_ratio_avoirs(
             f"Un ratio élevé d'avoirs signale des retours fréquents, des litiges ou "
             f"des régularisations suspectes.",
             sources_avoirs[:20],
+            est_montant=False,  # valeur = ratio avoirs / total
         )
         return res, exc
     else:
@@ -1144,6 +1165,7 @@ def controle_ratio_charges_sociales(
             f"({total_charges:.2f} / {total_salaires:.2f}). "
             f"Plage attendue : {seuil_min*100:.0f}%–{seuil_max*100:.0f}%. {msg}",
             sources,
+            est_montant=False,  # valeur = ratio charges sociales / salaires
         )
         return res, exc
 
@@ -1201,6 +1223,7 @@ def controle_mensualite_paie(
             f"Mois sans écriture : {mois_manquants}. "
             f"Risque d'omission de salaires ou de non-déclaration sur certaines périodes.",
             sources[:20],
+            est_montant=False,  # valeur = nombre de mois avec écritures
         )
         return res, exc
 
@@ -1273,6 +1296,7 @@ def controle_tva_coherence(
             f"La TVA récupérée excède anormalement la TVA collectée. "
             f"Risque de déductibilité incorrecte ou d'activité exonérée non identifiée.",
             sources,
+            est_montant=False,  # valeur = ratio TVA déductible / collectée
         )
         return res, exc
 
@@ -1343,6 +1367,7 @@ def controle_mouvement_provisions(
             f"Charges 68x : {total_charges_dot:.2f}. Ratio = {ratio*100:.1f}% < seuil={seuil_ratio*100:.0f}%. "
             f"Les dotations aux provisions semblent insuffisamment justifiées par les charges 68x.",
             sources,
+            est_montant=False,  # valeur = ratio dotations / charges 68x
         )
         return res, exc
 
@@ -1401,6 +1426,7 @@ def controle_coherence_resultat(
             f"tous deux non nuls. Une entité ne peut avoir simultanément un résultat bénéficiaire "
             f"et déficitaire — erreur comptable ou mauvaise affectation du résultat.",
             sources,
+            est_montant=False,  # valeur = somme de soldes incohérents, pas une incidence
         )
         return res, exc
 
@@ -1515,6 +1541,7 @@ def controle_creances_echues(
             f"(antérieures au {seuil_date.strftime('%d/%m/%Y')}). "
             f"Risque d'irrécouvrabilité non provisionné à évaluer.",
             sources_anciens[:30],
+            est_montant=False,  # valeur = ratio de créances anciennes
         )
         return res, exc
     else:

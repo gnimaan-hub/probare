@@ -5,7 +5,7 @@ import {
   ShieldCheck, ArrowRight, CheckCircle, XCircle, MinusCircle,
   Sparkles, AlertTriangle, ChevronDown, ChevronRight, Info,
   Shield, ShoppingCart, TrendingUp, Loader2,
-  Landmark, Package, Users, Receipt, PieChart, Printer
+  Landmark, Package, Users, Receipt, PieChart, Printer, FileDown
 } from 'lucide-react'
 import { normeLabel } from '../lib/utils'
 import { Header } from '../components/layout/Header'
@@ -396,6 +396,8 @@ function SyntheseGlobale({
   narrative,
   onGenerer,
   generating,
+  onExport,
+  exporting,
   locked,
 }: {
   cycles: string[]
@@ -404,6 +406,8 @@ function SyntheseGlobale({
   narrative: SyntheseNarrative | null
   onGenerer: () => void
   generating: boolean
+  onExport: () => void
+  exporting: boolean
   locked: boolean
 }) {
   const evalues = cycles.filter((c) => qciData[c]?.evaluation)
@@ -472,16 +476,29 @@ function SyntheseGlobale({
             <p className="text-xs font-semibold text-primary-700 uppercase tracking-wider flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5" /> Synthèse rédigée de l'évaluation du contrôle interne
             </p>
-            {!locked && (
-              <button
-                onClick={onGenerer}
-                disabled={generating}
-                className="btn-secondary text-xs py-1.5"
-              >
-                {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                {narrative ? 'Régénérer' : 'Générer la synthèse'}
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {narrative && narrative.sections && narrative.sections.length > 0 && (
+                <button
+                  onClick={onExport}
+                  disabled={exporting}
+                  className="btn-secondary text-xs py-1.5"
+                  title="Télécharger la synthèse au format Word"
+                >
+                  {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
+                  Télécharger (Word)
+                </button>
+              )}
+              {!locked && (
+                <button
+                  onClick={onGenerer}
+                  disabled={generating}
+                  className="btn-secondary text-xs py-1.5"
+                >
+                  {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {narrative ? 'Régénérer' : 'Générer la synthèse'}
+                </button>
+              )}
+            </div>
           </div>
           <div className="p-4">
             {narrative && narrative.sections && narrative.sections.length > 0 ? (
@@ -631,6 +648,7 @@ export function EvaluationCI() {
   const [syntheseGlobale, setSyntheseGlobale] = useState<SyntheseNarrative | null>(null)
   const [generatingSynthese, setGeneratingSynthese] = useState(false)
   const [exportingQcm, setExportingQcm] = useState(false)
+  const [exportingSynthese, setExportingSynthese] = useState(false)
 
   // Cycle actif — null = synthèse globale
   const cycles = Object.keys(qciData)
@@ -690,6 +708,24 @@ export function EvaluationCI() {
       toast.error(e.message)
     } finally {
       setExportingQcm(false)
+    }
+  }
+
+  const handleExportSynthese = async () => {
+    if (!projetId) return
+    setExportingSynthese(true)
+    try {
+      const { blob, filename } = await downloadBlob(
+        `/projets/${projetId}/qci/synthese-globale/export`, 'POST'
+      )
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = filename; a.click()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setExportingSynthese(false)
     }
   }
 
@@ -933,6 +969,8 @@ export function EvaluationCI() {
                 narrative={syntheseGlobale}
                 onGenerer={handleGenererSynthese}
                 generating={generatingSynthese}
+                onExport={handleExportSynthese}
+                exporting={exportingSynthese}
                 locked={locked}
               />
               {!locked && allEvalues && (

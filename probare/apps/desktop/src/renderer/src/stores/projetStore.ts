@@ -50,6 +50,7 @@ export interface Exception {
   decideur?: string
   type_resolution?: 'corrigee' | 'sans_incidence' | 'non_corrigee' | null
   montant_incidence?: number | null
+  montant_estime?: number | null
   interpretation_llm?: string
   hypotheses?: string[]
   diligences?: string[]
