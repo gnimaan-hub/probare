@@ -799,3 +799,137 @@ def generer_tableau_exceptions(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(str(output_path))
     return output_path
+
+
+# ─── Demande de diligences au client (#9) ─────────────────────────────────────
+
+# Cycle (préfixe de la référence de contrôle) → libellé lisible
+_CYCLE_LABELS = {
+    "TRESOR": "Trésorerie", "ACHAT": "Achats-Fournisseurs", "VENTE": "Ventes-Clients",
+    "IMO": "Immobilisations", "STOCK": "Stocks", "PAIE": "Personnel-Paie",
+    "TAXE": "Impôts et taxes", "CP": "Capitaux propres et provisions",
+}
+
+
+def _cycle_depuis_ref(ref: str) -> str:
+    prefixe = (ref or "").split("-")[0]
+    return _CYCLE_LABELS.get(prefixe, "Divers")
+
+
+_SEVERITE_LABELS = {
+    "critique": "Critique", "significative": "Significative", "mineure": "Mineure",
+}
+
+
+def generer_demande_diligences(
+    projet: dict,
+    exceptions: list[dict],
+    output_path: Path,
+    seulement_ouvertes: bool = True,
+) -> Path:
+    """Génère une demande de diligences .docx présentable au client (#9).
+
+    Reprend chaque exception (anomalie relevée), regroupée par cycle, avec sa
+    description, les hypothèses de cause et les diligences/pièces à fournir.
+    Mise en page professionnelle, prête à imprimer/envoyer.
+    """
+    try:
+        from docx import Document
+        from docx.shared import Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+    except ImportError:
+        raise ImportError("python-docx est requis pour la génération docx.")
+
+    VIOLET = RGBColor(0x4F, 0x46, 0xE5)
+    exceptions = [e for e in exceptions
+                  if not seulement_ouvertes or e.get("statut") == "ouverte"]
+
+    doc = Document()
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(11)
+
+    titre = doc.add_heading("DEMANDE DE DILIGENCES", 0)
+    titre.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    sub = doc.add_paragraph()
+    sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    sub.add_run("Points relevés lors de l'audit — pièces et explications attendues").italic = True
+
+    info = doc.add_paragraph()
+    info.add_run(f"Client : {projet.get('client', 'N/A')}\n").bold = True
+    info.add_run(f"Exercice : {projet.get('exercice', 'N/A')}\n")
+    info.add_run(f"Édité le : {_now()}\n")
+    info.add_run(f"Nombre de points : {len(exceptions)}\n")
+
+    doc.add_paragraph("─" * 60)
+
+    intro = doc.add_paragraph()
+    intro.add_run(
+        "Dans le cadre de nos travaux d'audit, les points suivants nécessitent votre "
+        "attention. Pour chacun, merci de nous communiquer les explications et les pièces "
+        "justificatives correspondantes. Ces éléments nous permettront de conclure sur les "
+        "zones concernées. Sauf mention contraire, tous les montants sont exprimés en FDJ."
+    ).italic = True
+
+    if not exceptions:
+        doc.add_paragraph()
+        p = doc.add_paragraph()
+        p.add_run("Aucun point en attente à ce jour.").bold = True
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        doc.save(str(output_path))
+        return output_path
+
+    # Regroupement par cycle
+    par_cycle: dict[str, list[dict]] = {}
+    for e in exceptions:
+        par_cycle.setdefault(_cycle_depuis_ref(e.get("controle_ref", "")), []).append(e)
+
+    compteur = 0
+    for cycle in sorted(par_cycle):
+        doc.add_heading(f"Cycle : {cycle}", level=1)
+        for exc in par_cycle[cycle]:
+            compteur += 1
+            h = doc.add_heading(level=2)
+            sev = _SEVERITE_LABELS.get(exc.get("severite", ""), exc.get("severite", ""))
+            run = h.add_run(f"Point {compteur}"
+                            + (f" — {sev}" if sev else ""))
+            run.font.color.rgb = VIOLET
+
+            p = doc.add_paragraph()
+            p.add_run("Constat : ").bold = True
+            p.add_run(exc.get("description", "") or "—")
+
+            explication = exc.get("interpretation_llm") or exc.get("explication")
+            if explication:
+                p = doc.add_paragraph()
+                p.add_run("Analyse préliminaire : ").bold = True
+                p.add_run(str(explication))
+
+            hypotheses = exc.get("hypotheses") or []
+            if hypotheses:
+                doc.add_paragraph("Causes possibles à confirmer :").runs[0].bold = True
+                for hyp in hypotheses:
+                    doc.add_paragraph(str(hyp), style="List Bullet")
+
+            diligences = exc.get("diligences") or []
+            if diligences:
+                doc.add_paragraph("Éléments et pièces attendus de votre part :").runs[0].bold = True
+                for dil in diligences:
+                    doc.add_paragraph(str(dil), style="List Bullet")
+
+            # Espace réponse client
+            rep = doc.add_paragraph()
+            rep.add_run("Réponse / pièces fournies : ").italic = True
+            rep.add_run("_" * 55)
+            doc.add_paragraph()
+
+    doc.add_paragraph("─" * 60)
+    footer = doc.add_paragraph()
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = footer.add_run(f"Document généré par Probare le {_now()} · Confidentiel")
+    r.font.size = Pt(9)
+    r.italic = True
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(output_path))
+    return output_path

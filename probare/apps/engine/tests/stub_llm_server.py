@@ -99,6 +99,40 @@ def rep_evaluation_ci(prompt: str) -> dict:
     }
 
 
+def rep_synthese_globale_ci(prompt: str) -> dict:
+    m = re.search(r"Entité : (.+?) —", prompt)
+    client = m.group(1).strip() if m else "l'entité"
+    m = re.search(r"Exercice (\S+)", prompt)
+    exercice = m.group(1).strip() if m else "N"
+    return {
+        "titre": f"Synthèse de l'évaluation du contrôle interne — {client} — Exercice {exercice}",
+        "sections": [
+            {"titre": "1. Niveau de risque global",
+             "contenu": ("À l'issue de l'évaluation du contrôle interne sur l'ensemble des cycles "
+                         "sélectionnés, nous retenons un niveau de risque global qui oriente la mission "
+                         "vers une approche essentiellement substantive : le dispositif déclaré ne permet "
+                         "pas, en l'état et sans test d'efficacité, de réduire l'étendue de nos travaux.")},
+            {"titre": "2. Analyse par cycle",
+             "contenu": ("La matrice des risques fait ressortir une concentration du risque sur les cycles "
+                         "où la séparation des tâches est absente et où la saisie comptable est manuelle. "
+                         "Les cycles les mieux notés reposent sur des dispositifs simples mais tracés.")},
+            {"titre": "3. Constats déterminants",
+             "contenu": ("Les réponses « non » les plus pénalisantes portent sur la séparation des tâches, "
+                         "la double signature des paiements et l'absence d'interface entre facturation et "
+                         "comptabilité — autant de points qui fragilisent les assertions d'exhaustivité et "
+                         "d'existence.")},
+            {"titre": "4. Implications pour la suite de l'audit",
+             "contenu": ("Nous étendrons les tests substantifs sur les cycles à risque élevé (contrôles de "
+                         "détail, sondages élargis, circularisation des tiers), et concentrerons notre "
+                         "vigilance sur la coupure et la recouvrabilité. Le programme de travail sera "
+                         "dimensionné en conséquence.")},
+        ],
+        "conclusion": ("En synthèse, l'environnement de contrôle interne appelle une approche prudente : "
+                       "nous ne nous appuierons pas sur les contrôles pour réduire nos diligences et "
+                       "renforcerons les travaux substantifs sur les cycles porteurs de risque."),
+    }
+
+
 def rep_interpretation_exception(prompt: str) -> dict:
     m = re.search(r"Contrôle : ([A-Z0-9\-]+)", prompt)
     ref = m.group(1) if m else "INCONNU"
@@ -375,6 +409,7 @@ DISPATCH = [
     ("identifier la nature d'un document", rep_analyse_document),
     ("Analyse les onglets", rep_onglets_excel),
     ("liasse regroupant plusieurs documents", rep_liasse),
+    ("synthèse globale de l'évaluation du contrôle interne", rep_synthese_globale_ci),
     ("évalues le contrôle interne", rep_evaluation_ci),
     ("moteur de contrôle déterministe a levé l'exception", rep_interpretation_exception),
     ("document annexe", rep_annexe),
