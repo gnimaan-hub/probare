@@ -1288,23 +1288,30 @@ Réponds UNIQUEMENT avec un JSON valide :
 
         resp = self._messages_create(
             model=MODEL_DEFAULT,
-            max_tokens=4096,
+            max_tokens=8000,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, "rediger_feuille_travail",
                   resp.usage.input_tokens, resp.usage.output_tokens)
 
+        if resp.stop_reason == "max_tokens":
+            raise RuntimeError(
+                "Réponse IA tronquée (limite de tokens de sortie atteinte) : "
+                "la feuille de travail n'a pas pu être générée. Relancez la génération."
+            )
         result = self._parse_json(resp.content[0].text)
         if isinstance(result, dict) and "contenu" in result:
             return result
-        # Repli NEUTRE : un échec de parsing ne doit jamais produire une
-        # conclusion favorable par défaut — l'auditeur doit conclure lui-même.
-        return {
-            "titre": f"Feuille de travail — {cycle}",
-            "contenu": resp.content[0].text,
-            "nep_refs": [],
-            "conclusion": "a_completer",
-        }
+        # Un échec de parsing ne doit jamais produire une conclusion favorable
+        # par défaut ni enregistrer le texte brut (potentiellement tronqué ou
+        # truffé de syntaxe JSON) comme contenu rédigé — on lève une erreur
+        # claire, comme pour les autres générations longues (note de synthèse,
+        # programme de travail, synthèse CI globale), plutôt que d'écrire une
+        # feuille de travail illisible dans le dossier.
+        raise RuntimeError(
+            "Réponse IA illisible (JSON invalide) : "
+            "la feuille de travail n'a pas pu être générée. Relancez la génération."
+        )
 
     # ─── Opinion d'audit (phase finale — ISA/NEP 700) ────────────────────────
 
