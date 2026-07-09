@@ -105,8 +105,10 @@ export function Cadrage() {
     consentement_client: false,
     cycles_couverts: [] as string[],
     nature_mission: 'contractuelle' as string,
+    referentiel_comptable: 'pcgd' as string,
     client_id: null as string | null,
   })
+  const [referentiels, setReferentiels] = useState<{ id: string; libelle: string }[]>([])
   const [saving, setSaving] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
 
@@ -124,9 +126,13 @@ export function Cadrage() {
         consentement_client: Boolean(p.consentement_client),
         cycles_couverts: Array.isArray(p.cycles_couverts) ? p.cycles_couverts : [],
         nature_mission: p.nature_mission || 'contractuelle',
+        referentiel_comptable: p.referentiel_comptable || 'pcgd',
         client_id: p.client_id || null,
       })
     }).catch((e) => toast.error(e.message))
+    get('/referentiels-comptables')
+      .then((r) => setReferentiels(r.referentiels || []))
+      .catch(() => setReferentiels([]))
   }, [projetId])
 
   const toggleCycle = (cycleId: string) => {
@@ -301,10 +307,26 @@ export function Cadrage() {
                   </p>
                 )}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">NIF</label>
-                <input className="input-field" value={form.nif}
-                  onChange={(e) => setForm({ ...form, nif: e.target.value })} disabled={locked} />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">NIF</label>
+                  <input className="input-field" value={form.nif}
+                    onChange={(e) => setForm({ ...form, nif: e.target.value })} disabled={locked} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Référentiel comptable
+                  </label>
+                  <select className="input-field" value={form.referentiel_comptable}
+                    onChange={(e) => setForm({ ...form, referentiel_comptable: e.target.value })}
+                    disabled={locked}>
+                    {referentiels.length === 0 && <option value="pcgd">Plan Comptable Général de Djibouti (PCGD 2012)</option>}
+                    {referentiels.map((r) => <option key={r.id} value={r.id}>{r.libelle}</option>)}
+                  </select>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Référentiel appliqué par l'entité auditée (distinct du référentiel d'audit ISA/NEP).
+                  </p>
+                </div>
               </div>
             </div>
           </motion.div>

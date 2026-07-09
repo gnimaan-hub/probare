@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText, Download, Wand2, CheckCircle, AlertTriangle, FileSpreadsheet, RefreshCw
@@ -22,8 +22,9 @@ function saveBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function Rapport() {
+export function DossierTravail() {
   const { projetId } = useParams<{ projetId: string }>()
+  const navigate = useNavigate()
   const { get, post, downloadBlob } = useApi()
   const toast = useToast()
   const { projetActif, setProjetActif } = useProjetStore()
@@ -81,10 +82,12 @@ export function Rapport() {
       saveBlob(blob, filename)
       toast.success('Dossier de travail exporté.')
 
-      // Passer en opinion si pas encore fait
+      // Passer en phase Rapport d'audit si pas encore fait, puis y naviguer
       if (projetActif?.etat_courant === 'generation') {
         const updated = await post(`/projets/${projetId}/transition`, { vers: 'opinion', acteur: 'utilisateur' })
         setProjetActif(updated)
+        toast.success("Passage à la phase Rapport d'audit.")
+        navigate(`/projet/${projetId}/rapport-audit`)
       }
     } catch (e: any) {
       toast.error(e.message)
@@ -114,8 +117,8 @@ export function Rapport() {
   return (
     <div className="flex flex-col h-full">
       <Header
-        title="Dossier de travail & Rapport"
-        subtitle={`${normeLabel('230')} — Génération des livrables`}
+        title="Dossier de travail"
+        subtitle={`${normeLabel('230')} — Feuilles, dossier de travail & exceptions`}
         actions={
           <button onClick={loadData} className="btn-ghost">
             <RefreshCw className="w-4 h-4" />

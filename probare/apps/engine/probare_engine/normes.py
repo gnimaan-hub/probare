@@ -92,3 +92,26 @@ def reformater_refs(texte: str | None) -> str | None:
     if not texte:
         return texte
     return _REF_RE.sub(lambda m: f"{prefixe_actif()} {m.group(1)}", texte)
+
+
+# ─── Référentiel COMPTABLE applicable à l'entité auditée ─────────────────────────
+# À distinguer du référentiel d'AUDIT (ISA/NEP ci-dessus). Djibouti applique le
+# Plan Comptable Général de Djibouti (PCGD 2012, Ministère de l'Économie et des
+# Finances) — inspiré du PCG français, il n'appartient PAS à l'espace OHADA et
+# n'utilise pas le SYSCOHADA. Les autres référentiels restent proposés pour les
+# entités qui les appliquent (filiales de groupes IFRS, entités régionales OHADA).
+
+REFERENTIELS_COMPTABLES: dict[str, str] = {
+    "pcgd":      "Plan Comptable Général de Djibouti (PCGD 2012)",
+    "ifrs":      "Normes internationales IFRS",
+    "syscohada": "SYSCOHADA révisé (OHADA)",
+    "pcg_fr":    "Plan Comptable Général français",
+    "autre":     "Autre référentiel comptable",
+}
+REFERENTIEL_COMPTABLE_DEFAUT = "pcgd"
+
+
+def libelle_referentiel_comptable(code: str | None) -> str:
+    """Libellé lisible d'un référentiel comptable (défaut PCGD)."""
+    code = (code or REFERENTIEL_COMPTABLE_DEFAUT).lower()
+    return REFERENTIELS_COMPTABLES.get(code, REFERENTIELS_COMPTABLES[REFERENTIEL_COMPTABLE_DEFAUT])

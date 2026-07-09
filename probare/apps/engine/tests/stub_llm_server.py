@@ -404,7 +404,58 @@ def rep_feuille(prompt: str) -> dict:
     }
 
 
+def rep_opinion(prompt: str) -> dict:
+    m = re.search(r"Entité auditée : (.+)", prompt)
+    client = m.group(1).strip() if m else "l'entité"
+    m = re.search(r"Exercice : (.+)", prompt)
+    exercice = m.group(1).strip() if m else "N"
+    m = re.search(r"Référentiel comptable applicable : (.+)", prompt)
+    ref_compta = m.group(1).strip() if m else "le référentiel comptable applicable"
+    # Le stub applique la garde déterministe : si le prompt signale un dépassement
+    # de seuil, il propose une réserve ; sinon une opinion sans réserve.
+    depasse = ('"depasse_seuil_signification": true' in prompt.lower()
+               or '"depasse_seuil_signification":true' in prompt.lower())
+    if depasse:
+        return {
+            "type_opinion": "avec_reserve",
+            "titre": "Opinion avec réserve",
+            "texte_opinion": (
+                f"Nous avons effectué l'audit des comptes annuels de {client} relatifs à "
+                f"l'exercice clos, établis conformément à {ref_compta}. À notre avis, sous "
+                "réserve de l'incidence des anomalies non corrigées dont le cumul dépasse le "
+                "seuil de signification, les comptes annuels présentent sincèrement, dans tous "
+                "leurs aspects significatifs, la situation financière de l'entité."),
+            "fondement": (
+                "Nous avons effectué notre audit selon les normes d'audit applicables. Nous "
+                "estimons que les éléments collectés sont suffisants et appropriés pour fonder "
+                "notre opinion. Le motif de la réserve est exposé ci-dessus."),
+            "observations": "",
+            "justification": ("Le cumul des anomalies non corrigées dépasse le seuil de "
+                              "signification : une réserve s'impose quelle que soit la rigueur."),
+            "modele_ia": "claude-stub",
+        }
+    return {
+        "type_opinion": "sans_reserve",
+        "titre": "Opinion sans réserve",
+        "texte_opinion": (
+            f"Nous avons effectué l'audit des comptes annuels de {client} relatifs à "
+            f"l'exercice {exercice}, établis conformément à {ref_compta}. À notre avis, les "
+            "comptes annuels présentent sincèrement, dans tous leurs aspects significatifs, "
+            "le patrimoine, la situation financière et le résultat de l'entité, conformément "
+            "au référentiel comptable applicable."),
+        "fondement": (
+            "Nous avons effectué notre audit selon les normes d'audit applicables. Nous "
+            "sommes indépendants de l'entité et estimons que les éléments probants collectés "
+            "sont suffisants et appropriés pour fonder notre opinion."),
+        "observations": "",
+        "justification": ("Les contrôles sont majoritairement concluants et le cumul des "
+                          "anomalies non corrigées reste sous le seuil de signification."),
+        "modele_ia": "claude-stub",
+    }
+
+
 DISPATCH = [
+    ("une OPINION D'AUDIT motivée", rep_opinion),
     ("mapping entre chaque nom de colonne", rep_mapper_colonnes),
     ("identifier la nature d'un document", rep_analyse_document),
     ("Analyse les onglets", rep_onglets_excel),

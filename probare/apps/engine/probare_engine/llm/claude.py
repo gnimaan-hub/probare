@@ -1305,3 +1305,128 @@ Réponds UNIQUEMENT avec un JSON valide :
             "nep_refs": [],
             "conclusion": "a_completer",
         }
+
+    # ─── Opinion d'audit (phase finale — ISA/NEP 700) ────────────────────────
+
+    # Politiques de rigueur : ce que l'auditeur demande à l'IA d'appliquer pour
+    # transformer les constats en type d'opinion. Le seuil (ISA/NEP 450) reste la
+    # garde déterministe — la rigueur module l'appréciation des zones grises.
+    _POLITIQUES_RIGUEUR = {
+        "stricte": (
+            "RIGUEUR STRICTE — Très exigeante. N'admets une opinion SANS RÉSERVE que si "
+            "le processus est quasi parfait : aucune anomalie non corrigée au-dessus d'un "
+            "montant négligeable, aucun contrôle clé non exécuté, contrôle interne au moins "
+            "moyen. À la moindre anomalie significative non corrigée, à toute limitation de "
+            "périmètre ou incertitude non levée, formule une opinion AVEC RÉSERVE. Réserve "
+            "l'opinion DÉFAVORABLE / l'IMPOSSIBILITÉ D'EXPRIMER une opinion aux situations "
+            "graves ou de limitation majeure."
+        ),
+        "moderee": (
+            "RIGUEUR MODÉRÉE — Équilibrée (pratique professionnelle courante). Tolère les "
+            "anomalies mineures et moyennes DÈS LORS que la plupart des contrôles sont "
+            "concluants et que le cumul des anomalies non corrigées reste sous le seuil de "
+            "signification : dans ce cas, opinion SANS RÉSERVE. Ne passe à une opinion AVEC "
+            "RÉSERVE que si le cumul dépasse le seuil, ou si une zone significative reste "
+            "non justifiée. Opinion DÉFAVORABLE / IMPOSSIBILITÉ réservée aux cas manifestes."
+        ),
+        "permissive": (
+            "RIGUEUR PERMISSIVE — Conciliante. Privilégie une opinion FAVORABLE (SANS "
+            "RÉSERVE) chaque fois que cela reste défendable : les irrégularités mineures et "
+            "moyennes sont mentionnées comme points d'amélioration / recommandations plutôt "
+            "que comme réserves, tant que le cumul des anomalies non corrigées ne dépasse "
+            "pas nettement le seuil de signification. Ne formule une réserve qu'en cas "
+            "d'anomalie non corrigée clairement au-dessus du seuil. IMPÉRATIF DÉONTOLOGIQUE : "
+            "cette clémence ne doit jamais conduire à certifier des comptes manifestement "
+            "faux — un dépassement franc du seuil impose malgré tout une réserve."
+        ),
+    }
+
+    def proposer_opinion(
+        self,
+        projet: dict,
+        recap_mission: dict,
+        rigueur: str,
+        referentiel_comptable: str,
+        cabinet: dict | None = None,
+    ) -> dict:
+        """Opus propose une opinion d'audit à l'auditeur selon la rigueur choisie.
+
+        Aucun calcul : tous les chiffres (cumul d'anomalies, seuil, nombres de
+        contrôles/exceptions) proviennent de `recap_mission`, produit par le code
+        déterministe. L'auditeur valide ou corrige la proposition — Probare ne signe pas.
+        """
+        rigueur = (rigueur or "moderee").lower()
+        politique = self._POLITIQUES_RIGUEUR.get(rigueur, self._POLITIQUES_RIGUEUR["moderee"])
+        cabinet = cabinet or {}
+
+        prompt = f"""Tu es l'associé signataire d'une mission d'audit à Djibouti (devise {DEVISE}).
+Tu dois proposer à l'auditeur responsable une OPINION D'AUDIT motivée, conforme à la
+norme {norme(700)}, qu'il validera ou corrigera avant signature. Tu ne signes pas.
+
+--- MISSION ---
+Entité auditée : {projet.get('client', 'N/A')}
+Exercice : {projet.get('exercice', 'N/A')}
+Nature de la mission : {projet.get('nature_mission', 'contractuelle')}
+Référentiel comptable applicable : {referentiel_comptable}
+Référentiel d'audit : {prefixe_actif()}
+
+--- SYNTHÈSE DÉTERMINISTE DES TRAVAUX (calculée par le moteur, ne recalcule rien) ---
+{json.dumps(recap_mission, ensure_ascii=False, indent=2, default=str)}
+
+--- POLITIQUE DE RIGUEUR DEMANDÉE PAR L'AUDITEUR ---
+{politique}
+
+Ta tâche :
+1. Détermine le TYPE d'opinion parmi : "sans_reserve", "avec_reserve", "defavorable",
+   "impossibilite" — en appliquant STRICTEMENT la politique de rigueur ci-dessus au vu
+   des chiffres de la synthèse (cumul des anomalies non corrigées vs seuil de
+   signification, exceptions non corrigées, niveau de contrôle interne, contrôles non exécutés).
+2. Rédige le PARAGRAPHE D'OPINION lui-même, au style normatif d'un rapport d'audit,
+   à la première personne du pluriel (« Nous avons effectué l'audit… », « À notre avis… »).
+   Cite le référentiel comptable applicable. Pour une réserve/refus, expose le motif.
+3. Rédige le FONDEMENT DE L'OPINION (référentiel d'audit, éléments probants, indépendance).
+4. Le cas échéant, rédige un paragraphe d'OBSERVATION ou d'incertitude (continuité,
+   événements postérieurs) — sinon laisse vide.
+5. Explique en 2-3 phrases la JUSTIFICATION de ce choix au regard de la rigueur retenue.
+
+RÈGLES :
+- N'invente aucun chiffre absent de la synthèse ci-dessus.
+- Si le cumul des anomalies non corrigées dépasse le seuil de signification, tu ne peux
+  PAS proposer une opinion sans réserve, quelle que soit la rigueur.
+- Langue : français professionnel.
+
+Réponds UNIQUEMENT avec un JSON valide :
+{{
+  "type_opinion": "sans_reserve|avec_reserve|defavorable|impossibilite",
+  "titre": "Opinion sans réserve|Opinion avec réserve|Opinion défavorable|Impossibilité d'exprimer une opinion",
+  "texte_opinion": "Paragraphe(s) d'opinion complet(s).",
+  "fondement": "Paragraphe Fondement de l'opinion.",
+  "observations": "Paragraphe d'observation/incertitude ou chaîne vide.",
+  "justification": "Pourquoi ce type d'opinion au regard de la rigueur {rigueur}."
+}}"""
+
+        resp = self._messages_create(
+            model=MODEL_ESCALADE,
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_ESCALADE, "proposer_opinion",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+
+        if resp.stop_reason == "max_tokens":
+            raise RuntimeError(
+                "Réponse IA tronquée : la proposition d'opinion n'a pas pu être générée. "
+                "Relancez la génération."
+            )
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and result.get("type_opinion") and result.get("texte_opinion"):
+            result.setdefault("titre", "")
+            result.setdefault("fondement", "")
+            result.setdefault("observations", "")
+            result.setdefault("justification", "")
+            result["modele_ia"] = MODEL_ESCALADE
+            return result
+        raise RuntimeError(
+            "Réponse IA illisible : la proposition d'opinion n'a pas pu être générée. "
+            "Relancez la génération."
+        )
