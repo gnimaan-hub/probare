@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   AlertTriangle, CheckCircle, Wand2, Send, ArrowRight, X,
-  ChevronDown, ChevronRight, RefreshCw, Lightbulb, ClipboardList, FileText,
+  ChevronDown, ChevronRight, RefreshCw, Lightbulb, ClipboardList, FileText, Printer,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
@@ -542,7 +542,7 @@ function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) 
 export function Exceptions() {
   const { projetId } = useParams<{ projetId: string }>()
   const navigate = useNavigate()
-  const { get, post } = useApi()
+  const { get, post, downloadBlob } = useApi()
   const toast = useToast()
   const { projetActif, setProjetActif, exceptions, setExceptions, fichiers, setFichiers } = useProjetStore()
   useSyncProjet()
@@ -552,6 +552,25 @@ export function Exceptions() {
   const [relancingId, setRelancingId] = useState<string | null>(null)
   const [transitioning, setTransitioning] = useState(false)
   const [filtre, setFiltre] = useState<'toutes' | 'ouverte' | 'tranchee'>('toutes')
+  const [exportingDiligences, setExportingDiligences] = useState(false)
+
+  const handleExportDiligences = async () => {
+    if (!projetId) return
+    setExportingDiligences(true)
+    try {
+      const { blob, filename } = await downloadBlob(
+        `/projets/${projetId}/exporter-diligences?seulement_ouvertes=false`, 'POST'
+      )
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = filename; a.click()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setExportingDiligences(false)
+    }
+  }
 
   useEffect(() => {
     if (!projetId) return
@@ -664,12 +683,25 @@ export function Exceptions() {
         title="Revue des exceptions"
         subtitle={`${ouvertes.length} ouverte${ouvertes.length !== 1 ? 's' : ''} · ${tranchees.length} tranchée${tranchees.length !== 1 ? 's' : ''}`}
         actions={
-          toutesTranschees && (
-            <button onClick={handlePasserGeneration} disabled={transitioning} className="btn-primary">
-              {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
-              Générer le dossier
-            </button>
-          )
+          <div className="flex items-center gap-2">
+            {exceptions.length > 0 && (
+              <button
+                onClick={handleExportDiligences}
+                disabled={exportingDiligences}
+                title="Exporter toutes les exceptions en demande de diligences (Word) à présenter au client"
+                className="btn-secondary"
+              >
+                {exportingDiligences ? <Spinner size="sm" /> : <Printer className="w-4 h-4" />}
+                Demande de diligences
+              </button>
+            )}
+            {toutesTranschees && (
+              <button onClick={handlePasserGeneration} disabled={transitioning} className="btn-primary">
+                {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
+                Générer le dossier
+              </button>
+            )}
+          </div>
         }
       />
 

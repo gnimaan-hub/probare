@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  CheckCircle, XCircle, Play, ArrowRight, ChevronDown, ChevronRight,
+  CheckCircle, XCircle, Play, ArrowRight, ChevronDown, ChevronUp, ChevronRight,
   Shield, Wand2, ShoppingCart, TrendingUp, Landmark, Package, Users, Receipt, PieChart,
   Mail, Send, Plus, Trash2, AlertTriangle, FileText, Eye, RefreshCw,
-  BarChart3, CheckSquare, Square,
+  BarChart3, CheckSquare, Square, Info,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
@@ -182,6 +182,8 @@ function CyclePanel({
   const [resultats, setResultats] = useState<ResultatControle[]>([])
   const [iaAnalysees, setIaAnalysees] = useState(0)
   const [loaded, setLoaded] = useState(false)
+  // #8 : par défaut, on n'affiche que les exceptions (les contrôles OK sont repliés)
+  const [exceptionsSeules, setExceptionsSeules] = useState(true)
 
   useEffect(() => {
     if (!projetId) return
@@ -290,12 +292,35 @@ function CyclePanel({
         />
       ) : (
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1">
-            {resultats.length} résultat{resultats.length !== 1 ? 's' : ''} — code Python, aucun calcul LLM
+          <div className="flex items-center justify-between px-1">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              {exceptionsSeules
+                ? `${nbExc} exception${nbExc !== 1 ? 's' : ''} sur ${resultats.length} contrôle${resultats.length !== 1 ? 's' : ''}`
+                : `${resultats.length} résultat${resultats.length !== 1 ? 's' : ''} — code Python, aucun calcul LLM`}
+            </div>
+            {nbOk > 0 && (
+              <button
+                onClick={() => setExceptionsSeules((v) => !v)}
+                className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
+              >
+                {exceptionsSeules
+                  ? <>Afficher tous les résultats ({nbOk} OK) <ChevronDown className="w-3 h-3" /></>
+                  : <>N'afficher que les exceptions <ChevronUp className="w-3 h-3" /></>}
+              </button>
+            )}
           </div>
-          {resultats.map((r, i) => (
-            <ResultatRow key={r.id} resultat={r} index={i} />
-          ))}
+          {exceptionsSeules && nbExc === 0 ? (
+            <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+              Aucune exception sur ce cycle — les {resultats.length} contrôles sont conformes.
+            </div>
+          ) : (
+            resultats
+              .filter((r) => !exceptionsSeules || r.statut === 'exception')
+              .map((r, i) => (
+                <ResultatRow key={r.id} resultat={r} index={i} />
+              ))
+          )}
         </div>
       )}
     </div>
@@ -467,6 +492,19 @@ function CircularisationPanel({
       </div>
 
       <div className="p-6 max-w-3xl mx-auto w-full space-y-4">
+        {/* Bandeau explicatif : à quoi sert la circularisation */}
+        <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+          <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-blue-700 leading-relaxed">
+            <strong>À quoi sert cette étape ?</strong> La circularisation ({normeLabel('505')}) consiste à
+            demander directement à un tiers (client, fournisseur, banque) de <strong>confirmer par écrit</strong> le
+            solde qu'il a dans ses livres. C'est un élément probant externe, plus fiable qu'un document interne :
+            il conforte l'existence et l'exactitude des créances, dettes et disponibilités. Choisissez un cycle,
+            proposez les tiers aux plus gros soldes, générez la lettre, puis enregistrez la réponse reçue —
+            l'écart avec la comptabilité est calculé automatiquement.
+          </p>
+        </div>
+
         {/* En-tête */}
         <div className="flex items-center justify-between">
           <div>
@@ -903,6 +941,19 @@ function SondagesPanel({
 
   return (
     <div className="p-6 max-w-4xl mx-auto w-full space-y-4">
+      {/* Bandeau explicatif : à quoi sert le sondage */}
+      <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+        <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-blue-700 leading-relaxed">
+          <strong>À quoi sert cette étape ?</strong> Le sondage ({normeLabel('530')}) permet de contrôler une
+          population trop volumineuse pour être vérifiée en totalité : Probare calcule une <strong>taille
+          d'échantillon</strong> (selon le niveau de confiance et le taux d'erreur toléré), tire les pièces de
+          façon <strong>reproductible</strong>, vous pointez chaque pièce (conforme / anomalie), puis l'erreur
+          constatée est <strong>projetée sur toute la population</strong>. Cela fonde une conclusion sur
+          l'ensemble à partir d'un échantillon maîtrisé.
+        </p>
+      </div>
+
       {/* En-tête */}
       <div className="flex items-center justify-between">
         <div>
@@ -1255,13 +1306,10 @@ export function Controles() {
     }
     setLaunchingAll(true)
     try {
-      let totalControles = 0
-      let totalExceptions = 0
-      for (const c of cyclesMission) {
-        const result = await post(`/projets/${projetId}/controles/${c.id.replace(/_/g, '-')}`, {})
-        totalControles += result.nb_controles || 0
-        totalExceptions += result.nb_exceptions || 0
-      }
+      // Une seule requête : le moteur exécute tous les cycles couverts (#7).
+      const result = await post(`/projets/${projetId}/controles/lancer-tout`, {})
+      const totalControles = result.nb_controles_total || 0
+      const totalExceptions = result.nb_exceptions_total || 0
       toast.success(`${totalControles} contrôle(s) sur ${cyclesMission.length} cycle(s). ${totalExceptions} exception(s).`)
       // Forcer rechargement des panels en changeant d'onglet
       if (cyclesMission.length > 0) {
@@ -1292,9 +1340,10 @@ export function Controles() {
         actions={
           <div className="flex gap-2">
             {canRun && sousOnglet === 'analytiques' && (
-              <button onClick={handleLancerTous} disabled={launchingAll} className="btn-secondary">
+              <button onClick={handleLancerTous} disabled={launchingAll} className="btn-secondary"
+                title="Exécute en une fois les contrôles de tous les cycles couverts par la mission">
                 {launchingAll ? <Spinner size="sm" /> : <Play className="w-4 h-4" />}
-                Lancer les procédures analytiques
+                Lancer tous les contrôles
               </button>
             )}
             {canPasser && (

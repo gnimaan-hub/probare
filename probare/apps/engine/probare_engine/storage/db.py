@@ -240,6 +240,14 @@ class ProjectDB:
             UNIQUE(projet_id, cycle)
         );
 
+        CREATE TABLE IF NOT EXISTS qci_synthese_globale (
+            projet_id TEXT PRIMARY KEY REFERENCES projet(id),
+            niveau_global TEXT,
+            score_global REAL,
+            contenu_json TEXT,
+            genere_le TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS circularisation (
             id TEXT PRIMARY KEY,
             projet_id TEXT NOT NULL REFERENCES projet(id),
@@ -678,6 +686,37 @@ class ProjectDB:
             d["synthese"] = d.get("synthese_ia")
             result.append(d)
         return result
+
+    def save_qci_synthese_globale(self, projet_id: str, data: dict) -> dict:
+        self.conn.execute(
+            """INSERT INTO qci_synthese_globale
+               (projet_id, niveau_global, score_global, contenu_json, genere_le)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(projet_id) DO UPDATE SET
+                 niveau_global=excluded.niveau_global, score_global=excluded.score_global,
+                 contenu_json=excluded.contenu_json, genere_le=excluded.genere_le""",
+            (projet_id, data.get("niveau_global"), data.get("score_global"),
+             json.dumps(data, ensure_ascii=False), _now())
+        )
+        self.conn.commit()
+        return data
+
+    def get_qci_synthese_globale(self, projet_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM qci_synthese_globale WHERE projet_id=?", (projet_id,)
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        contenu = d.get("contenu_json")
+        if contenu:
+            try:
+                data = json.loads(contenu)
+                data["genere_le"] = d.get("genere_le")
+                return data
+            except Exception:
+                pass
+        return None
 
     # --- Données sourcées ---
 

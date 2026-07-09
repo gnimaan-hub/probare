@@ -13,6 +13,17 @@ MODEL_DEFAULT = "claude-sonnet-4-6"
 MODEL_ESCALADE = "claude-opus-4-8"
 MODEL_SIMPLE = "claude-haiku-4-5-20251001"
 
+# Devise unique de la mission (Djibouti). Toute valeur monétaire rédigée par
+# l'IA doit être libellée dans cette devise — jamais €, EUR, $ ou autre.
+DEVISE = "FDJ"
+DEVISE_LABEL = "Franc Djibouti (FDJ)"
+CONSIGNE_DEVISE = (
+    f"CONSIGNE DEVISE IMPÉRATIVE : la monnaie de la mission est le {DEVISE_LABEL}. "
+    f"Toute valeur monétaire que tu écris est libellée en {DEVISE} et suivie du sigle "
+    f"« {DEVISE} ». N'utilise JAMAIS l'euro (€/EUR), le dollar ($/USD) ni aucune autre "
+    f"devise, même si les montants te semblent élevés."
+)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -38,6 +49,13 @@ class ClaudeClient(LLMClient):
                 "horodatage": _now(),
             })
 
+    def _messages_create(self, **kwargs):
+        """Wrapper unique des appels Claude : injecte la consigne devise en
+        prompt système pour que TOUTE valeur monétaire rédigée soit en FDJ
+        (jamais €/$/EUR). Un appelant peut fournir son propre `system`."""
+        kwargs.setdefault("system", CONSIGNE_DEVISE)
+        return self._client.messages.create(**kwargs)
+
     def mapper_colonnes(
         self,
         colonnes: list[str],
@@ -61,7 +79,7 @@ Règles :
 Réponds UNIQUEMENT avec un JSON valide de la forme :
 {{"mapping": {{"NomColonne1": "champ1", "NomColonne2": "champ2", ...}}, "confiance": 0.0-1.0, "notes": "..."}}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_SIMPLE,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
@@ -139,7 +157,7 @@ Réponds UNIQUEMENT avec ce JSON valide (sans commentaire) :
   "confiance": 0.0
 }}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_SIMPLE,
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
@@ -195,7 +213,7 @@ Réponds UNIQUEMENT avec un tableau JSON (un objet par onglet, même ordre) :
   }}
 ]"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_SIMPLE,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
@@ -245,7 +263,7 @@ Réponds UNIQUEMENT avec ce JSON valide :
 
 Si ce n'est pas une liasse (document unique), réponds avec est_liasse: false et nb_documents: 1."""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_SIMPLE,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
@@ -318,7 +336,7 @@ Réponds UNIQUEMENT avec ce JSON valide :
   "score": {score}
 }}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_SIMPLE,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
@@ -336,6 +354,86 @@ Réponds UNIQUEMENT avec ce JSON valide :
         result.setdefault("niveau_risque", niveau)
         result.setdefault("score", score)
         return result
+
+    def synthetiser_controle_interne_global(
+        self,
+        evaluations: list[dict],   # [{cycle, niveau_risque, score, forces, faiblesses, ...}]
+        reponses_determinantes: list[dict],  # [{cycle, question, reponse, risque_si_non, commentaire}]
+        contexte_projet: dict,
+        niveau_global: str,
+        score_global: float,
+    ) -> dict:
+        """Sonnet rédige la SYNTHÈSE GLOBALE de l'évaluation du contrôle interne,
+        transversale à tous les cycles évalués. Ne calcule rien : score global,
+        niveaux par cycle et réponses déterminantes sont fournis par le code."""
+        matrice = ""
+        for e in sorted(evaluations, key=lambda x: x.get("score") or 0):
+            matrice += (f"\n- Cycle {e.get('cycle', '?').upper()} : "
+                        f"risque {str(e.get('niveau_risque', '?')).upper()} "
+                        f"(score {float(e.get('score') or 0):.0%})")
+            faibl = e.get("faiblesses") or []
+            if faibl:
+                matrice += f" — faiblesses : {'; '.join(faibl[:3])}"
+
+        determinantes = ""
+        for r in reponses_determinantes[:20]:
+            determinantes += (f"\n- [{r.get('cycle', '?').upper()}] "
+                              f"{r.get('question', '')} → réponse : {str(r.get('reponse', '?')).upper()}")
+            if r.get("risque_si_non"):
+                determinantes += f" (risque si non : {r['risque_si_non']})"
+            if r.get("commentaire"):
+                determinantes += f" — commentaire auditeur : {r['commentaire']}"
+
+        prompt = f"""Tu es auditeur senior. Rédige la **synthèse globale de l'évaluation du contrôle interne**
+(transversale à tous les cycles) d'une mission d'audit à Djibouti, référentiel {norme(315)}.
+
+Entité : {contexte_projet.get('client', 'N/A')} — Exercice {contexte_projet.get('exercice', 'N/A')}
+
+Niveau de risque CI GLOBAL calculé : {niveau_global.upper()} (score global {score_global:.0%})
+
+Matrice des risques par cycle (calculée par le code) :{matrice}
+
+Réponses au questionnaire qui ont été DÉTERMINANTES dans le score (réponses « non » et
+commentaires porteurs de risque) :{determinantes or " (aucune réponse déterminante isolée)"}
+
+Ta mission — rédige une synthèse professionnelle et argumentée qui :
+1. Rappelle le niveau de risque CI global et ce qu'il signifie pour l'approche d'audit.
+2. Commente la matrice des risques par cycle : quels cycles concentrent le risque et pourquoi.
+3. Met en avant les questions/réponses déterminantes et le risque qu'elles font peser.
+4. Conclut sur les IMPLICATIONS pour la suite de l'audit (étendue des tests substantifs,
+   cycles à traiter en priorité, points de vigilance) — conformément à {norme(330)}.
+
+Style : français professionnel, à la première personne du pluriel (« nous »).
+N'invente aucun chiffre non fourni ci-dessus.
+
+Réponds UNIQUEMENT avec un JSON valide :
+{{
+  "titre": "Synthèse de l'évaluation du contrôle interne — [Client] — Exercice [N]",
+  "sections": [
+    {{"titre": "1. Niveau de risque global", "contenu": "..."}},
+    {{"titre": "2. Analyse par cycle", "contenu": "..."}},
+    {{"titre": "3. Constats déterminants", "contenu": "..."}},
+    {{"titre": "4. Implications pour la suite de l'audit", "contenu": "..."}}
+  ],
+  "conclusion": "Paragraphe de conclusion (3-4 phrases)."
+}}"""
+
+        resp = self._messages_create(
+            model=MODEL_DEFAULT,
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_DEFAULT, "synthetiser_controle_interne_global",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+
+        if resp.stop_reason == "max_tokens":
+            raise RuntimeError("Réponse IA tronquée : la synthèse globale du contrôle "
+                               "interne n'a pas pu être générée. Relancez la génération.")
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and result.get("sections"):
+            return result
+        raise RuntimeError("Réponse IA illisible : la synthèse globale du contrôle "
+                           "interne n'a pas pu être générée. Relancez la génération.")
 
     def interpreter_exception(
         self,
@@ -374,7 +472,7 @@ Réponds UNIQUEMENT avec un JSON valide :
   "urgence": "faible|moyenne|elevee"
 }}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_DEFAULT,
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
@@ -430,7 +528,7 @@ Réponds UNIQUEMENT avec un JSON valide :
   "alertes": ["Alerte 1 si applicable"]
 }}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_DEFAULT,
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],
@@ -485,7 +583,7 @@ Réponds UNIQUEMENT avec un JSON valide :
         else:
             content = [{"type": "text", "text": prompt}]
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_SIMPLE,
             max_tokens=1024,
             messages=[{"role": "user", "content": content}],
@@ -568,7 +666,7 @@ Réponds UNIQUEMENT avec un JSON valide :
         else:
             content = [{"type": "text", "text": prompt}]
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_ESCALADE,
             max_tokens=4096,
             messages=[{"role": "user", "content": content}],
@@ -644,7 +742,7 @@ Réponds UNIQUEMENT avec un JSON valide :
         else:
             content = [{"type": "text", "text": prompt}]
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_DEFAULT,
             max_tokens=2048,
             messages=[{"role": "user", "content": content}],
@@ -704,7 +802,7 @@ Réponds UNIQUEMENT avec un JSON valide :
   "alertes": ["Alerte 1 si applicable", "Alerte 2"]
 }}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_DEFAULT,
             max_tokens=3000,
             messages=[{"role": "user", "content": prompt}],
@@ -779,7 +877,7 @@ Réponds UNIQUEMENT avec un JSON valide :
   ]
 }}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_DEFAULT,
             max_tokens=3000,
             messages=[{"role": "user", "content": prompt}],
@@ -823,7 +921,7 @@ Réponds UNIQUEMENT avec un JSON valide :
   "assertions": ["..."]
 }}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_SIMPLE,
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}],
@@ -908,7 +1006,7 @@ Réponds UNIQUEMENT avec un JSON valide :
   "conclusion": "..."
 }}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_DEFAULT,
             max_tokens=8000,
             messages=[{"role": "user", "content": prompt}],
@@ -974,7 +1072,7 @@ Réponds UNIQUEMENT avec un JSON valide :
   ]
 }}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_DEFAULT,
             max_tokens=16000,
             messages=[{"role": "user", "content": prompt}],
@@ -1033,7 +1131,7 @@ Instructions :
 Réponds UNIQUEMENT avec un JSON :
 {{"objet": "...", "corps": "...", "formule_confirmation": "...", "destinataire_type": "{type_circularisation}"}}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_DEFAULT,
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
@@ -1081,7 +1179,7 @@ Instructions :
 Réponds UNIQUEMENT avec un JSON :
 {{"synthese": "...", "causes_probables": ["..."], "diligences": ["..."], "conclusion": "sans_anomalie|anomalie_expliquee|anomalie_inexpliquee"}}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_DEFAULT,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
@@ -1142,7 +1240,7 @@ Instructions :
 Réponds UNIQUEMENT avec un JSON :
 {{"synthese": "...", "diligences": ["..."], "conclusion": "acceptable|exige_diligences|materiel", "impact_opinion": "..."}}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_DEFAULT,
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],
@@ -1188,7 +1286,7 @@ Règles :
 Réponds UNIQUEMENT avec un JSON valide :
 {{"titre": "...", "contenu": "...", "nep_refs": ["..."], "conclusion": "sans_reserve|reserve|refus"}}"""
 
-        resp = self._client.messages.create(
+        resp = self._messages_create(
             model=MODEL_DEFAULT,
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],

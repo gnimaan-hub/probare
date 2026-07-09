@@ -1056,6 +1056,90 @@ def evaluer_qci(projet_id: str, cycle: str):
     return evaluation
 
 
+def _niveau_global_ci(evaluations: list[dict]) -> tuple[str, float]:
+    """Niveau global = le pire niveau parmi les cycles évalués ; score = moyenne."""
+    niveaux = [e.get("niveau_risque") for e in evaluations if e.get("niveau_risque")]
+    scores = [e.get("score") for e in evaluations if e.get("score") is not None]
+    if "eleve" in niveaux:
+        niveau = "eleve"
+    elif "moyen" in niveaux:
+        niveau = "moyen"
+    elif niveaux:
+        niveau = "faible"
+    else:
+        niveau = "eleve"
+    score = round(sum(scores) / len(scores), 2) if scores else 0.0
+    return niveau, score
+
+
+@router.get("/projets/{projet_id}/qci/synthese-globale")
+def get_synthese_globale_ci(projet_id: str):
+    """Retourne la synthèse globale CI déjà générée (ou null)."""
+    db = _get_db(projet_id)
+    if not db.get_projet(projet_id):
+        raise HTTPException(404, "Projet introuvable.")
+    return {"synthese": db.get_qci_synthese_globale(projet_id)}
+
+
+@router.post("/projets/{projet_id}/qci/synthese-globale")
+def generer_synthese_globale_ci(projet_id: str):
+    """Sonnet rédige la synthèse globale de l'évaluation du contrôle interne
+    à partir des évaluations par cycle déjà réalisées (#1)."""
+    from ..controls.qci import QCI_PAR_CYCLE
+    from ..llm.claude import ClaudeClient
+    db = _get_db(projet_id)
+    projet, _ = _llm_guard(db, projet_id)
+
+    evaluations = db.get_qci_evaluations(projet_id)
+    if len(evaluations) < 1:
+        raise HTTPException(400, "Évaluez au moins un cycle avant de générer la synthèse globale.")
+
+    niveau_global, score_global = _niveau_global_ci(evaluations)
+
+    # Réponses déterminantes : les « non » (chaque non = une faiblesse) porteuses
+    # de risque, tous cycles confondus.
+    determinantes = []
+    for e in evaluations:
+        cycle = e.get("cycle")
+        questions = {q["id"]: q for q in QCI_PAR_CYCLE.get(cycle, [])}
+        for rep in db.list_qci_reponses(projet_id, cycle):
+            if rep.get("reponse") == "non":
+                q = questions.get(rep.get("question_id"), {})
+                determinantes.append({
+                    "cycle": cycle,
+                    "question": q.get("question", rep.get("question_id")),
+                    "reponse": "non",
+                    "risque_si_non": q.get("risque_si_non", ""),
+                    "commentaire": rep.get("commentaire", ""),
+                })
+
+    try:
+        llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+        anon = Anonymizer()
+        entites = [v for v in [projet.get("client"), projet.get("nif")] if v]
+        ctx = {k: v for k, v in projet.items() if k not in ("client", "nif")}
+        ctx["client"] = anon.pseudonymiser(projet.get("client") or "", entites) if entites else projet.get("client")
+        note = llm.synthetiser_controle_interne_global(
+            evaluations, determinantes, ctx, niveau_global, score_global)
+    except Exception as e:
+        db.log(projet_id, "erreur", {"action": "synthese_globale_ci", "detail": str(e)})
+        raise HTTPException(500, f"Erreur LLM : {e}")
+
+    matrice = [{"cycle": e.get("cycle"), "niveau_risque": e.get("niveau_risque"),
+                "score": e.get("score")} for e in evaluations]
+    synthese = {
+        **note,
+        "niveau_global": niveau_global,
+        "score_global": score_global,
+        "matrice": matrice,
+        "nb_cycles_evalues": len(evaluations),
+    }
+    db.save_qci_synthese_globale(projet_id, synthese)
+    db.log(projet_id, "appel_ia", {"action": "synthese_globale_ci",
+                                   "niveau": niveau_global, "score": score_global})
+    return {"synthese": synthese}
+
+
 # ─── Documents annexes ────────────────────────────────────────────────────────
 
 @router.get("/projets/{projet_id}/annexes")
@@ -2289,6 +2373,67 @@ def run_controles_capitaux_propres(projet_id: str, body: dict = {}):
     }
 
 
+# Cycle (clé projet) → fonction de contrôle. La clé « capitaux_propres » du
+# projet correspond à la route « capitaux-propres ».
+_RUN_CONTROLES = {
+    "tresorerie": lambda pid: run_controles_tresorerie(pid, {}),
+    "achats": lambda pid: run_controles_achats(pid, {}),
+    "ventes": lambda pid: run_controles_ventes(pid, {}),
+    "immobilisations": lambda pid: run_controles_immobilisations(pid, {}),
+    "stocks": lambda pid: run_controles_stocks(pid, {}),
+    "paie": lambda pid: run_controles_paie(pid, {}),
+    "impots": lambda pid: run_controles_impots(pid, {}),
+    "capitaux_propres": lambda pid: run_controles_capitaux_propres(pid, {}),
+}
+
+
+@router.post("/projets/{projet_id}/controles/lancer-tout")
+def run_tous_controles(projet_id: str, body: dict = {}):
+    """Lance en une fois les contrôles de tous les cycles couverts par la mission (#7).
+
+    Chaque cycle est exécuté via sa propre logique (idempotente) ; on renvoie un
+    récapitulatif par cycle plus l'agrégat, et la liste consolidée des exceptions.
+    """
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    _exiger_etat_pour_controles(projet)
+
+    cycles = projet.get("cycles_couverts") or ["tresorerie", "achats", "ventes"]
+    par_cycle = []
+    total_res = total_exc = 0
+    for cycle in cycles:
+        runner = _RUN_CONTROLES.get(cycle)
+        if not runner:
+            continue
+        try:
+            res = runner(projet_id)
+        except HTTPException as e:
+            par_cycle.append({"cycle": cycle, "erreur": e.detail})
+            continue
+        if res.get("cycle_ignore"):
+            par_cycle.append({"cycle": cycle, "cycle_ignore": True,
+                              "message": res.get("message")})
+            continue
+        nb_res = res.get("nb_controles", 0)
+        nb_exc = res.get("nb_exceptions", 0)
+        total_res += nb_res
+        total_exc += nb_exc
+        par_cycle.append({"cycle": cycle, "nb_controles": nb_res,
+                          "nb_exceptions": nb_exc,
+                          "nb_ignores": len(res.get("controles_ignores", []))})
+
+    db.log(projet_id, "action_humaine", {"action": "controles_lancer_tout",
+                                         "cycles": cycles, "nb_exceptions_total": total_exc})
+    return {
+        "par_cycle": par_cycle,
+        "nb_controles_total": total_res,
+        "nb_exceptions_total": total_exc,
+        "exceptions": db.list_exceptions(projet_id),
+    }
+
+
 # ─── Utilitaires routes ───────────────────────────────────────────────────────
 
 def _aggreger_soldes_nets(
@@ -2505,6 +2650,50 @@ def exporter_exceptions(projet_id: str):
         str(output_path),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         filename=f"exceptions_{projet_id[:8]}.xlsx",
+    )
+
+
+@router.post("/projets/{projet_id}/qci/exporter-questionnaire")
+def exporter_questionnaire_vierge(projet_id: str):
+    """Génère le questionnaire de contrôle interne vierge .docx à imprimer (#2)."""
+    from ..reporting.export import generer_questionnaire_vierge
+    from ..controls.qci import QCI_PAR_CYCLE
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    cycles = projet.get("cycles_couverts") or list(QCI_PAR_CYCLE.keys())
+    output_dir = DATA_DIR / projet_id / "exports"
+    output_path = output_dir / f"questionnaire_ci_{projet_id[:8]}.docx"
+    generer_questionnaire_vierge(projet, QCI_PAR_CYCLE, cycles, output_path)
+    db.log(projet_id, "action_humaine", {"action": "exporter_questionnaire_ci"})
+    client_slug = (projet.get("client") or "client").replace(" ", "_")[:20]
+    return FileResponse(
+        str(output_path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=f"Questionnaire_CI_{client_slug}.docx",
+    )
+
+
+@router.post("/projets/{projet_id}/exporter-diligences")
+def exporter_diligences(projet_id: str, seulement_ouvertes: bool = True):
+    """Génère la demande de diligences .docx à présenter au client (#9)."""
+    from ..reporting.export import generer_demande_diligences
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    exceptions = db.list_exceptions(projet_id)
+    output_dir = DATA_DIR / projet_id / "exports"
+    output_path = output_dir / f"diligences_{projet_id[:8]}.docx"
+    generer_demande_diligences(projet, exceptions, output_path,
+                               seulement_ouvertes=seulement_ouvertes)
+    db.log(projet_id, "action_humaine", {"action": "exporter_diligences"})
+    client_slug = (projet.get("client") or "client").replace(" ", "_")[:20]
+    return FileResponse(
+        str(output_path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=f"Demande_diligences_{client_slug}.docx",
     )
 
 

@@ -5,7 +5,7 @@ import {
   ShieldCheck, ArrowRight, CheckCircle, XCircle, MinusCircle,
   Sparkles, AlertTriangle, ChevronDown, ChevronRight, Info,
   Shield, ShoppingCart, TrendingUp, Loader2,
-  Landmark, Package, Users, Receipt, PieChart
+  Landmark, Package, Users, Receipt, PieChart, Printer
 } from 'lucide-react'
 import { normeLabel } from '../lib/utils'
 import { Header } from '../components/layout/Header'
@@ -380,14 +380,31 @@ function CyclePanel({
 
 // ─── Synthèse globale CI ──────────────────────────────────────────────────────
 
+interface SyntheseNarrative {
+  titre?: string
+  sections?: { titre: string; contenu: string }[]
+  conclusion?: string
+  niveau_global?: string
+  score_global?: number
+  genere_le?: string
+}
+
 function SyntheseGlobale({
   cycles,
   qciData,
   onNavigateCycle,
+  narrative,
+  onGenerer,
+  generating,
+  locked,
 }: {
   cycles: string[]
   qciData: Record<string, CycleQCI>
   onNavigateCycle: (c: string) => void
+  narrative: SyntheseNarrative | null
+  onGenerer: () => void
+  generating: boolean
+  locked: boolean
 }) {
   const evalues = cycles.filter((c) => qciData[c]?.evaluation)
   const niveaux = evalues.map((c) => qciData[c]?.evaluation?.niveau_risque || 'eleve')
@@ -445,6 +462,52 @@ function SyntheseGlobale({
         <div className="rounded-2xl p-5 bg-slate-50 border border-border text-sm text-slate-500 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 text-slate-400" />
           Évaluez au moins un cycle pour obtenir la synthèse globale.
+        </div>
+      )}
+
+      {/* Synthèse narrative IA (#1) */}
+      {evalues.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-4 py-3 bg-primary-50/50 border-b border-border flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-primary-700 uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" /> Synthèse rédigée de l'évaluation du contrôle interne
+            </p>
+            {!locked && (
+              <button
+                onClick={onGenerer}
+                disabled={generating}
+                className="btn-secondary text-xs py-1.5"
+              >
+                {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                {narrative ? 'Régénérer' : 'Générer la synthèse'}
+              </button>
+            )}
+          </div>
+          <div className="p-4">
+            {narrative && narrative.sections && narrative.sections.length > 0 ? (
+              <div className="space-y-3">
+                {narrative.titre && (
+                  <p className="text-sm font-semibold text-slate-800">{narrative.titre}</p>
+                )}
+                {narrative.sections.map((s, i) => (
+                  <div key={i}>
+                    <p className="text-xs font-semibold text-slate-600 mb-0.5">{s.titre}</p>
+                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{s.contenu}</p>
+                  </div>
+                ))}
+                {narrative.conclusion && (
+                  <p className="text-sm text-slate-700 leading-relaxed italic border-l-2 border-primary-300 pl-3">
+                    {narrative.conclusion}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400 italic">
+                Générez une synthèse rédigée (score global, analyse par cycle, constats déterminants
+                et implications pour la suite de l'audit) à partir des évaluations réalisées.
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -555,7 +618,7 @@ function SyntheseGlobale({
 export function EvaluationCI() {
   const { projetId } = useParams<{ projetId: string }>()
   const navigate = useNavigate()
-  const { get, post } = useApi()
+  const { get, post, downloadBlob } = useApi()
   const toast = useToast()
   const { projetActif, setProjetActif } = useProjetStore()
   useSyncProjet()
@@ -565,6 +628,9 @@ export function EvaluationCI() {
   const [evaluating, setEvaluating] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
   const [transitioning, setTransitioning] = useState(false)
+  const [syntheseGlobale, setSyntheseGlobale] = useState<SyntheseNarrative | null>(null)
+  const [generatingSynthese, setGeneratingSynthese] = useState(false)
+  const [exportingQcm, setExportingQcm] = useState(false)
 
   // Cycle actif — null = synthèse globale
   const cycles = Object.keys(qciData)
@@ -586,6 +652,46 @@ export function EvaluationCI() {
   }, [projetId])
 
   useEffect(() => { loadQci() }, [loadQci])
+
+  // Charger la synthèse globale déjà générée
+  useEffect(() => {
+    if (!projetId) return
+    get(`/projets/${projetId}/qci/synthese-globale`)
+      .then(res => { if (res?.synthese) setSyntheseGlobale(res.synthese) })
+      .catch(() => {})
+  }, [projetId])
+
+  const handleGenererSynthese = async () => {
+    if (!projetId) return
+    setGeneratingSynthese(true)
+    try {
+      const res = await post(`/projets/${projetId}/qci/synthese-globale`, {})
+      setSyntheseGlobale(res.synthese)
+      toast.success('Synthèse globale du contrôle interne générée.')
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setGeneratingSynthese(false)
+    }
+  }
+
+  const handleExportQuestionnaire = async () => {
+    if (!projetId) return
+    setExportingQcm(true)
+    try {
+      const { blob, filename } = await downloadBlob(
+        `/projets/${projetId}/qci/exporter-questionnaire`, 'POST'
+      )
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = filename; a.click()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setExportingQcm(false)
+    }
+  }
 
   // ── Gestion réponses (debounce save) ──────────────────────────────────────
 
@@ -721,6 +827,17 @@ export function EvaluationCI() {
                 Sauvegarde…
               </span>
             )}
+            {cycles.length > 0 && (
+              <button
+                onClick={handleExportQuestionnaire}
+                disabled={exportingQcm}
+                title="Télécharger le questionnaire vierge (Word) à imprimer et faire remplir sur le terrain"
+                className="btn-secondary"
+              >
+                {exportingQcm ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                Imprimer le questionnaire
+              </button>
+            )}
             {etatCourant === 'evaluation_ci' && (
               <button
                 onClick={handlePasserTravaux}
@@ -813,6 +930,10 @@ export function EvaluationCI() {
                 cycles={cycles}
                 qciData={qciData}
                 onNavigateCycle={(c) => setActiveCycle(c)}
+                narrative={syntheseGlobale}
+                onGenerer={handleGenererSynthese}
+                generating={generatingSynthese}
+                locked={locked}
               />
               {!locked && allEvalues && (
                 <div className="flex justify-end pt-2">
