@@ -52,6 +52,7 @@ class ProjectDB:
             etat_courant TEXT DEFAULT 'cadrage',
             cycles_couverts TEXT,
             nature_mission TEXT DEFAULT 'contractuelle',
+            referentiel_comptable TEXT DEFAULT 'pcgd',
             client_id TEXT,
             archive INTEGER DEFAULT 0,
             cree_le TEXT,
@@ -318,6 +319,23 @@ class ProjectDB:
             horodatage TEXT,
             UNIQUE(projet_id, controle_ref)
         );
+
+        CREATE TABLE IF NOT EXISTS opinion (
+            projet_id TEXT PRIMARY KEY REFERENCES projet(id),
+            rigueur TEXT,
+            type_opinion TEXT,
+            titre TEXT,
+            texte_opinion TEXT,
+            fondement TEXT,
+            observations TEXT,
+            justification TEXT,
+            proposee_par_ia INTEGER DEFAULT 0,
+            modele_ia TEXT,
+            validee INTEGER DEFAULT 0,
+            validee_par TEXT,
+            genere_le TEXT,
+            modifie_le TEXT
+        );
         """)
         self.conn.commit()
 
@@ -344,6 +362,7 @@ class ProjectDB:
             ("projet", "cycles_couverts", "TEXT"),
             ("fichier_source", "type_document", "TEXT"),
             ("projet", "nature_mission", "TEXT DEFAULT 'contractuelle'"),
+            ("projet", "referentiel_comptable", "TEXT DEFAULT 'pcgd'"),
             ("projet", "client_id", "TEXT"),
             ("projet", "archive", "INTEGER DEFAULT 0"),
             ("planification", "note_synthese", "TEXT"),
@@ -395,13 +414,15 @@ class ProjectDB:
         self.conn.execute(
             """INSERT INTO projet (id,nom,client,nif,exercice,seuil_signification,
                seuil_planification,consentement_client,consentement_horodatage,
-               etat_courant,cycles_couverts,nature_mission,client_id,archive,cree_le,modifie_le)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               etat_courant,cycles_couverts,nature_mission,referentiel_comptable,
+               client_id,archive,cree_le,modifie_le)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (data["id"], data["nom"], data.get("client"), data.get("nif"),
              data.get("exercice"), data.get("seuil_signification"),
              data.get("seuil_planification"), int(data.get("consentement_client", False)),
              data.get("consentement_horodatage"), data.get("etat_courant", "cadrage"),
              json.dumps(cycles), data.get("nature_mission", "contractuelle"),
+             data.get("referentiel_comptable", "pcgd"),
              data.get("client_id"), 0, now, now)
         )
         self.conn.commit()
@@ -424,7 +445,7 @@ class ProjectDB:
                   if k in ("nom","client","nif","exercice","seuil_signification",
                            "seuil_planification","consentement_client",
                            "consentement_horodatage","etat_courant","cycles_couverts",
-                           "nature_mission","client_id","archive")}
+                           "nature_mission","referentiel_comptable","client_id","archive")}
         # Sérialiser cycles_couverts en JSON si c'est une liste
         if "cycles_couverts" in fields and isinstance(fields["cycles_couverts"], list):
             fields["cycles_couverts"] = json.dumps(fields["cycles_couverts"])
@@ -958,6 +979,44 @@ class ProjectDB:
                 for e in non_corrigees
             ],
         }
+
+    # --- Opinion d'audit (phase finale — ISA/NEP 700) ---
+
+    def get_opinion(self, projet_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM opinion WHERE projet_id=?", (projet_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def save_opinion(self, projet_id: str, data: dict) -> dict:
+        """Upsert de l'opinion. Préserve genere_le à la première écriture."""
+        now = _now()
+        existing = self.get_opinion(projet_id)
+        genere_le = (existing or {}).get("genere_le") or now
+        merged = {**(existing or {}), **data}
+        self.conn.execute(
+            """INSERT INTO opinion
+               (projet_id, rigueur, type_opinion, titre, texte_opinion, fondement,
+                observations, justification, proposee_par_ia, modele_ia,
+                validee, validee_par, genere_le, modifie_le)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(projet_id) DO UPDATE SET
+                 rigueur=excluded.rigueur, type_opinion=excluded.type_opinion,
+                 titre=excluded.titre, texte_opinion=excluded.texte_opinion,
+                 fondement=excluded.fondement, observations=excluded.observations,
+                 justification=excluded.justification,
+                 proposee_par_ia=excluded.proposee_par_ia, modele_ia=excluded.modele_ia,
+                 validee=excluded.validee, validee_par=excluded.validee_par,
+                 modifie_le=excluded.modifie_le""",
+            (projet_id, merged.get("rigueur"), merged.get("type_opinion"),
+             merged.get("titre"), merged.get("texte_opinion"), merged.get("fondement"),
+             merged.get("observations"), merged.get("justification"),
+             int(merged.get("proposee_par_ia", 0)), merged.get("modele_ia"),
+             int(merged.get("validee", 0)), merged.get("validee_par"),
+             genere_le, now)
+        )
+        self.conn.commit()
+        return self.get_opinion(projet_id)
 
     # --- Contrôles ignorés (NEP 230 : documenter les procédures non réalisées) ---
 

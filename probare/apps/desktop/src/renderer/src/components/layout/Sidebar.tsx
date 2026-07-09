@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Settings, FolderOpen, Upload,
   ShieldCheck, AlertTriangle, FileText, ChevronLeft,
-  Activity, ArrowLeft, ClipboardList, BarChart2, Building2
+  Activity, ArrowLeft, ClipboardList, BarChart2, Building2, Stamp
 } from 'lucide-react'
 import { useProjetStore } from '../../stores/projetStore'
 import { ETATS_PIPELINE, getEtatIndex } from '../../lib/utils'
@@ -28,7 +28,8 @@ const projetNavItems: NavItemDef[] = [
   { to: 'planification',    icon: ClipboardList, label: 'Planification',        minEtat: 'ingestion' },
   { to: 'controles',        icon: BarChart2,     label: 'Travaux substantifs',  minEtat: 'planification' },
   { to: 'exceptions',       icon: AlertTriangle, label: 'Exceptions',           minEtat: 'travaux_substantifs' },
-  { to: 'rapport',          icon: FileText,      label: 'Rapport',              minEtat: 'revue' },
+  { to: 'dossier-travail',  icon: FileText,      label: 'Dossier de travail',   minEtat: 'revue' },
+  { to: 'rapport-audit',    icon: Stamp,         label: "Rapport d'audit",      minEtat: 'generation' },
   { to: 'journal',          icon: Activity,      label: 'Historique',           minEtat: 'cadrage' },
 ]
 

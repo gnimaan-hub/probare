@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..normes import norme, prefixe_actif
+from ..normes import norme, prefixe_actif, libelle_referentiel_comptable
 
 
 def _now() -> str:
@@ -1166,6 +1166,412 @@ def generer_synthese_ci_docx(
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
     r = footer.add_run(f"Synthèse générée par Probare le {_now()} · Confidentiel")
     r.font.size = Pt(9)
+    r.italic = True
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(output_path))
+    return output_path
+
+
+# ─── Helpers cabinet (identité signataire, partagés par les livrables finaux) ──
+
+
+def _cabinet_ligne_adresse(cabinet: dict) -> str:
+    parts = [
+        cabinet.get("adresse_rue"),
+        " ".join(p for p in [cabinet.get("adresse_code_postal"),
+                             cabinet.get("adresse_ville")] if p),
+        cabinet.get("adresse_pays"),
+    ]
+    return " — ".join(p for p in parts if p)
+
+
+def _entete_cabinet(doc, cabinet: dict) -> None:
+    """Rend l'en-tête d'identité du cabinet en haut d'un livrable signé.
+    `cabinet` provient du paramétrage Cabinet (transmis par le frontend)."""
+    from docx.shared import Pt, RGBColor
+    cabinet = cabinet or {}
+    if not any(cabinet.get(k) for k in ("nom", "responsable_nom", "adresse_rue", "email")):
+        return
+    p = doc.add_paragraph()
+    if cabinet.get("nom"):
+        r = p.add_run(cabinet["nom"])
+        r.bold = True
+        r.font.size = Pt(13)
+        r.font.color.rgb = RGBColor(0x4F, 0x46, 0xE5)
+    if cabinet.get("forme_juridique"):
+        p.add_run(f"  ·  {cabinet['forme_juridique']}").font.size = Pt(9)
+    ligne_adr = _cabinet_ligne_adresse(cabinet)
+    contacts = "  ·  ".join(x for x in [
+        cabinet.get("telephone") and f"Tél. {cabinet['telephone']}",
+        cabinet.get("email"),
+        cabinet.get("site_web"),
+    ] if x)
+    refs = "  ·  ".join(x for x in [
+        cabinet.get("numero_agrement") and f"Agrément {cabinet['numero_agrement']}",
+        cabinet.get("numero_ordre") and f"Ordre {cabinet['numero_ordre']}",
+    ] if x)
+    for txt in (ligne_adr, contacts, refs):
+        if txt:
+            sub = doc.add_paragraph()
+            run = sub.add_run(txt)
+            run.font.size = Pt(9)
+            run.font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
+    doc.add_paragraph("─" * 60)
+
+
+def _bloc_signature(doc, cabinet: dict) -> None:
+    """Rend le bloc « Lieu, date et signature » d'un livrable signé."""
+    from docx.shared import Pt
+    cabinet = cabinet or {}
+    ville = cabinet.get("adresse_ville") or "Djibouti"
+    doc.add_paragraph()
+    p_lieu = doc.add_paragraph()
+    p_lieu.add_run(f"Fait à {ville}, le {datetime.now(timezone.utc).strftime('%d/%m/%Y')}.")
+    doc.add_paragraph()
+    sig = doc.add_paragraph()
+    if cabinet.get("nom"):
+        sig.add_run(cabinet["nom"] + "\n").bold = True
+    if cabinet.get("responsable_nom"):
+        sig.add_run(cabinet["responsable_nom"] + "\n").bold = True
+    if cabinet.get("responsable_titre"):
+        r = sig.add_run(cabinet["responsable_titre"])
+        r.italic = True
+    if not cabinet.get("responsable_nom"):
+        sig.add_run("\n\nNom et signature : ______________________________")
+
+
+_MEMO_CYCLE_LABELS = {
+    "tresorerie": "Trésorerie", "achats": "Achats-Fournisseurs", "ventes": "Ventes-Clients",
+    "immobilisations": "Immobilisations", "stocks": "Stocks", "paie": "Personnel-Paie",
+    "impots": "Impôts et taxes", "capitaux_propres": "Capitaux propres et provisions",
+}
+
+
+def _titre_mission(projet: dict) -> str:
+    nature = (projet.get("nature_mission") or "contractuelle").lower()
+    if "legal" in nature or "légal" in nature or "commissariat" in nature:
+        return "RAPPORT DU COMMISSAIRE AUX COMPTES SUR LES COMPTES ANNUELS"
+    return "RAPPORT D'AUDIT SUR LES COMPTES ANNUELS"
+
+
+_TYPE_OPINION_LABELS = {
+    "sans_reserve": "Opinion sans réserve",
+    "avec_reserve": "Opinion avec réserve",
+    "defavorable": "Opinion défavorable",
+    "impossibilite": "Impossibilité d'exprimer une opinion",
+}
+
+
+def generer_rapport_audit(
+    projet: dict,
+    opinion: dict,
+    output_path: Path,
+    cabinet: dict | None = None,
+    plan: dict | None = None,
+) -> Path:
+    """Génère le RAPPORT D'AUDIT sur les comptes annuels en .docx (ISA/NEP 700).
+
+    Le corps de l'opinion, le fondement et les éventuelles observations sont ceux
+    validés par l'auditeur (proposés par l'IA puis éventuellement corrigés).
+    Probare ne signe pas : le bloc signature reprend l'identité du cabinet mais
+    l'engagement reste celui de l'auditeur habilité.
+    """
+    try:
+        from docx import Document
+        from docx.shared import Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+    except ImportError:
+        raise ImportError("python-docx est requis pour la génération docx.")
+
+    cabinet = cabinet or {}
+    plan = plan or {}
+    ref_compta = libelle_referentiel_comptable(projet.get("referentiel_comptable"))
+    client = projet.get("client") or projet.get("nom") or "l'entité"
+    exercice = projet.get("exercice") or "N"
+
+    doc = Document()
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(11)
+
+    _entete_cabinet(doc, cabinet)
+
+    titre = doc.add_heading(_titre_mission(projet), level=0)
+    titre.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    st = doc.add_paragraph()
+    st.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    st.add_run(f"Exercice clos — {exercice}").italic = True
+
+    # Destinataire
+    dirigeants = plan.get("dirigeants") or []
+    destinataire = None
+    for d in dirigeants:
+        if d.get("fonction") and d.get("nom"):
+            destinataire = f"À l'attention de {d['nom']}, {d['fonction']}"
+            break
+    doc.add_paragraph()
+    doc.add_paragraph(destinataire or f"À la direction de {client},")
+
+    # 1. Opinion
+    type_op = opinion.get("type_opinion") or "sans_reserve"
+    titre_op = opinion.get("titre") or _TYPE_OPINION_LABELS.get(type_op, "Opinion")
+    h = doc.add_heading(titre_op, level=1)
+    if h.runs:
+        h.runs[0].font.color.rgb = RGBColor(0x4F, 0x46, 0xE5)
+    doc.add_paragraph(opinion.get("texte_opinion") or "")
+
+    # 2. Fondement de l'opinion
+    doc.add_heading("Fondement de l'opinion", level=1)
+    fondement = opinion.get("fondement") or (
+        f"Nous avons effectué notre audit selon les normes d'audit {prefixe_actif()}. "
+        "Les responsabilités qui nous incombent en vertu de ces normes sont décrites "
+        "dans la section « Responsabilités de l'auditeur » du présent rapport. Nous sommes "
+        "indépendants de l'entité et estimons que les éléments probants que nous avons "
+        "collectés sont suffisants et appropriés pour fonder notre opinion."
+    )
+    doc.add_paragraph(fondement)
+
+    # 3. Observation / incertitude (conditionnel)
+    observations = (opinion.get("observations") or "").strip()
+    if observations:
+        doc.add_heading("Observation", level=1)
+        doc.add_paragraph(observations)
+
+    # 4. Responsabilités de la direction
+    doc.add_heading("Responsabilités de la direction relatives aux comptes annuels", level=1)
+    doc.add_paragraph(
+        f"Il appartient à la direction d'établir des comptes annuels présentant une image "
+        f"fidèle conformément à {ref_compta}, ainsi que de mettre en place le contrôle interne "
+        "qu'elle estime nécessaire à l'établissement de comptes annuels ne comportant pas "
+        "d'anomalies significatives, que celles-ci proviennent de fraudes ou résultent d'erreurs. "
+        "Lors de l'établissement des comptes annuels, il incombe à la direction d'évaluer la "
+        "capacité de l'entité à poursuivre son exploitation et d'appliquer la convention "
+        "comptable de continuité d'exploitation, sauf s'il est prévu de liquider l'entité ou de "
+        "cesser son activité."
+    )
+
+    # 5. Responsabilités de l'auditeur
+    doc.add_heading("Responsabilités de l'auditeur relatives à l'audit des comptes annuels", level=1)
+    doc.add_paragraph(
+        "Notre objectif est d'obtenir l'assurance raisonnable que les comptes annuels pris dans "
+        "leur ensemble ne comportent pas d'anomalies significatives. L'assurance raisonnable "
+        "correspond à un niveau élevé d'assurance, sans toutefois garantir qu'un audit réalisé "
+        f"conformément aux normes {prefixe_actif()} permette systématiquement de détecter toute "
+        "anomalie significative. Dans le cadre de l'audit, nous exerçons notre jugement "
+        "professionnel et faisons preuve d'esprit critique : nous identifions et évaluons les "
+        "risques d'anomalies significatives, définissons et mettons en œuvre des procédures "
+        "d'audit en réponse à ces risques, apprécions le caractère approprié des méthodes "
+        "comptables retenues et le caractère raisonnable des estimations, et concluons sur "
+        "l'application de la convention de continuité d'exploitation."
+    )
+
+    # Signature
+    doc.add_paragraph("─" * 60)
+    _bloc_signature(doc, cabinet)
+
+    doc.add_paragraph()
+    footer = doc.add_paragraph()
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = footer.add_run(
+        f"Rapport préparé avec l'assistance de Probare le {_now()}. "
+        f"L'opinion et la signature relèvent de la responsabilité exclusive de l'auditeur habilité. "
+        f"Référentiel d'audit : {prefixe_actif()} · Référentiel comptable : {ref_compta}."
+    )
+    r.font.size = Pt(8)
+    r.italic = True
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(output_path))
+    return output_path
+
+
+def generer_memorandum_controle_comptes(
+    projet: dict,
+    resultats: list[dict],
+    exceptions: list[dict],
+    feuilles: list[dict],
+    output_path: Path,
+    plan: dict | None = None,
+    circularisations: list[dict] | None = None,
+    sondages: list[dict] | None = None,
+    controles_ignores: list[dict] | None = None,
+    cabinet: dict | None = None,
+) -> Path:
+    """Génère le MÉMORANDUM SUR LE CONTRÔLE DES COMPTES en .docx.
+
+    Structure de référence (rapport bailleur / CAC) : contexte & objectifs, puis
+    un chapitre par cycle organisé en triptyque Objectifs → Travaux effectués →
+    Commentaires de l'auditeur, et enfin les contrôles prévus non exécutés (NEP 230).
+    """
+    try:
+        from docx import Document
+        from docx.shared import Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+    except ImportError:
+        raise ImportError("python-docx est requis pour la génération docx.")
+
+    from ..controls.registry import REGISTRE
+
+    cabinet = cabinet or {}
+    plan = plan or {}
+    circularisations = circularisations or []
+    sondages = sondages or []
+    controles_ignores = controles_ignores or []
+
+    ROUGE = RGBColor(0xC0, 0x39, 0x2B)
+
+    client = projet.get("client") or projet.get("nom") or "l'entité"
+    exercice = projet.get("exercice") or "N"
+    cycles = projet.get("cycles_couverts") or ["tresorerie", "achats", "ventes"]
+
+    # Index par cycle
+    feuille_par_cycle = {f.get("cycle"): f for f in feuilles}
+    refs_par_cycle: dict[str, set] = {}
+    for ref, defn in REGISTRE.items():
+        refs_par_cycle.setdefault(defn.cycle, set()).add(ref)
+
+    doc = Document()
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(11)
+
+    _entete_cabinet(doc, cabinet)
+
+    titre = doc.add_heading("MÉMORANDUM SUR LE CONTRÔLE DES COMPTES", level=0)
+    titre.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    st = doc.add_paragraph()
+    st.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    st.add_run(f"{client} — Exercice clos {exercice}").italic = True
+
+    info = doc.add_paragraph()
+    info.add_run(f"Édité le : {_now()}\n").font.size = Pt(9)
+    info.add_run(f"Référentiel d'audit : {prefixe_actif()}  ·  "
+                 f"Référentiel comptable : {libelle_referentiel_comptable(projet.get('referentiel_comptable'))}"
+                 ).font.size = Pt(9)
+    doc.add_paragraph("─" * 60)
+
+    # A. Contexte et objectifs
+    doc.add_heading("A. Rappel du contexte et des objectifs de la mission", level=1)
+    if plan.get("activites_principales"):
+        doc.add_paragraph(f"Activité de l'entité : {plan['activites_principales']}")
+    if plan.get("forme_juridique"):
+        doc.add_paragraph(f"Forme juridique : {plan['forme_juridique']}")
+    doc.add_paragraph(
+        "Le présent mémorandum a pour objet de fournir des informations complémentaires sur "
+        "les rubriques des comptes et sur les principaux travaux que nous avons effectués dans "
+        "le cadre de notre examen. Il inclut nos principales conclusions. Notre approche a "
+        "consisté à vérifier la réalité, l'exhaustivité et la sincérité des soldes et opérations "
+        "de chaque cycle, au moyen des contrôles déterministes du programme de travail, complétés "
+        "le cas échéant de confirmations externes et de sondages sur pièces."
+    )
+
+    # B. Un chapitre par cycle : Objectifs → Travaux effectués → Commentaires
+    lettre = ord("B")
+    for cycle in cycles:
+        libelle_cycle = _MEMO_CYCLE_LABELS.get(cycle, cycle.capitalize())
+        refs = refs_par_cycle.get(cycle, set())
+        res_cycle = [r for r in resultats if r.get("controle_ref") in refs]
+        exc_cycle = [e for e in exceptions if e.get("controle_ref") in refs]
+        circ_cycle = [c for c in circularisations if c.get("cycle") == cycle]
+        sond_cycle = [s for s in sondages if s.get("cycle") == cycle]
+        feuille = feuille_par_cycle.get(cycle)
+
+        # Ne pas générer de chapitre vide (aucun travail sur ce cycle)
+        if not (res_cycle or exc_cycle or circ_cycle or sond_cycle or feuille):
+            continue
+
+        doc.add_heading(f"{chr(lettre)}. Cycle {libelle_cycle}", level=1)
+        lettre += 1
+
+        # 1. Objectifs
+        doc.add_heading("Objectifs", level=2)
+        doc.add_paragraph(
+            f"Nos travaux sur le cycle {libelle_cycle.lower()} visent à nous assurer de la "
+            "réalité, de l'exhaustivité, de l'exactitude et du correct rattachement des soldes "
+            "et opérations concernés, au regard des assertions d'audit applicables. À cet effet, "
+            "les contrôles suivants ont été prévus :"
+        )
+        controles_cycle = [defn for ref, defn in REGISTRE.items() if defn.cycle == cycle]
+        for defn in controles_cycle:
+            doc.add_paragraph(f"{defn.libelle} — {defn.description}", style="List Bullet")
+
+        # 2. Travaux effectués
+        doc.add_heading("Travaux effectués", level=2)
+        if res_cycle:
+            doc.add_paragraph("Contrôles déterministes exécutés :")
+            for r in res_cycle:
+                statut = "sans anomalie" if r.get("statut") == "ok" else "EXCEPTION"
+                p = doc.add_paragraph(style="List Bullet")
+                p.add_run(f"[{r.get('controle_ref')}] ")
+                p.add_run(f"{r.get('details', '') or ''} — {statut}")
+        if circ_cycle:
+            doc.add_paragraph("Confirmations externes (circularisation) :")
+            for c in circ_cycle:
+                doc.add_paragraph(
+                    f"{c.get('libelle') or c.get('compte')} — statut : {c.get('statut', '—')}",
+                    style="List Bullet")
+        if sond_cycle:
+            doc.add_paragraph("Sondages sur pièces :")
+            for s in sond_cycle:
+                doc.add_paragraph(
+                    f"{s.get('libelle') or 'Sondage'} — échantillon de "
+                    f"{s.get('taille_echantillon', '—')} sur {s.get('population', '—')} éléments, "
+                    f"{s.get('nb_anomalies', 0)} anomalie(s) relevée(s)",
+                    style="List Bullet")
+        if not (res_cycle or circ_cycle or sond_cycle):
+            doc.add_paragraph("Aucun contrôle exécuté sur ce cycle à la date du présent mémorandum.",
+                              style="List Bullet")
+
+        # 3. Commentaires de l'auditeur
+        doc.add_heading("Commentaires de l'auditeur", level=2)
+        if feuille and feuille.get("contenu_redige"):
+            doc.add_paragraph(feuille["contenu_redige"])
+        if exc_cycle:
+            doc.add_paragraph("Anomalies relevées et leur traitement :")
+            for e in exc_cycle:
+                p = doc.add_paragraph(style="List Bullet")
+                run = p.add_run(f"[{e.get('controle_ref')}] {e.get('description', '') or ''}")
+                if e.get("statut") == "ouverte":
+                    run.font.color.rgb = ROUGE
+                type_res = e.get("type_resolution")
+                if type_res:
+                    labels = {"corrigee": "corrigée par le client",
+                              "sans_incidence": "sans incidence (explication obtenue)",
+                              "non_corrigee": "non corrigée"}
+                    txt = labels.get(type_res, type_res)
+                    mi = e.get("montant_incidence")
+                    if type_res == "non_corrigee" and isinstance(mi, (int, float)):
+                        txt += f" — incidence : {mi:,.0f} FDJ"
+                    p.add_run(f" → {txt}")
+                elif e.get("statut") == "ouverte":
+                    p.add_run(" → en cours d'instruction")
+        elif not (feuille and feuille.get("contenu_redige")):
+            doc.add_paragraph(
+                "Les travaux réalisés sur ce cycle n'appellent pas d'observation particulière "
+                "à la date du présent mémorandum."
+            )
+
+    # Contrôles non exécutés (NEP 230)
+    if controles_ignores:
+        doc.add_heading(f"Annexe — Contrôles prévus non exécutés ({norme(230)})", level=1)
+        doc.add_paragraph(
+            "Les contrôles suivants, prévus au programme de travail, n'ont pas été exécutés ; "
+            f"le motif est documenté conformément à la norme {norme(230)}."
+        )
+        for ci in controles_ignores:
+            doc.add_paragraph(
+                f"[{ci.get('controle_ref')}] ({ci.get('cycle', '?')}) — {ci.get('raison', '')}",
+                style="List Bullet")
+
+    doc.add_paragraph("─" * 60)
+    _bloc_signature(doc, cabinet)
+    doc.add_paragraph()
+    footer = doc.add_paragraph()
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = footer.add_run(f"Mémorandum généré par Probare le {_now()} · Confidentiel · "
+                       f"Document de travail {norme(230)}")
+    r.font.size = Pt(8)
     r.italic = True
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

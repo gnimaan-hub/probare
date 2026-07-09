@@ -50,11 +50,13 @@ from ..controls.engine import (
 from ..provenance.models import DonneeSourcee
 from ..reporting.export import (
     generer_dossier_travail, generer_tableau_exceptions,
-    generer_note_planification, ProvenanceError,
+    generer_note_planification, generer_rapport_audit,
+    generer_memorandum_controle_comptes, ProvenanceError,
 )
 from ..anonymization.anonymizer import Anonymizer
 from ..normes import norme, reformater_refs, lire_config, ecrire_config, \
-    REFERENTIEL_ACTIF, REFERENTIELS, LIBELLES_REFERENTIEL
+    REFERENTIEL_ACTIF, REFERENTIELS, LIBELLES_REFERENTIEL, \
+    REFERENTIELS_COMPTABLES, libelle_referentiel_comptable
 
 
 router = APIRouter()
@@ -2721,6 +2723,315 @@ def exporter_diligences(projet_id: str, seulement_ouvertes: bool = True):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         filename=f"Demande_diligences_{client_slug}.docx",
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE RAPPORT D'AUDIT — synthèse de mission, opinion (Opus), livrables finaux
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_LABELS_PHASES = {
+    "cadrage": "Cadrage", "evaluation_ci": "Contrôle interne", "ingestion": "Ingestion",
+    "planification": "Planification", "travaux_substantifs": "Travaux substantifs",
+    "revue": "Revue des exceptions", "generation": "Dossier de travail",
+    "opinion": "Rapport d'audit",
+}
+
+_MEDIA_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+def _synthese_mission(db: ProjectDB, projet_id: str, projet: dict) -> dict:
+    """Récapitulatif déterministe de toutes les phases de la mission.
+
+    100 % calculé par le code depuis la base (aucun chiffre LLM). Sert à la fois
+    au tableau de bord de fin de mission et d'entrée à la proposition d'opinion.
+    """
+    plan = db.get_or_create_planification(projet_id)
+    fichiers = db.list_fichiers_source(projet_id)
+    docs_bruts = db.list_documents_bruts(projet_id)
+    annexes = db.list_annexes(projet_id)
+    qci_evals = db.get_qci_evaluations(projet_id)
+    qci_glob = db.get_qci_synthese_globale(projet_id) or {}
+    risques = db.list_risques(projet_id)
+    programme = db.list_programme_items(projet_id)
+    resultats = db.list_resultats(projet_id)
+    exceptions = db.list_exceptions(projet_id)
+    circ = db.list_circularisations(projet_id)
+    sondages = db.list_sondages(projet_id)
+    feuilles = db.list_feuilles(projet_id)
+    ignores = db.list_controles_ignores(projet_id)
+    anomalies = db.synthese_anomalies(
+        projet_id, projet.get("seuil_signification"), projet.get("seuil_planification"))
+    opinion = db.get_opinion(projet_id)
+
+    def _cnt(items, pred):
+        return sum(1 for x in items if pred(x))
+
+    circ_par_statut: dict[str, int] = {}
+    for c in circ:
+        circ_par_statut[c.get("statut", "?")] = circ_par_statut.get(c.get("statut", "?"), 0) + 1
+
+    phases = [
+        {"id": "cadrage", "label": _LABELS_PHASES["cadrage"], "indicateurs": {
+            "Nature de mission": projet.get("nature_mission") or "—",
+            "Cycles couverts": len(projet.get("cycles_couverts") or []),
+            "Consentement client": "Oui" if projet.get("consentement_client") else "Non",
+        }},
+        {"id": "evaluation_ci", "label": _LABELS_PHASES["evaluation_ci"], "indicateurs": {
+            "Niveau CI global": qci_glob.get("niveau_global") or "—",
+            "Cycles évalués": len(qci_evals),
+        }},
+        {"id": "ingestion", "label": _LABELS_PHASES["ingestion"], "indicateurs": {
+            "Fichiers comptables": len(fichiers),
+            "Documents bruts": len(docs_bruts),
+            "Annexes": len(annexes),
+        }},
+        {"id": "planification", "label": _LABELS_PHASES["planification"], "indicateurs": {
+            "Seuil de signification": projet.get("seuil_signification") or plan.get("seuil_calcule"),
+            "Risques identifiés": len(risques),
+            "dont élevés": _cnt(risques, lambda r: r.get("niveau") == "eleve"),
+            "Contrôles programmés": _cnt(programme, lambda p: p.get("statut") == "inclus"),
+            "Note de synthèse": "Oui" if plan.get("note_synthese") else "Non",
+        }},
+        {"id": "travaux_substantifs", "label": _LABELS_PHASES["travaux_substantifs"], "indicateurs": {
+            "Contrôles exécutés": len(resultats),
+            "Sans anomalie": _cnt(resultats, lambda r: r.get("statut") == "ok"),
+            "Exceptions levées": _cnt(resultats, lambda r: r.get("statut") == "exception"),
+            "Circularisations": len(circ),
+            "Sondages": len(sondages),
+        }},
+        {"id": "revue", "label": _LABELS_PHASES["revue"], "indicateurs": {
+            "Exceptions ouvertes": anomalies.get("nb_ouvertes", 0),
+            "Corrigées": anomalies.get("nb_corrigees", 0),
+            "Sans incidence": anomalies.get("nb_sans_incidence", 0),
+            "Non corrigées": anomalies.get("nb_non_corrigees", 0),
+            "Cumul non corrigé": anomalies.get("cumul_non_corrigees", 0),
+            "Dépasse le seuil": "Oui" if anomalies.get("depasse_seuil_signification") else "Non",
+        }},
+        {"id": "generation", "label": _LABELS_PHASES["generation"], "indicateurs": {
+            "Feuilles de travail": len(feuilles),
+            "Contrôles non exécutés": len(ignores),
+        }},
+        {"id": "opinion", "label": _LABELS_PHASES["opinion"], "indicateurs": {
+            "Rigueur retenue": (opinion or {}).get("rigueur") or "—",
+            "Type d'opinion": (opinion or {}).get("type_opinion") or "—",
+            "Opinion validée": "Oui" if (opinion or {}).get("validee") else "Non",
+        }},
+    ]
+
+    # Fichiers : ingérés (sources) et produits (exports)
+    def _f(nom, categorie, meta=""):
+        return {"nom": nom, "categorie": categorie, "detail": meta}
+
+    fichiers_ingeres = (
+        [_f(f.get("nom"), "Fichier comptable", f.get("type_document") or f.get("type") or "")
+         for f in fichiers]
+        + [_f(d.get("nom"), "Document brut", d.get("type_detecte") or "") for d in docs_bruts]
+        + [_f(a.get("nom"), "Annexe", "") for a in annexes]
+    )
+    exports_dir = DATA_DIR / projet_id / "exports"
+    fichiers_produits = []
+    if exports_dir.exists():
+        for f in sorted(exports_dir.glob("*")):
+            if f.is_file():
+                fichiers_produits.append(
+                    _f(f.name, "Livrable produit", f"{f.stat().st_size // 1024} Ko"))
+
+    return {
+        "projet": {
+            "client": projet.get("client"),
+            "exercice": projet.get("exercice"),
+            "nature_mission": projet.get("nature_mission"),
+            "etat_courant": projet.get("etat_courant"),
+            "referentiel_audit": REFERENTIEL_ACTIF.upper(),
+            "referentiel_comptable": projet.get("referentiel_comptable"),
+            "referentiel_comptable_label": libelle_referentiel_comptable(
+                projet.get("referentiel_comptable")),
+            "cycles_couverts": projet.get("cycles_couverts"),
+            "seuil_signification": projet.get("seuil_signification"),
+            "seuil_planification": projet.get("seuil_planification"),
+        },
+        "phases": phases,
+        "anomalies": anomalies,
+        "controle_interne": {
+            "niveau_global": qci_glob.get("niveau_global"),
+            "score_global": qci_glob.get("score_global"),
+            "par_cycle": [{"cycle": e.get("cycle"), "niveau": e.get("niveau_risque"),
+                           "score": e.get("score")} for e in qci_evals],
+        },
+        "fichiers": {"ingérés": fichiers_ingeres, "produits": fichiers_produits},
+        "opinion": opinion,
+    }
+
+
+@router.get("/projets/{projet_id}/synthese-mission")
+def get_synthese_mission(projet_id: str):
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    return _synthese_mission(db, projet_id, projet)
+
+
+@router.get("/referentiels-comptables")
+def list_referentiels_comptables():
+    """Liste des référentiels comptables applicables à l'entité auditée
+    (à distinguer du référentiel d'audit ISA/NEP). Défaut : PCGD (Djibouti)."""
+    return {"referentiels": [{"id": k, "libelle": v}
+                             for k, v in REFERENTIELS_COMPTABLES.items()],
+            "defaut": "pcgd"}
+
+
+@router.get("/projets/{projet_id}/opinion")
+def get_opinion(projet_id: str):
+    db = _get_db(projet_id)
+    return {"opinion": db.get_opinion(projet_id)}
+
+
+class OpinionProposerBody(BaseModel):
+    rigueur: str = "moderee"
+
+
+class OpinionUpdateBody(BaseModel):
+    type_opinion: str | None = None
+    titre: str | None = None
+    texte_opinion: str | None = None
+    fondement: str | None = None
+    observations: str | None = None
+    justification: str | None = None
+    rigueur: str | None = None
+    validee: bool | None = None
+    validee_par: str | None = None
+
+
+class ExportSigneBody(BaseModel):
+    cabinet: dict | None = None
+
+
+_RIGUEURS_VALIDES = {"stricte", "moderee", "permissive"}
+
+
+@router.post("/projets/{projet_id}/opinion/proposer")
+def proposer_opinion(projet_id: str, body: OpinionProposerBody):
+    """Opus propose une opinion d'audit selon la rigueur choisie par l'auditeur."""
+    from ..llm.claude import ClaudeClient
+    db = _get_db(projet_id)
+    projet, _ = _llm_guard(db, projet_id)
+
+    rigueur = (body.rigueur or "moderee").lower()
+    if rigueur not in _RIGUEURS_VALIDES:
+        raise HTTPException(400, f"Rigueur inconnue : {body.rigueur}. "
+                                 f"Valeurs admises : {sorted(_RIGUEURS_VALIDES)}.")
+
+    recap = _synthese_mission(db, projet_id, projet)
+    # Entrée LLM compacte et déterministe : phases + anomalies + contrôle interne.
+    recap_llm = {
+        "phases": recap["phases"],
+        "anomalies": recap["anomalies"],
+        "controle_interne": recap["controle_interne"],
+    }
+    ref_compta = libelle_referentiel_comptable(projet.get("referentiel_comptable"))
+
+    try:
+        llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+        proposee = llm.proposer_opinion(projet, recap_llm, rigueur, ref_compta)
+    except Exception as e:
+        db.log(projet_id, "erreur", {"action": "proposer_opinion", "detail": str(e)})
+        raise HTTPException(500, f"Erreur LLM : {e}")
+
+    opinion = db.save_opinion(projet_id, {
+        "rigueur": rigueur,
+        "type_opinion": proposee.get("type_opinion"),
+        "titre": proposee.get("titre"),
+        "texte_opinion": proposee.get("texte_opinion"),
+        "fondement": proposee.get("fondement"),
+        "observations": proposee.get("observations"),
+        "justification": proposee.get("justification"),
+        "proposee_par_ia": 1,
+        "modele_ia": proposee.get("modele_ia"),
+        "validee": 0,
+        "validee_par": None,
+    })
+    db.log(projet_id, "appel_ia", {"action": "proposer_opinion", "rigueur": rigueur,
+                                   "type_opinion": proposee.get("type_opinion")})
+    return {"opinion": opinion}
+
+
+@router.put("/projets/{projet_id}/opinion")
+def update_opinion(projet_id: str, body: OpinionUpdateBody):
+    """Enregistre les corrections/validation de l'auditeur sur l'opinion proposée."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    existing = db.get_opinion(projet_id)
+    if not existing:
+        raise HTTPException(400, "Aucune opinion à mettre à jour — proposez d'abord une opinion.")
+
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "validee" in updates:
+        updates["validee"] = 1 if updates["validee"] else 0
+    # Une correction manuelle d'un champ rédactionnel n'est plus « pure IA ».
+    if any(k in updates for k in ("texte_opinion", "type_opinion", "fondement", "observations")):
+        updates.setdefault("proposee_par_ia", 0)
+    opinion = db.save_opinion(projet_id, updates)
+    db.log(projet_id, "action_humaine", {"action": "maj_opinion",
+                                         "validee": bool(opinion.get("validee"))})
+    return {"opinion": opinion}
+
+
+@router.post("/projets/{projet_id}/exporter-rapport-audit")
+def exporter_rapport_audit(projet_id: str, body: ExportSigneBody | None = None):
+    """Génère le RAPPORT D'AUDIT .docx à partir de l'opinion validée."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    opinion = db.get_opinion(projet_id)
+    if not opinion or not opinion.get("texte_opinion"):
+        raise HTTPException(400, "Aucune opinion disponible. Proposez puis validez l'opinion "
+                                 "avant de générer le rapport d'audit.")
+    if not opinion.get("validee"):
+        raise HTTPException(400, "L'opinion n'est pas encore validée par l'auditeur. "
+                                 "Validez l'opinion avant de générer le rapport d'audit.")
+    plan = db.get_or_create_planification(projet_id)
+    cabinet = (body.cabinet if body else None) or {}
+    output_dir = DATA_DIR / projet_id / "exports"
+    output_path = output_dir / f"rapport_audit_{projet_id[:8]}.docx"
+    generer_rapport_audit(projet, opinion, output_path, cabinet=cabinet, plan=plan)
+    db.log(projet_id, "action_humaine", {"action": "exporter_rapport_audit",
+                                         "type_opinion": opinion.get("type_opinion")})
+    client_slug = (projet.get("client") or "client").replace(" ", "_")[:20]
+    return FileResponse(str(output_path), media_type=_MEDIA_DOCX,
+                        filename=f"Rapport_audit_{client_slug}.docx")
+
+
+@router.post("/projets/{projet_id}/exporter-memorandum")
+def exporter_memorandum(projet_id: str, body: ExportSigneBody | None = None):
+    """Génère le MÉMORANDUM SUR LE CONTRÔLE DES COMPTES .docx."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    plan = db.get_or_create_planification(projet_id)
+    cabinet = (body.cabinet if body else None) or {}
+    output_dir = DATA_DIR / projet_id / "exports"
+    output_path = output_dir / f"memorandum_controle_comptes_{projet_id[:8]}.docx"
+    generer_memorandum_controle_comptes(
+        projet,
+        db.list_resultats(projet_id),
+        db.list_exceptions(projet_id),
+        db.list_feuilles(projet_id),
+        output_path,
+        plan=plan,
+        circularisations=db.list_circularisations(projet_id),
+        sondages=db.list_sondages(projet_id),
+        controles_ignores=db.list_controles_ignores(projet_id),
+        cabinet=cabinet,
+    )
+    db.log(projet_id, "action_humaine", {"action": "exporter_memorandum"})
+    client_slug = (projet.get("client") or "client").replace(" ", "_")[:20]
+    return FileResponse(str(output_path), media_type=_MEDIA_DOCX,
+                        filename=f"Memorandum_controle_comptes_{client_slug}.docx")
 
 
 # ─── Dossier Brut ─────────────────────────────────────────────────────────────

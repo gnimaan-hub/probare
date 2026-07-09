@@ -49,8 +49,8 @@ export const ETATS_PIPELINE = [
   { id: 'planification',       label: 'Planification',       description: 'Analyse & cartographie des risques' },
   { id: 'travaux_substantifs', label: 'Travaux substantifs', description: 'Procédures analytiques & contrôles de détail' },
   { id: 'revue',               label: 'Revue',               description: 'Traitement des exceptions' },
-  { id: 'generation',          label: 'Génération',          description: 'Dossier de travail' },
-  { id: 'opinion',             label: 'Opinion',             description: 'Validation finale' },
+  { id: 'generation',          label: 'Dossier de travail',  description: 'Feuilles, dossier de travail & tableau des exceptions' },
+  { id: 'opinion',             label: "Rapport d'audit",     description: 'Synthèse de mission, opinion & livrables finaux' },
 ] as const
 
 export type EtatPipeline = typeof ETATS_PIPELINE[number]['id']

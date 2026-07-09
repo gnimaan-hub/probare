@@ -54,6 +54,19 @@ export function useApi() {
     return res.json()
   }
 
+  async function put<T = any>(path: string, body: any): Promise<T> {
+    const res = await fetch(`${base}${path}`, {
+      method: 'PUT',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(err.detail || res.statusText)
+    }
+    return res.json()
+  }
+
   async function uploadFile(path: string, formData: FormData): Promise<any> {
     const res = await fetch(`${base}${path}`, {
       method: 'POST',
@@ -76,8 +89,19 @@ export function useApi() {
     return res.json()
   }
 
-  async function downloadBlob(path: string, method: 'GET' | 'POST' = 'POST'): Promise<{ blob: Blob; filename: string }> {
-    const res = await fetch(`${base}${path}`, { method, headers: authHeaders() })
+  async function downloadBlob(
+    path: string,
+    method: 'GET' | 'POST' = 'POST',
+    body?: any,
+  ): Promise<{ blob: Blob; filename: string }> {
+    const hasBody = body !== undefined && method !== 'GET'
+    const res = await fetch(`${base}${path}`, {
+      method,
+      headers: hasBody
+        ? authHeaders({ 'Content-Type': 'application/json' })
+        : authHeaders(),
+      body: hasBody ? JSON.stringify(body) : undefined,
+    })
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }))
       throw new Error(err.detail || res.statusText)
@@ -89,5 +113,5 @@ export function useApi() {
     return { blob, filename }
   }
 
-  return { get, post, patch, del, uploadFile, downloadBlob, baseUrl: base }
+  return { get, post, patch, put, del, uploadFile, downloadBlob, baseUrl: base }
 }
