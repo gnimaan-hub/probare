@@ -821,18 +821,42 @@ _SEVERITE_LABELS = {
 }
 
 
+_SOURCE_LABELS = {
+    "grand_livre": "Grand livre",
+    "balance": "Balance générale",
+    "releve_bancaire": "Relevé bancaire",
+    "annexe": "Document annexe",
+}
+
+
+def _libelle_source(fichier: dict) -> str:
+    """Libellé lisible d'une source de détection (type de document + nom)."""
+    type_doc = fichier.get("type_document") or fichier.get("type") or ""
+    label = _SOURCE_LABELS.get(type_doc)
+    nom = fichier.get("nom") or ""
+    if label:
+        return f"{label} ({nom})" if nom else label
+    return nom or "Source comptable"
+
+
 def generer_demande_diligences(
     projet: dict,
     exceptions: list[dict],
     output_path: Path,
     seulement_ouvertes: bool = True,
+    fichiers_map: dict | None = None,
 ) -> Path:
     """Génère une demande de diligences .docx présentable au client (#9).
 
     Reprend chaque exception (anomalie relevée), regroupée par cycle, avec sa
-    description, les hypothèses de cause et les diligences/pièces à fournir.
+    description, la source de détection (grand livre, balance, relevé…), les
+    hypothèses de cause et les diligences/pièces à fournir.
     Mise en page professionnelle, prête à imprimer/envoyer.
+
+    `fichiers_map` : {fichier_source_id: fichier_source_dict} pour résoudre la
+    source de détection de chaque exception (#3).
     """
+    fichiers_map = fichiers_map or {}
     try:
         from docx import Document
         from docx.shared import Pt, RGBColor
@@ -898,6 +922,20 @@ def generer_demande_diligences(
             p = doc.add_paragraph()
             p.add_run("Constat : ").bold = True
             p.add_run(exc.get("description", "") or "—")
+
+            # Source de détection (#3) : grand livre, balance, relevé bancaire…
+            sources_ids = exc.get("fichiers_sources") or []
+            labels_sources = []
+            for fid in sources_ids:
+                fichier = fichiers_map.get(fid)
+                if fichier:
+                    lib = _libelle_source(fichier)
+                    if lib not in labels_sources:
+                        labels_sources.append(lib)
+            if labels_sources:
+                p_src = doc.add_paragraph()
+                p_src.add_run("Source de détection : ").bold = True
+                p_src.add_run(", ".join(labels_sources))
 
             explication = exc.get("interpretation_llm") or exc.get("explication")
             if explication:
@@ -1012,6 +1050,121 @@ def generer_questionnaire_vierge(
     footer = doc.add_paragraph()
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
     r = footer.add_run(f"Questionnaire généré par Probare le {_now()} · À remplir sur le terrain")
+    r.font.size = Pt(9)
+    r.italic = True
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(output_path))
+    return output_path
+
+
+# ─── Synthèse de l'évaluation du contrôle interne, en .docx mis en forme (#2) ──
+
+_NIVEAU_CI_LABELS = {"eleve": "Élevé", "moyen": "Moyen", "faible": "Faible"}
+_NIVEAU_CI_COULEURS = {
+    "eleve": (0xC0, 0x39, 0x2B),   # rouge
+    "moyen": (0xE6, 0x7E, 0x22),   # orange
+    "faible": (0x27, 0xAE, 0x60),  # vert
+}
+
+
+def generer_synthese_ci_docx(
+    projet: dict,
+    synthese: dict,
+    output_path: Path,
+) -> Path:
+    """Génère la synthèse de l'évaluation du contrôle interne en .docx mis en forme (#2).
+
+    `synthese` reprend la structure persistée : titre, sections rédigées,
+    conclusion, niveau/score global et matrice des risques par cycle.
+    """
+    try:
+        from docx import Document
+        from docx.shared import Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+    except ImportError:
+        raise ImportError("python-docx est requis pour la génération docx.")
+
+    VIOLET = RGBColor(0x4F, 0x46, 0xE5)
+    doc = Document()
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(11)
+
+    titre_txt = synthese.get("titre") or "Synthèse de l'évaluation du contrôle interne"
+    titre = doc.add_heading(titre_txt, 0)
+    titre.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    info = doc.add_paragraph()
+    info.add_run(f"Client : {projet.get('client', 'N/A')}\n").bold = True
+    info.add_run(f"Exercice : {projet.get('exercice', 'N/A')}\n")
+    info.add_run(f"Édité le : {_now()}\n")
+    info.add_run(f"Référence {norme(315)} / {norme(330)} : Évaluation du contrôle interne\n")
+
+    doc.add_paragraph("─" * 60)
+
+    # Bandeau appréciation globale
+    niveau = synthese.get("niveau_global") or ""
+    score = synthese.get("score_global")
+    p_glob = doc.add_paragraph()
+    p_glob.add_run("Appréciation globale du contrôle interne : ").bold = True
+    run_niv = p_glob.add_run(_NIVEAU_CI_LABELS.get(niveau, niveau or "N/A"))
+    run_niv.bold = True
+    coul = _NIVEAU_CI_COULEURS.get(niveau)
+    if coul:
+        run_niv.font.color.rgb = RGBColor(*coul)
+    if isinstance(score, (int, float)):
+        p_glob.add_run(f"   (score moyen : {score:.2f})")
+    nb = synthese.get("nb_cycles_evalues")
+    if nb:
+        p_glob.add_run(f"   ·   {nb} cycle(s) évalué(s)")
+
+    # Matrice des risques par cycle
+    matrice = synthese.get("matrice") or []
+    if matrice:
+        doc.add_heading("Matrice des risques par cycle", level=1)
+        table = doc.add_table(rows=1, cols=3)
+        table.style = "Table Grid"
+        hdr = table.rows[0].cells
+        for i, col in enumerate(["Cycle", "Niveau de risque", "Score"]):
+            hdr[i].text = col
+            if hdr[i].paragraphs[0].runs:
+                hdr[i].paragraphs[0].runs[0].bold = True
+        for m in matrice:
+            cyc = m.get("cycle") or ""
+            row = table.add_row().cells
+            row[0].text = _QCI_CYCLE_LABELS.get(cyc, cyc.capitalize() if cyc else "—")
+            niv_c = m.get("niveau_risque") or ""
+            row[1].text = _NIVEAU_CI_LABELS.get(niv_c, niv_c or "—")
+            if row[1].paragraphs[0].runs:
+                coul_c = _NIVEAU_CI_COULEURS.get(niv_c)
+                if coul_c:
+                    row[1].paragraphs[0].runs[0].font.color.rgb = RGBColor(*coul_c)
+            sc = m.get("score")
+            row[2].text = f"{sc:.2f}" if isinstance(sc, (int, float)) else "—"
+        doc.add_paragraph()
+
+    # Sections rédigées
+    for sec in synthese.get("sections") or []:
+        titre_sec = sec.get("titre") or ""
+        contenu = sec.get("contenu") or ""
+        if titre_sec:
+            h = doc.add_heading(level=1)
+            h.add_run(titre_sec).font.color.rgb = VIOLET
+        if contenu:
+            doc.add_paragraph(str(contenu))
+
+    # Conclusion
+    conclusion = synthese.get("conclusion")
+    if conclusion:
+        doc.add_heading("Conclusion", level=1)
+        p_ccl = doc.add_paragraph()
+        p_ccl.add_run(str(conclusion))
+
+    doc.add_paragraph("─" * 60)
+    footer = doc.add_paragraph()
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = footer.add_run(f"Synthèse générée par Probare le {_now()} · Confidentiel")
     r.font.size = Pt(9)
     r.italic = True
 

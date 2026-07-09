@@ -321,7 +321,15 @@ function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) 
   const [decision, setDecision] = useState(exc.decision_proposee || '')
   const [decideur, setDecideur] = useState('')
   const [typeResolution, setTypeResolution] = useState('')
-  const [montantIncidence, setMontantIncidence] = useState('')
+  // Pré-remplissage du montant d'incidence avec l'écart calculé par le contrôle
+  // déterministe (le Python calcule — l'auditeur confirme ou ajuste).
+  const montantEstime =
+    typeof exc.montant_estime === 'number' && exc.montant_estime > 0
+      ? exc.montant_estime
+      : null
+  const [montantIncidence, setMontantIncidence] = useState(
+    montantEstime !== null ? String(montantEstime) : ''
+  )
   const [loading, setLoading] = useState(false)
   const [confirmationCritique, setConfirmationCritique] = useState('')
 
@@ -485,6 +493,16 @@ function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) 
                 onChange={(e) => setMontantIncidence(e.target.value)}
                 required
               />
+              {montantEstime !== null && (
+                <p className="text-xs text-indigo-600 mt-1 flex items-start gap-1">
+                  <Wand2 className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                  <span>
+                    Montant pré-rempli par Probare d'après l'écart calculé par le contrôle
+                    ({montantEstime.toLocaleString('fr-FR')} FDJ). Ajustez-le si l'incidence
+                    réelle diffère.
+                  </span>
+                </p>
+              )}
               <p className="text-xs text-slate-500 mt-1">
                 Ce montant sera cumulé avec les autres anomalies non corrigées et comparé
                 au seuil de signification avant la génération du dossier ({normeLabel('450')}).

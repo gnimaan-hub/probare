@@ -358,6 +358,8 @@ class ProjectDB:
             # NEP 450 : typologie de résolution et incidence chiffrée
             ("exception", "type_resolution", "TEXT"),
             ("exception", "montant_incidence", "REAL"),
+            # Montant estimé par le contrôle déterministe (pré-remplissage de l'incidence)
+            ("exception", "montant_estime", "REAL"),
             # NEP 505 : procédures alternatives en cas de non-réponse
             ("circularisation", "procedures_alternatives", "TEXT"),
         ]
@@ -805,8 +807,8 @@ class ProjectDB:
                (id,projet_id,controle_ref,nep_ref,severite,description,
                 statut,decision_humaine,decideur,interpretation_llm,
                 hypotheses,diligences,decision_proposee,urgence,ia_analysee,
-                fichiers_sources,horodatage)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                fichiers_sources,montant_estime,horodatage)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (data["id"], data["projet_id"], data.get("controle_ref"),
              data.get("nep_ref"), data.get("severite"),
              data.get("description"), data.get("statut", "ouverte"),
@@ -818,6 +820,7 @@ class ProjectDB:
              data.get("urgence"),
              int(data.get("ia_analysee", 0)),
              json.dumps(fich) if isinstance(fich, list) else fich,
+             data.get("montant_estime"),
              data.get("horodatage", _now()))
         )
         self.conn.commit()

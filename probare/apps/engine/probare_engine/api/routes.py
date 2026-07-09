@@ -1081,6 +1081,29 @@ def get_synthese_globale_ci(projet_id: str):
     return {"synthese": db.get_qci_synthese_globale(projet_id)}
 
 
+@router.post("/projets/{projet_id}/qci/synthese-globale/export")
+def exporter_synthese_globale_ci(projet_id: str):
+    """Exporte la synthèse globale CI déjà générée en .docx mis en forme (#2)."""
+    from ..reporting.export import generer_synthese_ci_docx
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    synthese = db.get_qci_synthese_globale(projet_id)
+    if not synthese:
+        raise HTTPException(400, "Générez d'abord la synthèse globale avant de l'exporter.")
+    output_dir = DATA_DIR / projet_id / "exports"
+    output_path = output_dir / f"synthese_ci_{projet_id[:8]}.docx"
+    generer_synthese_ci_docx(projet, synthese, output_path)
+    db.log(projet_id, "action_humaine", {"action": "exporter_synthese_ci"})
+    client_slug = (projet.get("client") or "client").replace(" ", "_")[:20]
+    return FileResponse(
+        str(output_path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=f"Synthese_controle_interne_{client_slug}.docx",
+    )
+
+
 @router.post("/projets/{projet_id}/qci/synthese-globale")
 def generer_synthese_globale_ci(projet_id: str):
     """Sonnet rédige la synthèse globale de l'évaluation du contrôle interne
@@ -2684,10 +2707,13 @@ def exporter_diligences(projet_id: str, seulement_ouvertes: bool = True):
     if not projet:
         raise HTTPException(404, "Projet introuvable.")
     exceptions = db.list_exceptions(projet_id)
+    # Carte des sources de détection (#3) : fichier_source_id → fichier_source
+    fichiers_map = {f["id"]: f for f in db.list_fichiers_source(projet_id)}
     output_dir = DATA_DIR / projet_id / "exports"
     output_path = output_dir / f"diligences_{projet_id[:8]}.docx"
     generer_demande_diligences(projet, exceptions, output_path,
-                               seulement_ouvertes=seulement_ouvertes)
+                               seulement_ouvertes=seulement_ouvertes,
+                               fichiers_map=fichiers_map)
     db.log(projet_id, "action_humaine", {"action": "exporter_diligences"})
     client_slug = (projet.get("client") or "client").replace(" ", "_")[:20]
     return FileResponse(
