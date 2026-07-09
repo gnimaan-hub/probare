@@ -95,8 +95,23 @@ Réponds UNIQUEMENT avec un JSON valide de la forme :
     # ─── Ingestion intelligente ────────────────────────────────────────────────
 
     def _parse_json(self, text: str) -> Any:
-        """Parse JSON depuis une réponse LLM en tolérant du texte avant/après."""
+        """Parse JSON depuis une réponse LLM en tolérant du texte avant/après.
+
+        Utilise `strict=False` en repli : pour les champs texte très longs et
+        très formatés (feuilles de travail multi-pages), le modèle laisse
+        parfois échapper un saut de ligne littéral au lieu de la séquence
+        `\\n` dans une valeur de chaîne. `json.loads` strict rejette alors
+        tout le document alors que le JSON est par ailleurs valide — le mode
+        non strict tolère ces caractères de contrôle bruts dans les chaînes.
+        """
         import re as _re
+
+        def _loads_tolerant(candidate: str) -> Any:
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                return json.loads(candidate, strict=False)
+
         text = _re.sub(r"```(?:json)?\s*", "", text.strip()).strip()
         start = text.find("{")
         start_arr = text.find("[")
@@ -105,14 +120,14 @@ Réponds UNIQUEMENT avec un JSON valide de la forme :
             end = text.rfind("]") + 1
             if end > start_arr:
                 try:
-                    return json.loads(text[start_arr:end])
+                    return _loads_tolerant(text[start_arr:end])
                 except Exception:
                     pass
         if start >= 0:
             end = text.rfind("}") + 1
             if end > start:
                 try:
-                    return json.loads(text[start:end])
+                    return _loads_tolerant(text[start:end])
                 except Exception:
                     pass
         return None

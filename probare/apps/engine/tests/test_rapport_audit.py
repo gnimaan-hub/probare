@@ -156,3 +156,77 @@ def test_generer_memorandum_triptyque(db, tmp_path):
                    "Commentaires de l'auditeur", "VENTE-CUT-OFF", "non corrigée",
                    "Contrôles prévus non exécutés"]:
         assert needle in txt, f"absent du mémorandum : {needle}"
+
+
+# ─── Régression : feuille de travail écrite en JSON brut dans le mémorandum ──
+#
+# Deux causes distinctes constatées en production :
+# 1) `_parse_json` rejetait tout le document dès qu'une valeur de chaîne
+#    contenait un saut de ligne littéral (non échappé en `\n`) — fréquent sur
+#    un champ "contenu" très long et très formaté. Le code de repli
+#    enregistrait alors le JSON brut (non parsé) comme contenu rédigé.
+# 2) Chaque régénération d'une feuille pour un cycle donné s'ADDITIONNAIT aux
+#    précédentes au lieu de les remplacer, faisant apparaître des doublons
+#    (dont d'anciennes versions cassées) dans le dossier de travail.
+
+def _claude_client():
+    import os
+    from probare_engine.llm.claude import ClaudeClient
+    os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-unused")
+    return ClaudeClient()
+
+
+def test_parse_json_tolere_saut_de_ligne_litteral():
+    """Un JSON par ailleurs valide, mais avec un caractère de contrôle brut
+    (vrai \\n, non échappé) dans une valeur de chaîne, doit tout de même
+    être décodé plutôt que rejeté en bloc."""
+    c = _claude_client()
+    texte_brut_avec_retour_ligne_litteral = (
+        '```json\n{"titre": "Feuille de travail", "contenu": "Ligne 1\n'
+        'Ligne 2 avec un retour litteral", "nep_refs": [], "conclusion": "sans_reserve"}\n```'
+    )
+    result = c._parse_json(texte_brut_avec_retour_ligne_litteral)
+    assert isinstance(result, dict), "le JSON aurait dû être décodé malgré le saut de ligne littéral"
+    assert result["titre"] == "Feuille de travail"
+    assert "Ligne 1" in result["contenu"] and "Ligne 2" in result["contenu"]
+
+
+def test_parse_json_toujours_none_si_reellement_invalide():
+    """Un texte qui n'est pas du JSON (même tolérant) doit rester None —
+    pas de faux positif qui masquerait un vrai échec de génération."""
+    c = _claude_client()
+    assert c._parse_json("Ceci n'est pas du JSON du tout.") is None
+
+
+def test_regeneration_feuille_remplace_au_lieu_de_saccumuler(db):
+    """delete_feuilles_par_cycle purge les anciennes feuilles d'un cycle avant
+    l'écriture de la nouvelle — pas d'accumulation de doublons."""
+    pid = _projet(db)
+    db.save_feuille_travail({"id": str(uuid.uuid4()), "projet_id": pid, "cycle": "tresorerie",
+                             "contenu_redige": "```json\n{\"titre\": ...(tronqué)", "sources": [],
+                             "nep_ref": "ISA 230"})
+    assert len(db.list_feuilles(pid)) == 1
+
+    db.delete_feuilles_par_cycle(pid, "tresorerie")
+    db.save_feuille_travail({"id": str(uuid.uuid4()), "projet_id": pid, "cycle": "tresorerie",
+                             "contenu_redige": "Feuille de travail correctement rédigée.",
+                             "sources": [], "nep_ref": "ISA 230"})
+
+    feuilles = db.list_feuilles(pid)
+    assert len(feuilles) == 1, "l'ancienne feuille du cycle aurait dû être remplacée, pas dupliquée"
+    assert feuilles[0]["contenu_redige"] == "Feuille de travail correctement rédigée."
+
+
+def test_delete_feuilles_par_cycle_isole_les_autres_cycles(db):
+    """La purge ne doit affecter que le cycle régénéré, pas les autres."""
+    pid = _projet(db)
+    db.save_feuille_travail({"id": str(uuid.uuid4()), "projet_id": pid, "cycle": "tresorerie",
+                             "contenu_redige": "Trésorerie", "sources": [], "nep_ref": "ISA 230"})
+    db.save_feuille_travail({"id": str(uuid.uuid4()), "projet_id": pid, "cycle": "ventes",
+                             "contenu_redige": "Ventes", "sources": [], "nep_ref": "ISA 230"})
+
+    db.delete_feuilles_par_cycle(pid, "tresorerie")
+
+    feuilles = db.list_feuilles(pid)
+    assert len(feuilles) == 1
+    assert feuilles[0]["cycle"] == "ventes"

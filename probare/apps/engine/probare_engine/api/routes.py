@@ -2610,6 +2610,11 @@ def generer_feuille(projet_id: str, body: dict = {}):
     except RuntimeError as e:
         raise HTTPException(503, str(e))
 
+    # Une régénération remplace la feuille précédente du cycle, elle ne s'y
+    # ajoute pas — sans quoi le dossier de travail et le mémorandum accumulent
+    # des doublons (dont d'anciennes versions en échec de génération).
+    db.delete_feuilles_par_cycle(projet_id, cycle)
+
     feuille = {
         "id": str(uuid.uuid4()),
         "projet_id": projet_id,

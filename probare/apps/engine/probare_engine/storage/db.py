@@ -1073,6 +1073,16 @@ class ProjectDB:
             result.append(d)
         return result
 
+    def delete_feuilles_par_cycle(self, projet_id: str, cycle: str) -> int:
+        """Supprime les feuilles de travail existantes d'un cycle avant régénération
+        (une régénération remplace la précédente, elle ne s'y ajoute pas)."""
+        cur = self.conn.execute(
+            "DELETE FROM feuille_travail WHERE projet_id=? AND cycle=?",
+            (projet_id, cycle)
+        )
+        self.conn.commit()
+        return cur.rowcount
+
     # --- Planification ---
 
     def _deserialize_planification(self, d: dict) -> dict:
