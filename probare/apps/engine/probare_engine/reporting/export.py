@@ -1263,6 +1263,32 @@ _TYPE_OPINION_LABELS = {
 }
 
 
+def _bloc_signature_theme(doc, cabinet: dict) -> None:
+    """Bloc « Lieu, date et signature » mis en forme selon la charte."""
+    from . import theme as T
+    cabinet = cabinet or {}
+    ville = cabinet.get("adresse_ville") or "Djibouti"
+    T.divider(doc)
+    T.para(doc, f"Fait à {ville}, le {datetime.now(timezone.utc).strftime('%d/%m/%Y')}.",
+           justify=False)
+    doc.add_paragraph()
+    if cabinet.get("nom"):
+        T.para(doc, cabinet["nom"], justify=False, bold=True, color=T.NAVY, size=12)
+    if cabinet.get("responsable_nom"):
+        T.para(doc, cabinet["responsable_nom"], justify=False, bold=True)
+    if cabinet.get("responsable_titre"):
+        T.para(doc, cabinet["responsable_titre"], justify=False, italic=True, color=T.MUTED)
+    if not cabinet.get("responsable_nom"):
+        T.para(doc, "Nom et signature : ______________________________", justify=False)
+
+
+def _pied_livrable(doc, texte: str) -> None:
+    """Mention légale discrète en fin de livrable."""
+    from . import theme as T
+    doc.add_paragraph()
+    T.para(doc, texte, justify=False, italic=True, size=8, color=T.MUTED)
+
+
 def generer_rapport_audit(
     projet: dict,
     opinion: dict,
@@ -1272,36 +1298,52 @@ def generer_rapport_audit(
 ) -> Path:
     """Génère le RAPPORT D'AUDIT sur les comptes annuels en .docx (ISA/NEP 700).
 
-    Le corps de l'opinion, le fondement et les éventuelles observations sont ceux
-    validés par l'auditeur (proposés par l'IA puis éventuellement corrigés).
-    Probare ne signe pas : le bloc signature reprend l'identité du cabinet mais
-    l'engagement reste celui de l'auditeur habilité.
+    Mise en forme selon la charte Probare (page de garde marine/vert, sommaire,
+    bandeaux de section). Le corps de l'opinion, le fondement et les éventuelles
+    observations sont ceux validés par l'auditeur. Probare ne signe pas.
     """
     try:
         from docx import Document
-        from docx.shared import Pt, RGBColor
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
     except ImportError:
         raise ImportError("python-docx est requis pour la génération docx.")
+    from . import theme as T
 
     cabinet = cabinet or {}
     plan = plan or {}
     ref_compta = libelle_referentiel_comptable(projet.get("referentiel_comptable"))
     client = projet.get("client") or projet.get("nom") or "l'entité"
     exercice = projet.get("exercice") or "N"
+    est_legal = "legal" in (projet.get("nature_mission") or "").lower() \
+        or "commissariat" in (projet.get("nature_mission") or "").lower()
 
     doc = Document()
-    style = doc.styles["Normal"]
-    style.font.name = "Calibri"
-    style.font.size = Pt(11)
+    T.apply_base_styles(doc)
 
-    _entete_cabinet(doc, cabinet)
+    titre_garde = "Rapport du\nCommissaire\naux Comptes" if est_legal else "Rapport\nd'Audit"
+    T.cover_page(
+        doc, titre_garde,
+        sous_titre=f"Exercice clos {exercice}",
+        meta=[
+            f"Entité auditée : {client}",
+            f"Référentiel comptable : {ref_compta}",
+            f"Référentiel d'audit : {prefixe_actif()}",
+        ],
+        cabinet=cabinet,
+    )
 
-    titre = doc.add_heading(_titre_mission(projet), level=0)
-    titre.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    st = doc.add_paragraph()
-    st.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    st.add_run(f"Exercice clos — {exercice}").italic = True
+    # Sommaire
+    observations = (opinion.get("observations") or "").strip()
+    entrees = [
+        ("Opinion", "Notre conclusion sur les comptes annuels pris dans leur ensemble."),
+        ("Fondement de l'opinion", "Cadre normatif, éléments probants et indépendance."),
+    ]
+    if observations:
+        entrees.append(("Observation", "Point sur lequel nous attirons l'attention du lecteur."))
+    entrees += [
+        ("Responsabilités de la direction", "Établissement des comptes et contrôle interne."),
+        ("Responsabilités de l'auditeur", "Étendue et limites de notre mission d'audit."),
+    ]
+    T.sommaire(doc, entrees)
 
     # Destinataire
     dirigeants = plan.get("dirigeants") or []
@@ -1310,37 +1352,34 @@ def generer_rapport_audit(
         if d.get("fonction") and d.get("nom"):
             destinataire = f"À l'attention de {d['nom']}, {d['fonction']}"
             break
-    doc.add_paragraph()
-    doc.add_paragraph(destinataire or f"À la direction de {client},")
+    T.para(doc, destinataire or f"À la direction de {client},", justify=False)
 
+    num = 1
     # 1. Opinion
     type_op = opinion.get("type_opinion") or "sans_reserve"
     titre_op = opinion.get("titre") or _TYPE_OPINION_LABELS.get(type_op, "Opinion")
-    h = doc.add_heading(titre_op, level=1)
-    if h.runs:
-        h.runs[0].font.color.rgb = RGBColor(0x4F, 0x46, 0xE5)
-    doc.add_paragraph(opinion.get("texte_opinion") or "")
+    T.section_header(doc, titre_op, str(num)); num += 1
+    T.para(doc, opinion.get("texte_opinion") or "")
 
     # 2. Fondement de l'opinion
-    doc.add_heading("Fondement de l'opinion", level=1)
-    fondement = opinion.get("fondement") or (
+    T.section_header(doc, "Fondement de l'opinion", str(num)); num += 1
+    T.para(doc, opinion.get("fondement") or (
         f"Nous avons effectué notre audit selon les normes d'audit {prefixe_actif()}. "
         "Les responsabilités qui nous incombent en vertu de ces normes sont décrites "
         "dans la section « Responsabilités de l'auditeur » du présent rapport. Nous sommes "
         "indépendants de l'entité et estimons que les éléments probants que nous avons "
         "collectés sont suffisants et appropriés pour fonder notre opinion."
-    )
-    doc.add_paragraph(fondement)
+    ))
 
     # 3. Observation / incertitude (conditionnel)
-    observations = (opinion.get("observations") or "").strip()
     if observations:
-        doc.add_heading("Observation", level=1)
-        doc.add_paragraph(observations)
+        T.section_header(doc, "Observation", str(num)); num += 1
+        T.para(doc, observations)
 
     # 4. Responsabilités de la direction
-    doc.add_heading("Responsabilités de la direction relatives aux comptes annuels", level=1)
-    doc.add_paragraph(
+    T.section_header(doc, "Responsabilités de la direction relatives aux comptes annuels", str(num))
+    num += 1
+    T.para(doc,
         f"Il appartient à la direction d'établir des comptes annuels présentant une image "
         f"fidèle conformément à {ref_compta}, ainsi que de mettre en place le contrôle interne "
         "qu'elle estime nécessaire à l'établissement de comptes annuels ne comportant pas "
@@ -1352,8 +1391,9 @@ def generer_rapport_audit(
     )
 
     # 5. Responsabilités de l'auditeur
-    doc.add_heading("Responsabilités de l'auditeur relatives à l'audit des comptes annuels", level=1)
-    doc.add_paragraph(
+    T.section_header(doc, "Responsabilités de l'auditeur relatives à l'audit des comptes annuels",
+                     str(num))
+    T.para(doc,
         "Notre objectif est d'obtenir l'assurance raisonnable que les comptes annuels pris dans "
         "leur ensemble ne comportent pas d'anomalies significatives. L'assurance raisonnable "
         "correspond à un niveau élevé d'assurance, sans toutefois garantir qu'un audit réalisé "
@@ -1366,24 +1406,36 @@ def generer_rapport_audit(
         "l'application de la convention de continuité d'exploitation."
     )
 
-    # Signature
-    doc.add_paragraph("─" * 60)
-    _bloc_signature(doc, cabinet)
-
-    doc.add_paragraph()
-    footer = doc.add_paragraph()
-    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = footer.add_run(
+    _bloc_signature_theme(doc, cabinet)
+    _pied_livrable(doc,
         f"Rapport préparé avec l'assistance de Probare le {_now()}. "
-        f"L'opinion et la signature relèvent de la responsabilité exclusive de l'auditeur habilité. "
+        "L'opinion et la signature relèvent de la responsabilité exclusive de l'auditeur habilité. "
         f"Référentiel d'audit : {prefixe_actif()} · Référentiel comptable : {ref_compta}."
     )
-    r.font.size = Pt(8)
-    r.italic = True
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(output_path))
     return output_path
+
+
+_NIVEAU_CI_LABELS = {
+    "faible": "faible (contrôle interne fiable)",
+    "moyen": "moyen (contrôle interne partiellement fiable)",
+    "eleve": "élevé (contrôle interne à renforcer)",
+    "élevé": "élevé (contrôle interne à renforcer)",
+}
+
+_TYPE_RES_LABELS = {
+    "corrigee": "corrigée par le client",
+    "sans_incidence": "sans incidence (explication satisfaisante obtenue)",
+    "non_corrigee": "non corrigée",
+}
+
+
+def _fmt_fdj(v: Any) -> str:
+    if isinstance(v, (int, float)):
+        return f"{v:,.0f} FDJ".replace(",", " ")
+    return "—"
 
 
 def generer_memorandum_controle_comptes(
@@ -1397,33 +1449,40 @@ def generer_memorandum_controle_comptes(
     sondages: list[dict] | None = None,
     controles_ignores: list[dict] | None = None,
     cabinet: dict | None = None,
+    synthese: dict | None = None,
 ) -> Path:
     """Génère le MÉMORANDUM SUR LE CONTRÔLE DES COMPTES en .docx.
 
-    Structure de référence (rapport bailleur / CAC) : contexte & objectifs, puis
-    un chapitre par cycle organisé en triptyque Objectifs → Travaux effectués →
-    Commentaires de l'auditeur, et enfin les contrôles prévus non exécutés (NEP 230).
+    Mémo COMPLET (#5) : présentation de l'entité, déroulé de toutes les phases
+    (cadrage, contrôle interne, planification, ingestion, travaux substantifs,
+    revue), un chapitre par cycle (Objectifs → Travaux → Commentaires rédigés en
+    langage naturel), synthèse des anomalies vs seuil, opinion, puis inventaire
+    des livrables produits et des supports du dossier. Mise en forme selon la
+    charte Probare. `synthese` = sortie de `_synthese_mission` (agrégat déterministe).
     """
     try:
         from docx import Document
-        from docx.shared import Pt, RGBColor
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
     except ImportError:
         raise ImportError("python-docx est requis pour la génération docx.")
-
+    from . import theme as T
     from ..controls.registry import REGISTRE
 
     cabinet = cabinet or {}
     plan = plan or {}
+    synthese = synthese or {}
     circularisations = circularisations or []
     sondages = sondages or []
     controles_ignores = controles_ignores or []
 
-    ROUGE = RGBColor(0xC0, 0x39, 0x2B)
-
     client = projet.get("client") or projet.get("nom") or "l'entité"
     exercice = projet.get("exercice") or "N"
+    ref_compta = libelle_referentiel_comptable(projet.get("referentiel_comptable"))
     cycles = projet.get("cycles_couverts") or ["tresorerie", "achats", "ventes"]
+
+    anomalies = synthese.get("anomalies") or {}
+    ci = synthese.get("controle_interne") or {}
+    opinion = synthese.get("opinion") or {}
+    fichiers = synthese.get("fichiers") or {}
 
     # Index par cycle
     feuille_par_cycle = {f.get("cycle"): f for f in feuilles}
@@ -1432,42 +1491,130 @@ def generer_memorandum_controle_comptes(
         refs_par_cycle.setdefault(defn.cycle, set()).add(ref)
 
     doc = Document()
-    style = doc.styles["Normal"]
-    style.font.name = "Calibri"
-    style.font.size = Pt(11)
+    T.apply_base_styles(doc)
 
-    _entete_cabinet(doc, cabinet)
-
-    titre = doc.add_heading("MÉMORANDUM SUR LE CONTRÔLE DES COMPTES", level=0)
-    titre.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    st = doc.add_paragraph()
-    st.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    st.add_run(f"{client} — Exercice clos {exercice}").italic = True
-
-    info = doc.add_paragraph()
-    info.add_run(f"Édité le : {_now()}\n").font.size = Pt(9)
-    info.add_run(f"Référentiel d'audit : {prefixe_actif()}  ·  "
-                 f"Référentiel comptable : {libelle_referentiel_comptable(projet.get('referentiel_comptable'))}"
-                 ).font.size = Pt(9)
-    doc.add_paragraph("─" * 60)
-
-    # A. Contexte et objectifs
-    doc.add_heading("A. Rappel du contexte et des objectifs de la mission", level=1)
-    if plan.get("activites_principales"):
-        doc.add_paragraph(f"Activité de l'entité : {plan['activites_principales']}")
-    if plan.get("forme_juridique"):
-        doc.add_paragraph(f"Forme juridique : {plan['forme_juridique']}")
-    doc.add_paragraph(
-        "Le présent mémorandum a pour objet de fournir des informations complémentaires sur "
-        "les rubriques des comptes et sur les principaux travaux que nous avons effectués dans "
-        "le cadre de notre examen. Il inclut nos principales conclusions. Notre approche a "
-        "consisté à vérifier la réalité, l'exhaustivité et la sincérité des soldes et opérations "
-        "de chaque cycle, au moyen des contrôles déterministes du programme de travail, complétés "
-        "le cas échéant de confirmations externes et de sondages sur pièces."
+    T.cover_page(
+        doc, "Mémorandum\nsur le Contrôle\ndes Comptes",
+        sous_titre=f"Exercice clos {exercice}",
+        meta=[
+            f"Entité : {client}",
+            f"Référentiel comptable : {ref_compta}",
+            f"Référentiel d'audit : {prefixe_actif()}",
+            f"Édité le {_now()}",
+        ],
+        cabinet=cabinet,
     )
 
-    # B. Un chapitre par cycle : Objectifs → Travaux effectués → Commentaires
-    lettre = ord("B")
+    # ── Sommaire ──────────────────────────────────────────────────────────────
+    entrees = [
+        ("Présentation de la mission et de l'entité", "Identité du client, périmètre et nature de la mission."),
+        ("Déroulé de la mission", "Chaque phase de travail, de la prise de connaissance à la revue."),
+        ("Contrôle des comptes par cycle", "Objectifs, travaux réalisés et commentaires, cycle par cycle."),
+        ("Synthèse des anomalies", f"Cumul des anomalies non corrigées au regard du seuil ({norme(450)})."),
+    ]
+    if opinion.get("texte_opinion"):
+        entrees.append(("Opinion de l'auditeur", "Conclusion proposée sur les comptes annuels."))
+    entrees.append(("Livrables et pièces du dossier", "Documents produits et supports de travail exploités."))
+    if controles_ignores:
+        entrees.append((f"Annexe — Contrôles non exécutés", f"Motifs documentés ({norme(230)})."))
+    T.sommaire(doc, entrees)
+
+    num = 1
+    # ── 1. Présentation de la mission et de l'entité ─────────────────────────
+    T.section_header(doc, "Présentation de la mission et de l'entité", str(num)); num += 1
+    T.para(doc,
+        f"Le présent mémorandum retrace l'ensemble des travaux de contrôle des comptes que nous "
+        f"avons conduits sur les comptes annuels de {client} au titre de l'exercice clos {exercice}. "
+        "Il a vocation à documenter notre démarche, à rendre compte des diligences accomplies et à "
+        "exposer nos conclusions, de manière à ce qu'un lecteur — associé signataire, successeur ou "
+        "tiers habilité — puisse comprendre et retracer l'intégralité du processus d'audit."
+    )
+    identite = []
+    if plan.get("forme_juridique"):
+        identite.append(("Forme juridique", plan["forme_juridique"]))
+    if plan.get("date_creation_entreprise"):
+        identite.append(("Création", plan["date_creation_entreprise"]))
+    if plan.get("effectif"):
+        identite.append(("Effectif", plan["effectif"]))
+    identite.append(("Nature de la mission", projet.get("nature_mission") or "contractuelle"))
+    identite.append(("Cycles audités", ", ".join(_MEMO_CYCLE_LABELS.get(c, c) for c in cycles)))
+    identite.append(("Référentiel comptable", ref_compta))
+    T.info_table(doc, identite)
+    if plan.get("activites_principales"):
+        T.para(doc, f"Activité de l'entité. {plan['activites_principales']}")
+    if plan.get("marches_principaux"):
+        T.para(doc, f"Marchés et clientèle. {plan['marches_principaux']}")
+    dirigeants = plan.get("dirigeants") or []
+    if dirigeants:
+        noms = "; ".join(
+            f"{d.get('nom', '')}{' (' + d['fonction'] + ')' if d.get('fonction') else ''}".strip()
+            for d in dirigeants if d.get("nom"))
+        if noms:
+            T.para(doc, f"Direction. La gouvernance de l'entité est assurée par {noms}.")
+
+    # ── 2. Déroulé de la mission (toutes les phases) ─────────────────────────
+    T.section_header(doc, "Déroulé de la mission", str(num)); num += 1
+    T.para(doc,
+        "Notre mission s'est déroulée selon une séquence structurée, chaque phase alimentant la "
+        "suivante. Nous en restituons ci-après le fil, afin de replacer les contrôles de comptes "
+        "dans leur contexte méthodologique."
+    )
+
+    T.sous_titre(doc, "Prise de connaissance et cadrage")
+    T.para(doc,
+        f"Nous avons d'abord circonscrit le périmètre de la mission — nature "
+        f"({projet.get('nature_mission') or 'contractuelle'}), cycles retenus et connaissance "
+        f"générale de l'entité et de son environnement ({norme(315)}) — afin d'orienter nos travaux "
+        "vers les zones porteuses de risque."
+    )
+
+    T.sous_titre(doc, "Évaluation du contrôle interne")
+    niveau_ci = _NIVEAU_CI_LABELS.get((ci.get("niveau_global") or "").lower(),
+                                      ci.get("niveau_global") or "non évalué")
+    par_cycle_ci = ci.get("par_cycle") or []
+    phrase_ci = (
+        f"L'évaluation du dispositif de contrôle interne, formalisée dans notre synthèse QCI "
+        f"(questionnaire de contrôle interne), conclut à un niveau de risque global {niveau_ci}. "
+    )
+    if par_cycle_ci:
+        details = ", ".join(
+            f"{_MEMO_CYCLE_LABELS.get(e.get('cycle'), e.get('cycle'))} : "
+            f"{_NIVEAU_CI_LABELS.get((e.get('niveau') or '').lower(), e.get('niveau') or '—').split(' (')[0]}"
+            for e in par_cycle_ci)
+        phrase_ci += f"Par cycle, le risque s'établit comme suit — {details}. "
+    phrase_ci += ("Cette appréciation détermine l'étendue de nos contrôles substantifs : plus le "
+                  "contrôle interne est fiable, plus nous pouvons alléger les tests de détail, et "
+                  "inversement.")
+    T.para(doc, phrase_ci)
+
+    T.sous_titre(doc, "Planification et seuil de signification")
+    seuil = anomalies.get("seuil_signification") or projet.get("seuil_signification")
+    seuil_plan = anomalies.get("seuil_planification") or projet.get("seuil_planification")
+    phrase_plan = (
+        f"Nous avons arrêté un seuil de signification ({norme(320)}) de {_fmt_fdj(seuil)}"
+        + (f", assorti d'un seuil de planification de {_fmt_fdj(seuil_plan)}" if seuil_plan else "")
+        + ". Ce seuil matérialise le montant au-delà duquel une anomalie est susceptible d'influencer "
+        "le jugement d'un lecteur des comptes ; il sert de référence tout au long de nos travaux et "
+        "au moment de conclure."
+    )
+    T.para(doc, phrase_plan)
+    if plan.get("note_synthese"):
+        T.para(doc,
+            "Ces orientations ont été consignées dans notre note de planification, qui formalise "
+            "l'approche par les risques et le programme de travail retenu pour l'exercice.")
+
+    T.sous_titre(doc, "Collecte des données et travaux substantifs")
+    ing = fichiers.get("ingérés") or []
+    T.para(doc,
+        f"Nous avons ensuite ingéré et fiabilisé les données comptables de l'entité "
+        f"({len(ing)} pièce(s) exploitée(s) : grand-livre, balances, relevés et pièces "
+        "justificatives), puis mis en œuvre nos procédures substantives — contrôles déterministes "
+        f"par cycle, confirmations externes ({norme(505)}) et sondages sur pièces ({norme(530)}) — "
+        "dont le détail figure au chapitre suivant."
+    )
+
+    # ── 3. Contrôle des comptes par cycle ────────────────────────────────────
+    T.section_header(doc, "Contrôle des comptes par cycle", str(num)); num += 1
     for cycle in cycles:
         libelle_cycle = _MEMO_CYCLE_LABELS.get(cycle, cycle.capitalize())
         refs = refs_par_cycle.get(cycle, set())
@@ -1476,103 +1623,133 @@ def generer_memorandum_controle_comptes(
         circ_cycle = [c for c in circularisations if c.get("cycle") == cycle]
         sond_cycle = [s for s in sondages if s.get("cycle") == cycle]
         feuille = feuille_par_cycle.get(cycle)
-
-        # Ne pas générer de chapitre vide (aucun travail sur ce cycle)
         if not (res_cycle or exc_cycle or circ_cycle or sond_cycle or feuille):
             continue
 
-        doc.add_heading(f"{chr(lettre)}. Cycle {libelle_cycle}", level=1)
-        lettre += 1
+        T.sous_titre(doc, f"Cycle {libelle_cycle}")
+        nb_prevus = sum(1 for _r, d in REGISTRE.items() if d.cycle == cycle)
 
-        # 1. Objectifs
-        doc.add_heading("Objectifs", level=2)
-        doc.add_paragraph(
-            f"Nos travaux sur le cycle {libelle_cycle.lower()} visent à nous assurer de la "
-            "réalité, de l'exhaustivité, de l'exactitude et du correct rattachement des soldes "
-            "et opérations concernés, au regard des assertions d'audit applicables. À cet effet, "
-            "les contrôles suivants ont été prévus :"
+        # Objectifs — prose
+        T.para(doc,
+            f"Nos travaux sur le cycle {libelle_cycle.lower()} visent à nous assurer de la réalité, "
+            "de l'exhaustivité, de l'exactitude et du correct rattachement des soldes et opérations "
+            f"concernés, au regard des assertions d'audit applicables. Le programme prévoyait "
+            f"{nb_prevus} contrôle(s) déterministe(s) sur ce cycle."
         )
-        controles_cycle = [defn for ref, defn in REGISTRE.items() if defn.cycle == cycle]
-        for defn in controles_cycle:
-            doc.add_paragraph(f"{defn.libelle} — {defn.description}", style="List Bullet")
 
-        # 2. Travaux effectués
-        doc.add_heading("Travaux effectués", level=2)
+        # Travaux effectués — prose
+        nb_ok = sum(1 for r in res_cycle if r.get("statut") == "ok")
+        nb_exc = sum(1 for r in res_cycle if r.get("statut") == "exception")
+        phrases = []
         if res_cycle:
-            doc.add_paragraph("Contrôles déterministes exécutés :")
-            for r in res_cycle:
-                statut = "sans anomalie" if r.get("statut") == "ok" else "EXCEPTION"
-                p = doc.add_paragraph(style="List Bullet")
-                p.add_run(f"[{r.get('controle_ref')}] ")
-                p.add_run(f"{r.get('details', '') or ''} — {statut}")
+            phrases.append(
+                f"Nous avons exécuté {len(res_cycle)} contrôle(s), dont {nb_ok} n'ont révélé aucune "
+                f"anomalie et {nb_exc} ont levé une exception.")
         if circ_cycle:
-            doc.add_paragraph("Confirmations externes (circularisation) :")
-            for c in circ_cycle:
-                doc.add_paragraph(
-                    f"{c.get('libelle') or c.get('compte')} — statut : {c.get('statut', '—')}",
-                    style="List Bullet")
+            rep = sum(1 for c in circ_cycle if c.get("statut") in ("reponse_recue", "clos"))
+            phrases.append(
+                f"Une démarche de confirmation externe a été engagée auprès de {len(circ_cycle)} "
+                f"tiers, dont {rep} a/ont répondu à notre demande.")
         if sond_cycle:
-            doc.add_paragraph("Sondages sur pièces :")
             for s in sond_cycle:
-                doc.add_paragraph(
-                    f"{s.get('libelle') or 'Sondage'} — échantillon de "
-                    f"{s.get('taille_echantillon', '—')} sur {s.get('population', '—')} éléments, "
-                    f"{s.get('nb_anomalies', 0)} anomalie(s) relevée(s)",
-                    style="List Bullet")
-        if not (res_cycle or circ_cycle or sond_cycle):
-            doc.add_paragraph("Aucun contrôle exécuté sur ce cycle à la date du présent mémorandum.",
-                              style="List Bullet")
+                phrases.append(
+                    f"Un sondage « {s.get('libelle') or 'sur pièces'} » a porté sur un échantillon "
+                    f"de {s.get('taille_echantillon', '—')} pièces tirées d'une population de "
+                    f"{s.get('population', '—')}, faisant ressortir {s.get('nb_anomalies', 0)} "
+                    "anomalie(s).")
+        if not phrases:
+            phrases.append("Aucun contrôle n'a été exécuté sur ce cycle à la date du présent mémorandum.")
+        T.para(doc, " ".join(phrases))
 
-        # 3. Commentaires de l'auditeur
-        doc.add_heading("Commentaires de l'auditeur", level=2)
+        # Commentaires — feuille LLM + traitement des exceptions en prose
         if feuille and feuille.get("contenu_redige"):
-            doc.add_paragraph(feuille["contenu_redige"])
+            T.para(doc, feuille["contenu_redige"])
         if exc_cycle:
-            doc.add_paragraph("Anomalies relevées et leur traitement :")
             for e in exc_cycle:
-                p = doc.add_paragraph(style="List Bullet")
-                run = p.add_run(f"[{e.get('controle_ref')}] {e.get('description', '') or ''}")
-                if e.get("statut") == "ouverte":
-                    run.font.color.rgb = ROUGE
                 type_res = e.get("type_resolution")
-                if type_res:
-                    labels = {"corrigee": "corrigée par le client",
-                              "sans_incidence": "sans incidence (explication obtenue)",
-                              "non_corrigee": "non corrigée"}
-                    txt = labels.get(type_res, type_res)
+                traitement = _TYPE_RES_LABELS.get(type_res)
+                phrase = f"Anomalie {e.get('controle_ref', '')} — {e.get('description', '') or ''}".strip()
+                if traitement:
+                    phrase += f" Cette anomalie a été {traitement}"
                     mi = e.get("montant_incidence")
                     if type_res == "non_corrigee" and isinstance(mi, (int, float)):
-                        txt += f" — incidence : {mi:,.0f} FDJ"
-                    p.add_run(f" → {txt}")
+                        phrase += f", pour une incidence de {_fmt_fdj(mi)}"
+                    phrase += "."
                 elif e.get("statut") == "ouverte":
-                    p.add_run(" → en cours d'instruction")
+                    phrase += " Cette anomalie demeure en cours d'instruction à ce jour."
+                T.para(doc, phrase, color=(T.NAVY if e.get("statut") == "ouverte" else None))
         elif not (feuille and feuille.get("contenu_redige")):
-            doc.add_paragraph(
-                "Les travaux réalisés sur ce cycle n'appellent pas d'observation particulière "
-                "à la date du présent mémorandum."
-            )
+            T.para(doc,
+                "Les travaux réalisés sur ce cycle n'appellent pas d'observation particulière à la "
+                "date du présent mémorandum.")
 
-    # Contrôles non exécutés (NEP 230)
+    # ── 4. Synthèse des anomalies ────────────────────────────────────────────
+    T.section_header(doc, "Synthèse des anomalies et incidence sur l'opinion", str(num)); num += 1
+    cumul = anomalies.get("cumul_non_corrigees")
+    depasse = anomalies.get("depasse_seuil_signification")
+    T.para(doc,
+        f"À l'issue de nos travaux, {anomalies.get('nb_corrigees', 0)} anomalie(s) ont été corrigées "
+        f"par l'entité, {anomalies.get('nb_sans_incidence', 0)} se sont révélée(s) sans incidence "
+        f"après explication, et {anomalies.get('nb_non_corrigees', 0)} demeure(nt) non corrigée(s). "
+        f"Le cumul des anomalies non corrigées s'établit à {_fmt_fdj(cumul)}, à rapprocher du seuil "
+        f"de signification de {_fmt_fdj(seuil)}."
+    )
+    if depasse:
+        T.para(doc,
+            f"{norme(450)} — Le cumul des anomalies non corrigées DÉPASSE le seuil de signification.",
+            bold=True, color=T.RED)
+        T.para(doc,
+            "Ce dépassement est de nature à affecter notre opinion : une réserve, voire une opinion "
+            "défavorable, doit être envisagée selon l'importance et le caractère diffus des anomalies.")
+    else:
+        T.para(doc,
+            f"Le cumul reste inférieur au seuil de signification : sous réserve de nos autres "
+            f"diligences, les anomalies relevées ne remettent pas en cause, à elles seules, la régularité "
+            "et la sincérité des comptes.")
+
+    # ── 5. Opinion (si disponible) ───────────────────────────────────────────
+    if opinion.get("texte_opinion"):
+        T.section_header(doc, "Opinion de l'auditeur", str(num)); num += 1
+        type_op = opinion.get("type_opinion")
+        if type_op:
+            T.bande_verte(doc, _TYPE_OPINION_LABELS.get(type_op, type_op))
+        T.para(doc, opinion["texte_opinion"])
+        if opinion.get("fondement"):
+            T.para(doc, opinion["fondement"])
+
+    # ── 6. Livrables produits et pièces du dossier ───────────────────────────
+    T.section_header(doc, "Livrables produits et pièces du dossier", str(num)); num += 1
+    T.para(doc,
+        "Le tableau ci-après recense les livrables générés au cours de la mission ainsi que les "
+        "supports de travail exploités, qui constituent ensemble le dossier d'audit.")
+    produits = fichiers.get("produits") or []
+    if produits:
+        T.bande_verte(doc, "Livrables produits")
+        for f in produits:
+            T.para(doc, f"• {f.get('nom')}"
+                        + (f" ({f.get('detail')})" if f.get("detail") else ""),
+                    justify=False, size=9.5)
+    if ing:
+        T.bande_verte(doc, "Supports de travail exploités")
+        for f in ing:
+            T.para(doc, f"• {f.get('nom')}"
+                        + (f" — {f.get('categorie')}" if f.get("categorie") else ""),
+                    justify=False, size=9.5)
+
+    # ── Annexe : contrôles non exécutés (NEP 230) ────────────────────────────
     if controles_ignores:
-        doc.add_heading(f"Annexe — Contrôles prévus non exécutés ({norme(230)})", level=1)
-        doc.add_paragraph(
-            "Les contrôles suivants, prévus au programme de travail, n'ont pas été exécutés ; "
-            f"le motif est documenté conformément à la norme {norme(230)}."
-        )
-        for ci in controles_ignores:
-            doc.add_paragraph(
-                f"[{ci.get('controle_ref')}] ({ci.get('cycle', '?')}) — {ci.get('raison', '')}",
-                style="List Bullet")
+        T.section_header(doc, f"Annexe — Contrôles prévus non exécutés", str(num))
+        T.para(doc,
+            "Les contrôles suivants, prévus au programme de travail, n'ont pas été exécutés ; leur "
+            f"motif est documenté conformément à la norme {norme(230)}.")
+        for ci_item in controles_ignores:
+            T.para(doc,
+                f"• {ci_item.get('controle_ref')} ({ci_item.get('cycle', '?')}) — "
+                f"{ci_item.get('raison', '')}", justify=False, size=9.5)
 
-    doc.add_paragraph("─" * 60)
-    _bloc_signature(doc, cabinet)
-    doc.add_paragraph()
-    footer = doc.add_paragraph()
-    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = footer.add_run(f"Mémorandum généré par Probare le {_now()} · Confidentiel · "
-                       f"Document de travail {norme(230)}")
-    r.font.size = Pt(8)
-    r.italic = True
+    _bloc_signature_theme(doc, cabinet)
+    _pied_livrable(doc,
+        f"Mémorandum généré par Probare le {_now()} · Confidentiel · Document de travail {norme(230)}.")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(output_path))

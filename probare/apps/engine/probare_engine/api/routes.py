@@ -3019,6 +3019,8 @@ def exporter_memorandum(projet_id: str, body: ExportSigneBody | None = None):
         raise HTTPException(404, "Projet introuvable.")
     plan = db.get_or_create_planification(projet_id)
     cabinet = (body.cabinet if body else None) or {}
+    # Agrégat déterministe complet (toutes phases, anomalies, CI, fichiers) pour un mémo exhaustif (#5).
+    synthese = _synthese_mission(db, projet_id, projet)
     output_dir = DATA_DIR / projet_id / "exports"
     output_path = output_dir / f"memorandum_controle_comptes_{projet_id[:8]}.docx"
     generer_memorandum_controle_comptes(
@@ -3032,6 +3034,7 @@ def exporter_memorandum(projet_id: str, body: ExportSigneBody | None = None):
         sondages=db.list_sondages(projet_id),
         controles_ignores=db.list_controles_ignores(projet_id),
         cabinet=cabinet,
+        synthese=synthese,
     )
     db.log(projet_id, "action_humaine", {"action": "exporter_memorandum"})
     client_slug = (projet.get("client") or "client").replace(" ", "_")[:20]

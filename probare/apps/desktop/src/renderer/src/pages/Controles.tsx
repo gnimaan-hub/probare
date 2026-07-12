@@ -168,11 +168,13 @@ function CyclePanel({
   projetId,
   etatCourant,
   externallyLaunching,
+  reloadToken,
 }: {
   cycle: typeof CYCLES[0]
   projetId: string
   etatCourant: string
   externallyLaunching?: boolean
+  reloadToken?: number
 }) {
   const { post, get } = useApi()
   const toast = useToast()
@@ -185,12 +187,15 @@ function CyclePanel({
   // #8 : par défaut, on n'affiche que les exceptions (les contrôles OK sont repliés)
   const [exceptionsSeules, setExceptionsSeules] = useState(true)
 
+  // Recharge à chaque changement de cycle/projet ET à chaque incrément de
+  // reloadToken (ex : après « Lancer tous les contrôles ») pour que chaque
+  // panneau de cycle se rafraîchisse automatiquement sans remontage manuel.
   useEffect(() => {
     if (!projetId) return
     get(`/projets/${projetId}/controles?cycle=${cycle.id}`)
       .then((d) => { setResultats(d.resultats || []); setLoaded(true) })
       .catch(() => setLoaded(true))
-  }, [projetId, cycle.id])
+  }, [projetId, cycle.id, reloadToken])
 
   const handleLancer = async () => {
     // Si des résultats existent déjà, demander confirmation pour éviter la duplication
@@ -1265,6 +1270,8 @@ export function Controles() {
 
   const [transitioning, setTransitioning] = useState(false)
   const [launchingAll, setLaunchingAll] = useState(false)
+  // Incrémenté après un lancement groupé pour forcer le refetch de chaque panneau de cycle.
+  const [reloadToken, setReloadToken] = useState(0)
 
   const etatCourant = projetActif?.etat_courant || ''
 
@@ -1311,11 +1318,8 @@ export function Controles() {
       const totalControles = result.nb_controles_total || 0
       const totalExceptions = result.nb_exceptions_total || 0
       toast.success(`${totalControles} contrôle(s) sur ${cyclesMission.length} cycle(s). ${totalExceptions} exception(s).`)
-      // Forcer rechargement des panels en changeant d'onglet
-      if (cyclesMission.length > 0) {
-        setActiveCycle(null)
-        setTimeout(() => setActiveCycle(cyclesMission[0].id), 50)
-      }
+      // Rafraîchit automatiquement chaque panneau de cycle (refetch via reloadToken).
+      setReloadToken((t) => t + 1)
     } catch (e: any) {
       toast.error(e.message)
     } finally {
@@ -1419,6 +1423,7 @@ export function Controles() {
                     projetId={projetId}
                     etatCourant={etatCourant}
                     externallyLaunching={launchingAll}
+                    reloadToken={reloadToken}
                   />
                 </div>
               ))}

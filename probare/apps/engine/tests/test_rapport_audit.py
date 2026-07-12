@@ -98,8 +98,25 @@ def test_synthese_mission_structure(db):
 # ─── Génération des livrables finaux ─────────────────────────────────────────
 
 def _docx_text(path):
+    """Texte de tout le document, y compris les cellules de tableaux (la nouvelle
+    charte rend page de garde, bandeaux de section et encadrés via des tableaux)."""
     import docx
-    return "\n".join(p.text for p in docx.Document(str(path)).paragraphs)
+
+    def _cell_text(cell):
+        parts = [p.text for p in cell.paragraphs]
+        for t in cell.tables:
+            for row in t.rows:
+                for c in row.cells:
+                    parts.append(_cell_text(c))
+        return "\n".join(parts)
+
+    doc = docx.Document(str(path))
+    parts = [p.text for p in doc.paragraphs]
+    for t in doc.tables:
+        for row in t.rows:
+            for c in row.cells:
+                parts.append(_cell_text(c))
+    return "\n".join(parts)
 
 
 CABINET = {
@@ -122,9 +139,11 @@ def test_generer_rapport_audit(db, tmp_path):
                                 cabinet=CABINET, plan=db.get_or_create_planification(pid))
     assert out.exists() and out.stat().st_size > 5000
     txt = _docx_text(out)
-    for needle in ["Cabinet NIMAAN", "Opinion sans réserve", "Fondement de l'opinion",
+    # Bandeaux de section rendus en capitales par la charte ; le fond (opinion,
+    # destinataire, référentiel, signature) reste en casse naturelle.
+    for needle in ["Cabinet NIMAAN", "OPINION SANS RÉSERVE", "FONDEMENT DE L'OPINION",
                    "Plan Comptable Général de Djibouti", "M. X, Gérant",
-                   "Responsabilités de la direction", "Commissaire aux comptes"]:
+                   "Il appartient à la direction", "Commissaire aux comptes"]:
         assert needle in txt, f"absent du rapport : {needle}"
 
 
@@ -144,17 +163,21 @@ def test_generer_memorandum_triptyque(db, tmp_path):
                              "contenu_redige": "Conclusion : anomalie non corrigée.",
                              "sources": ["VENTE-CUT-OFF"], "nep_ref": "NEP 330"})
     projet = db.get_projet(pid)
+    from probare_engine.api.routes import _synthese_mission
+    synthese = _synthese_mission(db, pid, projet)
     out = generer_memorandum_controle_comptes(
         projet, db.list_resultats(pid), db.list_exceptions(pid), db.list_feuilles(pid),
         tmp_path / "memo.docx", plan=db.get_or_create_planification(pid),
         controles_ignores=[{"controle_ref": "TRESOR-RAPPROCH", "cycle": "tresorerie",
                             "raison": "Relevé bancaire non fourni"}],
-        cabinet=CABINET)
+        cabinet=CABINET, synthese=synthese)
     assert out.exists() and out.stat().st_size > 5000
     txt = _docx_text(out)
-    for needle in ["MÉMORANDUM", "Cycle Ventes-Clients", "Objectifs", "Travaux effectués",
-                   "Commentaires de l'auditeur", "VENTE-CUT-OFF", "non corrigée",
-                   "Contrôles prévus non exécutés"]:
+    # Nouvelle charte : mémo COMPLET rédigé en langage naturel (plus de sous-titres
+    # rigides « Objectifs / Travaux effectués »), page de garde + déroulé de mission.
+    for needle in ["Mémorandum", "Prise de connaissance et cadrage",
+                   "Cycle Ventes-Clients", "assertions d'audit", "VENTE-CUT-OFF",
+                   "non corrigée", "supports de travail", "TRESOR-RAPPROCH"]:
         assert needle in txt, f"absent du mémorandum : {needle}"
 
 
