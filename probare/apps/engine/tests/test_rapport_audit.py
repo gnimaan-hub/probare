@@ -240,6 +240,78 @@ def test_regeneration_feuille_remplace_au_lieu_de_saccumuler(db):
     assert feuilles[0]["contenu_redige"] == "Feuille de travail correctement rédigée."
 
 
+def test_list_exceptions_tri_par_montant_groupe_par_statut(db):
+    """#2 : exceptions OUVERTES d'abord, puis TRANCHÉES ; dans chaque groupe, par
+    montant d'anomalie décroissant (incidence sinon estimé)."""
+    pid = _projet(db)
+
+    def _ex(ref, est=None, tranchee=False, inc=None):
+        eid = str(uuid.uuid4())
+        db.save_exception({"id": eid, "projet_id": pid, "controle_ref": ref,
+                           "description": ref, "statut": "ouverte", "montant_estime": est})
+        if tranchee:
+            db.trancher_exception(eid, "x", "A", type_resolution="non_corrigee",
+                                  montant_incidence=inc)
+        return eid
+
+    _ex("OUV-petit", est=100)
+    _ex("OUV-gros", est=5000)
+    _ex("TR-gros", tranchee=True, inc=9000)
+    _ex("TR-moyen", tranchee=True, inc=2000)
+    ordre = [e["controle_ref"] for e in db.list_exceptions(pid)]
+    assert ordre == ["OUV-gros", "OUV-petit", "TR-gros", "TR-moyen"]
+
+
+def _fake_opinion_resp(text: str):
+    """Réponse LLM factice compatible avec proposer_opinion (pas d'appel réseau)."""
+    usage = type("U", (), {"input_tokens": 1, "output_tokens": 1})()
+    block = type("B", (), {"text": text})()
+    return type("R", (), {"usage": usage, "stop_reason": "end_turn", "content": [block]})()
+
+
+def test_proposer_opinion_type_impose_force_le_type_et_le_prompt(monkeypatch):
+    """#3 : quand l'auditeur impose un type, l'IA rédige POUR ce type ; le type
+    final est verrouillé et la directive apparaît dans le prompt."""
+    import os
+    from probare_engine.llm.claude import ClaudeClient
+    os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-unused")
+    c = ClaudeClient()
+    captured = {}
+
+    def fake_create(**kw):
+        captured["prompt"] = kw["messages"][0]["content"]
+        # L'IA "propose" sans_reserve ; l'imposition doit primer.
+        return _fake_opinion_resp(
+            '{"type_opinion": "sans_reserve", "titre": "Opinion sans réserve", '
+            '"texte_opinion": "Texte.", "fondement": "F.", "observations": "", '
+            '"justification": "J."}')
+
+    monkeypatch.setattr(c, "_messages_create", fake_create)
+    res = c.proposer_opinion({"client": "ABC", "exercice": "2025"}, {"anomalies": {}},
+                             "moderee", "PCGD 2012", type_impose="defavorable")
+    assert res["type_opinion"] == "defavorable", "le type imposé doit primer sur celui de l'IA"
+    assert "IMPOSÉ" in captured["prompt"] and "defavorable" in captured["prompt"]
+
+
+def test_proposer_opinion_sans_type_impose_laisse_lia_decider(monkeypatch):
+    import os
+    from probare_engine.llm.claude import ClaudeClient
+    os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-unused")
+    c = ClaudeClient()
+
+    def fake_create(**kw):
+        assert "Détermine le TYPE" in kw["messages"][0]["content"]
+        return _fake_opinion_resp(
+            '{"type_opinion": "sans_reserve", "titre": "Opinion sans réserve", '
+            '"texte_opinion": "Texte.", "fondement": "F.", "observations": "", '
+            '"justification": "J."}')
+
+    monkeypatch.setattr(c, "_messages_create", fake_create)
+    res = c.proposer_opinion({"client": "ABC", "exercice": "2025"}, {"anomalies": {}},
+                             "moderee", "PCGD 2012")
+    assert res["type_opinion"] == "sans_reserve"
+
+
 def test_delete_feuilles_par_cycle_isole_les_autres_cycles(db):
     """La purge ne doit affecter que le cycle régénéré, pas les autres."""
     pid = _projet(db)

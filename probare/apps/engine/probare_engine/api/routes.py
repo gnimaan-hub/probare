@@ -2894,6 +2894,9 @@ def get_opinion(projet_id: str):
 
 class OpinionProposerBody(BaseModel):
     rigueur: str = "moderee"
+    # Si renseigné, l'auditeur IMPOSE le type d'opinion et l'IA se contente de rédiger
+    # le texte pour ce type (#3). Sinon l'IA détermine le type selon la rigueur.
+    type_impose: str | None = None
 
 
 class OpinionUpdateBody(BaseModel):
@@ -2913,6 +2916,7 @@ class ExportSigneBody(BaseModel):
 
 
 _RIGUEURS_VALIDES = {"stricte", "moderee", "permissive"}
+_TYPES_OPINION_VALIDES = {"sans_reserve", "avec_reserve", "defavorable", "impossibilite"}
 
 
 @router.post("/projets/{projet_id}/opinion/proposer")
@@ -2927,6 +2931,11 @@ def proposer_opinion(projet_id: str, body: OpinionProposerBody):
         raise HTTPException(400, f"Rigueur inconnue : {body.rigueur}. "
                                  f"Valeurs admises : {sorted(_RIGUEURS_VALIDES)}.")
 
+    type_impose = (body.type_impose or "").strip().lower() or None
+    if type_impose and type_impose not in _TYPES_OPINION_VALIDES:
+        raise HTTPException(400, f"Type d'opinion inconnu : {body.type_impose}. "
+                                 f"Valeurs admises : {sorted(_TYPES_OPINION_VALIDES)}.")
+
     recap = _synthese_mission(db, projet_id, projet)
     # Entrée LLM compacte et déterministe : phases + anomalies + contrôle interne.
     recap_llm = {
@@ -2938,7 +2947,8 @@ def proposer_opinion(projet_id: str, body: OpinionProposerBody):
 
     try:
         llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
-        proposee = llm.proposer_opinion(projet, recap_llm, rigueur, ref_compta)
+        proposee = llm.proposer_opinion(projet, recap_llm, rigueur, ref_compta,
+                                        type_impose=type_impose)
     except Exception as e:
         db.log(projet_id, "erreur", {"action": "proposer_opinion", "detail": str(e)})
         raise HTTPException(500, f"Erreur LLM : {e}")
@@ -2957,7 +2967,8 @@ def proposer_opinion(projet_id: str, body: OpinionProposerBody):
         "validee_par": None,
     })
     db.log(projet_id, "appel_ia", {"action": "proposer_opinion", "rigueur": rigueur,
-                                   "type_opinion": proposee.get("type_opinion")})
+                                   "type_opinion": proposee.get("type_opinion"),
+                                   "type_impose": type_impose})
     return {"opinion": opinion}
 
 

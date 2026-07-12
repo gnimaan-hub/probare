@@ -81,6 +81,7 @@ export function RapportAudit() {
   const [rigueur, setRigueur] = useState<string>('moderee')
   const [loading, setLoading] = useState(true)
   const [proposing, setProposing] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [validating, setValidating] = useState(false)
   const [exporting, setExporting] = useState<'' | 'rapport' | 'memo'>('')
@@ -121,6 +122,24 @@ export function RapportAudit() {
       toast.error(e.message)
     } finally {
       setProposing(false)
+    }
+  }
+
+  const handleRegenererPourType = async () => {
+    if (!projetId || !opinion?.type_opinion) return
+    setRegenerating(true)
+    try {
+      const { opinion: op } = await post(`/projets/${projetId}/opinion/proposer`, {
+        rigueur, type_impose: opinion.type_opinion,
+      })
+      setOpinion(op)
+      const label = TYPE_OPINION_OPTIONS.find((t) => t.id === op.type_opinion)?.label || 'ce type'
+      toast.success(`Texte régénéré par l'IA (Opus) pour « ${label} ». Relisez et validez.`)
+      loadData()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setRegenerating(false)
     }
   }
 
@@ -368,6 +387,20 @@ export function RapportAudit() {
                       </button>
                     ))}
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleRegenererPourType}
+                    disabled={regenerating || proposing}
+                    className="mt-2 inline-flex items-center gap-1.5 text-xs text-primary-600 hover:text-primary-700 font-medium disabled:opacity-50"
+                  >
+                    {regenerating ? <Spinner size="sm" /> : <Wand2 className="w-3.5 h-3.5" />}
+                    Régénérer le texte pour ce type
+                  </button>
+                  <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                    Choisir un type ci-dessus ne change que l'étiquette. Ce bouton fait réécrire par
+                    l'IA (Opus) le paragraphe d'opinion, le fondement et l'intitulé en imposant le
+                    type sélectionné — le verrou {normeLabel('450')} reste signalé si le seuil est dépassé.
+                  </p>
                 </div>
 
                 <div>

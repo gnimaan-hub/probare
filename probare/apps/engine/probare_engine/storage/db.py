@@ -888,14 +888,22 @@ class ProjectDB:
         return self.get_exception(exception_id)
 
     def list_exceptions(self, projet_id: str, statut: str | None = None) -> list[dict]:
+        # Tri (#2) : d'abord les exceptions OUVERTES (à traiter en priorité), puis les
+        # TRANCHÉES ; au sein de chaque groupe, par matérialité décroissante (montant
+        # d'anomalie : incidence résiduelle sinon montant estimé), puis chronologique.
+        # Les normes n'imposent aucun ordre — la matérialité est le critère utile.
+        ordre = (
+            "ORDER BY CASE statut WHEN 'ouverte' THEN 0 ELSE 1 END, "
+            "COALESCE(ABS(montant_incidence), ABS(montant_estime), 0) DESC, horodatage"
+        )
         if statut:
             rows = self.conn.execute(
-                "SELECT * FROM exception WHERE projet_id=? AND statut=? ORDER BY horodatage",
+                f"SELECT * FROM exception WHERE projet_id=? AND statut=? {ordre}",
                 (projet_id, statut)
             ).fetchall()
         else:
             rows = self.conn.execute(
-                "SELECT * FROM exception WHERE projet_id=? ORDER BY horodatage",
+                f"SELECT * FROM exception WHERE projet_id=? {ordre}",
                 (projet_id,)
             ).fetchall()
         return [self._deserialize_exception(dict(r)) for r in rows]

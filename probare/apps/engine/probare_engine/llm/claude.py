@@ -1363,6 +1363,13 @@ Réponds UNIQUEMENT avec un JSON valide :
         ),
     }
 
+    _LABELS_TYPE_OPINION = {
+        "sans_reserve": "Opinion sans réserve",
+        "avec_reserve": "Opinion avec réserve",
+        "defavorable": "Opinion défavorable",
+        "impossibilite": "Impossibilité d'exprimer une opinion",
+    }
+
     def proposer_opinion(
         self,
         projet: dict,
@@ -1370,6 +1377,7 @@ Réponds UNIQUEMENT avec un JSON valide :
         rigueur: str,
         referentiel_comptable: str,
         cabinet: dict | None = None,
+        type_impose: str | None = None,
     ) -> dict:
         """Opus propose une opinion d'audit à l'auditeur selon la rigueur choisie.
 
@@ -1380,6 +1388,38 @@ Réponds UNIQUEMENT avec un JSON valide :
         rigueur = (rigueur or "moderee").lower()
         politique = self._POLITIQUES_RIGUEUR.get(rigueur, self._POLITIQUES_RIGUEUR["moderee"])
         cabinet = cabinet or {}
+
+        type_impose = (type_impose or "").strip().lower() or None
+        if type_impose and type_impose not in self._LABELS_TYPE_OPINION:
+            type_impose = None
+
+        # Étape 1 et règle sur le seuil : soit l'IA DÉTERMINE le type (défaut),
+        # soit l'auditeur IMPOSE le type et l'IA se contente de rédiger le texte (#3).
+        if type_impose:
+            consigne_etape1 = (
+                f'1. Le TYPE d\'opinion est IMPOSÉ par l\'auditeur : "{type_impose}" '
+                f'({self._LABELS_TYPE_OPINION[type_impose]}). Tu ne le rediscutes pas : '
+                "tu rédiges l'opinion POUR ce type, en cohérence avec les constats de la synthèse."
+            )
+            regle_seuil = (
+                "- Le type étant imposé, produis un texte cohérent avec ce type et fidèle aux "
+                "chiffres. Si ce type te paraît incohérent avec les constats (par ex. une opinion "
+                "sans réserve alors que le cumul des anomalies dépasse le seuil de signification), "
+                "NE le modifie pas mais signale clairement cette réserve de conscience dans la "
+                "justification."
+            )
+        else:
+            consigne_etape1 = (
+                '1. Détermine le TYPE d\'opinion parmi : "sans_reserve", "avec_reserve", '
+                '"defavorable", "impossibilite" — en appliquant STRICTEMENT la politique de rigueur '
+                "ci-dessus au vu des chiffres de la synthèse (cumul des anomalies non corrigées vs "
+                "seuil de signification, exceptions non corrigées, niveau de contrôle interne, "
+                "contrôles non exécutés)."
+            )
+            regle_seuil = (
+                "- Si le cumul des anomalies non corrigées dépasse le seuil de signification, tu ne "
+                "peux PAS proposer une opinion sans réserve, quelle que soit la rigueur."
+            )
 
         prompt = f"""Tu es l'associé signataire d'une mission d'audit à Djibouti (devise {DEVISE}).
 Tu dois proposer à l'auditeur responsable une OPINION D'AUDIT motivée, conforme à la
@@ -1399,10 +1439,7 @@ Référentiel d'audit : {prefixe_actif()}
 {politique}
 
 Ta tâche :
-1. Détermine le TYPE d'opinion parmi : "sans_reserve", "avec_reserve", "defavorable",
-   "impossibilite" — en appliquant STRICTEMENT la politique de rigueur ci-dessus au vu
-   des chiffres de la synthèse (cumul des anomalies non corrigées vs seuil de
-   signification, exceptions non corrigées, niveau de contrôle interne, contrôles non exécutés).
+{consigne_etape1}
 2. Rédige le PARAGRAPHE D'OPINION lui-même, au style normatif d'un rapport d'audit,
    à la première personne du pluriel (« Nous avons effectué l'audit… », « À notre avis… »).
    Cite le référentiel comptable applicable. Pour une réserve/refus, expose le motif.
@@ -1413,8 +1450,7 @@ Ta tâche :
 
 RÈGLES :
 - N'invente aucun chiffre absent de la synthèse ci-dessus.
-- Si le cumul des anomalies non corrigées dépasse le seuil de signification, tu ne peux
-  PAS proposer une opinion sans réserve, quelle que soit la rigueur.
+{regle_seuil}
 - Langue : français professionnel.
 
 Réponds UNIQUEMENT avec un JSON valide :
@@ -1442,6 +1478,11 @@ Réponds UNIQUEMENT avec un JSON valide :
             )
         result = self._parse_json(resp.content[0].text)
         if isinstance(result, dict) and result.get("type_opinion") and result.get("texte_opinion"):
+            if type_impose:
+                # Le type est imposé par l'auditeur : on ne laisse pas l'IA le dévier.
+                result["type_opinion"] = type_impose
+                if not result.get("titre"):
+                    result["titre"] = self._LABELS_TYPE_OPINION[type_impose]
             result.setdefault("titre", "")
             result.setdefault("fondement", "")
             result.setdefault("observations", "")
