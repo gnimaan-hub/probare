@@ -17,7 +17,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.section import WD_SECTION
 from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
+from docx.oxml import OxmlElement, parse_xml
 
 # ─── Palette ──────────────────────────────────────────────────────────────────
 NAVY = RGBColor(0x05, 0x2D, 0x62)
@@ -41,6 +41,12 @@ HEADING_FONT = "Segoe UI Semibold"
 BODY_FONT = "Segoe UI"
 
 CONTENT_WIDTH_CM = 16.0  # largeur utile avec marges de 2,5 cm sur A4
+# Alignement des bandeaux : le fond coloré déborde de BANDEAU_PAD_CM à gauche (via
+# un retrait de tableau négatif) ; la marge interne gauche des cellules
+# (BANDEAU_TEXT_PAD_TW) est calibrée pour que le TEXTE des titres retombe pile sur
+# la marge du corps (le +0,17 cm compense l'inset de cellule constaté au rendu).
+BANDEAU_PAD_CM = 0.35
+BANDEAU_TEXT_PAD_TW = int((BANDEAU_PAD_CM + 0.17) * 567)
 
 
 # ─── Primitives XML bas niveau ────────────────────────────────────────────────
@@ -93,8 +99,43 @@ def _set_table_width(table, cm: float) -> None:
     tbl_pr.append(tbl_w)
 
 
+def _bleed_left(table, pad_cm: float = BANDEAU_PAD_CM) -> None:
+    """Retrait de tableau négatif : le bord gauche du bandeau déborde de `pad_cm`
+    dans la marge, de sorte que le texte (décalé de la marge interne) retombe
+    pile sur la marge du corps. Rend l'alignement identique dans Word et LO."""
+    tbl_pr = table._tbl.tblPr
+    old = tbl_pr.find(qn("w:tblInd"))
+    if old is not None:
+        tbl_pr.remove(old)
+    ind = OxmlElement("w:tblInd")
+    ind.set(qn("w:w"), str(-int(pad_cm * 567)))
+    ind.set(qn("w:type"), "dxa")
+    tbl_pr.append(ind)
+
+
 def _cell_shade(cell, fill_hex: str) -> None:
     _shade(cell._tc.get_or_add_tcPr(), fill_hex)
+
+
+def _add_page_background(paragraph, w_pt: float, h_pt: float, fill_hex: str) -> None:
+    """Ajoute un rectangle plein ancré à la page (derrière le texte) via VML.
+
+    Étant ancré et « behindDoc », il n'occupe pas de place dans le flux : il ne
+    peut donc pas provoquer de page blanche (contrairement à un tableau pleine
+    hauteur dont Word pagine le paragraphe suiveur de façon imprévisible)."""
+    run = paragraph.add_run()
+    xml = (
+        '<w:pict '
+        'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+        'xmlns:v="urn:schemas-microsoft-com:vml">'
+        f'<v:rect style="position:absolute;left:0;top:0;'
+        f'width:{w_pt:.1f}pt;height:{h_pt:.1f}pt;'
+        f'mso-position-horizontal:left;mso-position-horizontal-relative:page;'
+        f'mso-position-vertical:top;mso-position-vertical-relative:page;'
+        f'z-index:-251658240" fillcolor="#{fill_hex}" stroked="f"/>'
+        f'</w:pict>'
+    )
+    run._r.append(parse_xml(xml))
 
 
 def _cell_margins(cell, top=140, bottom=140, left=220, right=220) -> None:
@@ -186,67 +227,56 @@ def cover_page(doc, titre: str, sous_titre: str = "", meta: list[str] | None = N
                cabinet: dict | None = None) -> None:
     """Page de garde pleine page bleu marine, titre blanc géant, filet vert.
 
-    Doit être appelée sur un document VIERGE : configure la 1re section en pleine
-    page (marges nulles) puis ouvre une nouvelle section pour le corps.
+    Le fond marine est un RECTANGLE ANCRÉ à la page (VML, derrière le texte) :
+    il ne consomme pas d'espace dans le flux, donc il ne peut pas générer de page
+    blanche en Word. Le texte de garde est posé en paragraphes normaux ; le corps
+    démarre en page 2 via un saut NEW_PAGE (pieds de page indépendants).
     """
     cabinet = cabinet or {}
     meta = meta or []
 
     sec = doc.sections[0]
-    set_margins(sec, top=0, bottom=0, left=0, right=0)
-    page_w_cm = sec.page_width.cm
+    # Marges de garde : texte inséré, titre positionné dans le tiers supérieur.
+    set_margins(sec, top=6.0, bottom=2.0, left=2.5, right=2.5)
+    w_pt = sec.page_width.pt
+    h_pt = sec.page_height.pt
 
-    # Grande cellule pleine page en fond marine.
-    table = doc.add_table(rows=1, cols=1)
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    _no_table_borders(table)
-    _set_table_width(table, page_w_cm)
-    cell = table.cell(0, 0)
-    cell.width = Cm(page_w_cm)
-    _cell_shade(cell, NAVY_HEX)
-    _cell_margins(cell, top=1100, bottom=600, left=1000, right=1000)
-    # Laisse ~1,2 cm sous le tableau : cet espace est comblé par le paragraphe de
-    # saut de section (teinté marine ci-dessous), pour que le bas de la garde reste
-    # bleu sans page blanche, tout en gardant un saut NEW_PAGE (pieds indépendants).
-    _set_row_exact_height(table.rows[0], sec.page_height.cm - 1.2)
-
-    # Titre géant (peut être multi-lignes via '\n').
-    cell.paragraphs[0].text = ""
-    p_titre = cell.paragraphs[0]
-    p_titre.paragraph_format.space_before = Pt(120)
+    # Titre géant (multi-lignes via '\n') — porte aussi le rectangle de fond.
+    p_titre = doc.add_paragraph()
     p_titre.paragraph_format.space_after = Pt(6)
+    _add_page_background(p_titre, w_pt, h_pt, NAVY_HEX)
     for i, ligne in enumerate(titre.split("\n")):
         if i:
             p_titre.add_run().add_break()
         r = p_titre.add_run(ligne)
         r.bold = True
-        r.font.size = Pt(46)
+        r.font.size = Pt(44)
         r.font.name = HEADING_FONT
         r.font.color.rgb = WHITE
 
     if sous_titre:
-        p_sub = cell.add_paragraph()
+        p_sub = doc.add_paragraph()
         r = p_sub.add_run(sous_titre)
         r.font.size = Pt(22)
         r.font.name = HEADING_FONT
         r.font.color.rgb = WHITE
 
     # Filet vert horizontal.
-    bar = cell.add_paragraph()
+    bar = doc.add_paragraph()
     bar.paragraph_format.space_before = Pt(10)
     _green_bar_run(bar, width_chars=28)
 
-    # Méta (exercice, cabinet, référentiels) en pied de page de garde.
+    # Méta (entité, référentiels…).
     for txt in meta:
-        p = cell.add_paragraph()
+        p = doc.add_paragraph()
         p.paragraph_format.space_after = Pt(2)
         r = p.add_run(txt)
         r.font.size = Pt(11)
         r.font.color.rgb = WHITE
 
-    # Identité cabinet en bas.
+    # Identité cabinet, un peu plus bas.
     if cabinet.get("nom"):
-        p = cell.add_paragraph()
+        p = doc.add_paragraph()
         p.paragraph_format.space_before = Pt(40)
         r = p.add_run(cabinet["nom"])
         r.bold = True
@@ -259,26 +289,15 @@ def cover_page(doc, titre: str, sous_titre: str = "", meta: list[str] | None = N
         if cabinet.get("adresse_ville"):
             sous.append(cabinet["adresse_ville"])
         if sous:
-            p2 = cell.add_paragraph()
+            p2 = doc.add_paragraph()
             r2 = p2.add_run("  ·  ".join(sous))
             r2.font.size = Pt(10)
             r2.font.color.rgb = RGBColor(0xC7, 0xD2, 0xE0)
 
-    # Nouvelle section pour le corps (saut NEW_PAGE → pieds de page indépendants,
-    # contrairement à un saut continu qui n'affiche aucun pied distinct).
+    # Corps en page 2 (saut NEW_PAGE → pieds de page indépendants).
     body = doc.add_section(WD_SECTION.NEW_PAGE)
     set_margins(body)
     add_page_number(body)
-
-    # Le paragraphe de saut de section (dernier paragraphe de la page de garde)
-    # est teinté marine et dimensionné pour combler l'espace sous le tableau :
-    # bas de garde entièrement bleu, sans page blanche.
-    brk = doc.paragraphs[-1]
-    _shade(brk._p.get_or_add_pPr(), NAVY_HEX)
-    brk.paragraph_format.space_before = Pt(0)
-    brk.paragraph_format.space_after = Pt(0)
-    brk.paragraph_format.line_spacing = 1.0
-    brk.add_run(" ").font.size = Pt(46)
 
 
 def _green_bar_run(paragraph, width_chars: int = 20) -> None:
@@ -297,11 +316,12 @@ def section_header(doc, titre: str, numero: str | None = None) -> None:
     doc.add_paragraph().paragraph_format.space_after = Pt(2)
     table = doc.add_table(rows=1, cols=1)
     _no_table_borders(table)
-    _set_table_width(table, CONTENT_WIDTH_CM)
+    _set_table_width(table, CONTENT_WIDTH_CM + BANDEAU_PAD_CM)
+    _bleed_left(table)
     cell = table.cell(0, 0)
-    cell.width = Cm(CONTENT_WIDTH_CM)
+    cell.width = Cm(CONTENT_WIDTH_CM + BANDEAU_PAD_CM)
     _cell_shade(cell, NAVY_HEX)
-    _cell_margins(cell, top=200, bottom=200, left=360, right=360)
+    _cell_margins(cell, top=200, bottom=200, left=BANDEAU_TEXT_PAD_TW, right=360)
     p = cell.paragraphs[0]
     p.paragraph_format.space_after = Pt(0)
     libelle = f"{numero}. {titre}" if numero else titre
@@ -331,11 +351,12 @@ def bande_verte(doc, texte: str):
     """Bandeau vert plein, texte blanc (mise en exergue d'un intitulé)."""
     table = doc.add_table(rows=1, cols=1)
     _no_table_borders(table)
-    _set_table_width(table, CONTENT_WIDTH_CM)
+    _set_table_width(table, CONTENT_WIDTH_CM + BANDEAU_PAD_CM)
+    _bleed_left(table)
     cell = table.cell(0, 0)
-    cell.width = Cm(CONTENT_WIDTH_CM)
+    cell.width = Cm(CONTENT_WIDTH_CM + BANDEAU_PAD_CM)
     _cell_shade(cell, GREEN_HEX)
-    _cell_margins(cell, top=120, bottom=120, left=260, right=260)
+    _cell_margins(cell, top=120, bottom=120, left=BANDEAU_TEXT_PAD_TW, right=260)
     p = cell.paragraphs[0]
     p.paragraph_format.space_after = Pt(0)
     r = p.add_run(texte)
@@ -447,13 +468,14 @@ def info_table(doc, lignes: list[tuple[str, str]]) -> None:
     table = doc.add_table(rows=len(lignes), cols=2)
     table.alignment = WD_TABLE_ALIGNMENT.LEFT
     _no_table_borders(table)
-    _set_table_width(table, CONTENT_WIDTH_CM)
+    _set_table_width(table, CONTENT_WIDTH_CM + BANDEAU_PAD_CM)
+    _bleed_left(table)
     for i, (cle, val) in enumerate(lignes):
         c0, c1 = table.rows[i].cells
         c0.width = Cm(5.5)
-        c1.width = Cm(CONTENT_WIDTH_CM - 5.5)
+        c1.width = Cm(CONTENT_WIDTH_CM + BANDEAU_PAD_CM - 5.5)
         _cell_shade(c0, LIGHT_HEX)
-        _cell_margins(c0, top=60, bottom=60, left=160, right=160)
+        _cell_margins(c0, top=60, bottom=60, left=BANDEAU_TEXT_PAD_TW, right=160)
         _cell_margins(c1, top=60, bottom=60, left=160, right=160)
         r0 = c0.paragraphs[0].add_run(cle)
         r0.bold = True
