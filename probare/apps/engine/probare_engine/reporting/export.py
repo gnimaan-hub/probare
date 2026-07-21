@@ -65,6 +65,7 @@ def generer_dossier_travail(
     controles_ignores: list[dict] | None = None,
     synthese_anomalies: dict | None = None,
     diligences_peripherie: list[dict] | None = None,
+    ajustements: dict | None = None,
 ) -> Path:
     """Génère le dossier de travail en .docx.
     Lève ProvenanceError si un chiffre non sourcé est détecté.
@@ -252,6 +253,56 @@ def generer_dossier_travail(
             doc.add_paragraph(
                 f"[{ci.get('controle_ref')}] ({ci.get('cycle', '?')}) — {ci.get('raison', '')}",
                 style="List Bullet",
+            )
+
+    # Section écritures d'ajustement (M1 — état récapitulatif ISA 450, le « SUM »)
+    if ajustements and (ajustements.get("ecritures") or []):
+        doc.add_heading(_titre_section(f"État récapitulatif des ajustements ({norme(450)})"), level=1)
+        syn_aj = ajustements.get("synthese") or {}
+        p_aj = doc.add_paragraph()
+        p_aj.add_run(
+            f"Écritures d'ajustement : {syn_aj.get('nb_total', 0)} au total — "
+            f"{syn_aj.get('nb_passees', 0)} passée(s) (comptabilisées par le client), "
+            f"{syn_aj.get('nb_non_passees', 0)} non passée(s) "
+            f"dont {syn_aj.get('nb_refusees', 0)} refusée(s).\n"
+        )
+        np_ = syn_aj.get("non_passees") or {}
+        run_np = p_aj.add_run(
+            f"Effet cumulé des écritures NON passées (anomalies subsistantes) : "
+            f"résultat {np_.get('effet_resultat', 0.0):+,.2f} — "
+            f"capitaux propres {np_.get('effet_capitaux_propres', 0.0):+,.2f}"
+        )
+        run_np.bold = True
+        pa_ = syn_aj.get("passees") or {}
+        if syn_aj.get("nb_passees"):
+            doc.add_paragraph(
+                f"Effet des écritures passées (corrections comptabilisées) : "
+                f"résultat {pa_.get('effet_resultat', 0.0):+,.2f} — "
+                f"capitaux propres {pa_.get('effet_capitaux_propres', 0.0):+,.2f}"
+            )
+        for e in ajustements["ecritures"]:
+            p_e = doc.add_paragraph(style="List Bullet")
+            run_e = p_e.add_run(
+                f"[{e.get('statut_libelle', e.get('statut'))}] {e.get('libelle')} — "
+                f"{e.get('type_libelle', e.get('type_anomalie'))} — "
+                f"montant : {float(e.get('total_debits') or 0):,.2f}"
+            )
+            if e.get("statut") == "refusee":
+                run_e.font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
+            elif e.get("statut") == "passee":
+                run_e.font.color.rgb = RGBColor(0x27, 0xAE, 0x60)
+            for l in e.get("lignes") or []:
+                d_, c_ = float(l.get("debit") or 0), float(l.get("credit") or 0)
+                sens = f"Débit {d_:,.2f}" if d_ > 0 else f"Crédit {c_:,.2f}"
+                p_e.add_run(f"\n      {l.get('compte')} {l.get('libelle') or ''} — {sens}").font.size = Pt(9)
+            if e.get("justification"):
+                p_e.add_run(f"\n   Justification : {e['justification']}").font.size = Pt(9)
+        ba = ajustements.get("balance_ajustee") or {}
+        if ba.get("nb_comptes_ajustes"):
+            doc.add_paragraph(
+                f"Balance ajustée : {ba['nb_comptes_ajustes']} compte(s) ajusté(s) par les "
+                f"écritures passées — total des ajustements nets : {ba.get('total_ajustements', 0.0):+,.2f} "
+                f"(total brut {ba.get('total_brut', 0.0):,.2f} → total ajusté {ba.get('total_ajuste', 0.0):,.2f})."
             )
 
     # Section diligences ISA de périphérie (M3)

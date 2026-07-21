@@ -13,7 +13,10 @@ class DonneeSourcee(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     projet_id: str
-    fichier_source_id: str
+    # None pour les valeurs qui ne proviennent pas d'un fichier importé mais
+    # d'un acte du dossier lui-même (ex. ligne d'écriture d'ajustement) —
+    # la localisation porte alors la référence exacte (« ajustement:… »).
+    fichier_source_id: str | None
     valeur: float | str | None
     type: Literal["montant", "texte", "date", "compte", "numero_piece"]
     localisation: str  # ex: "Balance!B5" ou "grand_livre.csv:ligne:42:col:Debit"

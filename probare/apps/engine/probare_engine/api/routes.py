@@ -2705,6 +2705,17 @@ def exporter_dossier(projet_id: str):
     # M3 : état des diligences ISA de périphérie versé au dossier (NEP 230)
     diligences_dossier = get_peripherie(projet_id).get("diligences", [])
 
+    # M1 : état récapitulatif des ajustements + balance ajustée (ISA 450)
+    from ..ajustements import synthese_ajustements
+    ecritures_dossier = [_enrichir_ecriture(e) for e in db.list_ecritures_ajustement(projet_id)]
+    ajustements_dossier = None
+    if ecritures_dossier:
+        ajustements_dossier = {
+            "ecritures": ecritures_dossier,
+            "synthese": synthese_ajustements(ecritures_dossier),
+            "balance_ajustee": get_balance_ajustee(projet_id),
+        }
+
     output_dir = DATA_DIR / projet_id / "exports"
     output_path = output_dir / f"dossier_travail_{projet_id[:8]}.docx"
 
@@ -2712,7 +2723,8 @@ def exporter_dossier(projet_id: str):
         generer_dossier_travail(projet, resultats, exceptions, feuilles, output_path,
                                 controles_ignores=controles_ignores,
                                 synthese_anomalies=synthese,
-                                diligences_peripherie=diligences_dossier)
+                                diligences_peripherie=diligences_dossier,
+                                ajustements=ajustements_dossier)
     except ProvenanceError as e:
         raise HTTPException(422, str(e))
 
@@ -5062,3 +5074,256 @@ def generer_lettre_peripherie(projet_id: str, diligence: str):
     db.log(projet_id, "appel_ia", {"action": "generer_lettre_peripherie",
                                    "diligence": diligence, "type": defn["lettre"]})
     return {"lettre": lettre, "evaluation": saved}
+
+
+# ─── Écritures d'ajustement (M1 — ISA 450) ───────────────────────────────────
+
+class LigneAjustementBody(BaseModel):
+    compte: str
+    libelle: str | None = None
+    debit: float = 0
+    credit: float = 0
+
+
+class EcritureAjustementBody(BaseModel):
+    libelle: str
+    lignes: list[LigneAjustementBody]
+    type_anomalie: str = "factuelle"
+    justification: str | None = None
+    exception_id: str | None = None
+    cree_par: str | None = None
+
+
+class UpdateEcritureBody(BaseModel):
+    libelle: str | None = None
+    lignes: list[LigneAjustementBody] | None = None
+    type_anomalie: str | None = None
+    justification: str | None = None
+    statut: str | None = None
+    acteur: str | None = None
+
+
+def _exiger_projet_actif(db, projet_id: str) -> dict:
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    if projet.get("archive"):
+        raise HTTPException(400, "Dossier archivé — lecture seule.")
+    return projet
+
+
+def _enrichir_ecriture(e: dict) -> dict:
+    from ..ajustements import effets_ecriture, LIBELLES_STATUT, LIBELLES_TYPE
+    e = dict(e)
+    e.update(effets_ecriture(e.get("lignes") or []))
+    e["statut_libelle"] = LIBELLES_STATUT.get(e.get("statut"), e.get("statut"))
+    e["type_libelle"] = LIBELLES_TYPE.get(e.get("type_anomalie"), e.get("type_anomalie"))
+    return e
+
+
+@router.get("/projets/{projet_id}/ajustements")
+def list_ajustements(projet_id: str):
+    """Liste des écritures d'ajustement + état récapitulatif ISA 450 (le « SUM »)."""
+    from ..ajustements import synthese_ajustements
+    db = _get_db(projet_id)
+    if not db.get_projet(projet_id):
+        raise HTTPException(404, "Projet introuvable.")
+    ecritures = [_enrichir_ecriture(e) for e in db.list_ecritures_ajustement(projet_id)]
+    return {"ecritures": ecritures, "synthese": synthese_ajustements(ecritures)}
+
+
+@router.post("/projets/{projet_id}/ajustements")
+def create_ajustement(projet_id: str, body: EcritureAjustementBody):
+    """Crée une écriture d'ajustement (statut initial : proposée).
+
+    L'équilibre débits = crédits est vérifié par le moteur — une écriture
+    déséquilibrée est refusée (partie double, ISA 450)."""
+    from ..ajustements import valider_lignes, AjustementError, TYPES_ANOMALIE
+    db = _get_db(projet_id)
+    _exiger_projet_actif(db, projet_id)
+
+    if body.type_anomalie not in TYPES_ANOMALIE:
+        raise HTTPException(400, f"Type d'anomalie invalide : {body.type_anomalie}.")
+    if len(body.libelle.strip()) < 5:
+        raise HTTPException(400, "Le libellé de l'écriture est requis (5 caractères minimum).")
+    lignes = [l.model_dump() for l in body.lignes]
+    try:
+        total_d, total_c = valider_lignes(lignes)
+    except AjustementError as e:
+        raise HTTPException(400, str(e))
+    if body.exception_id and not db.get_exception(body.exception_id):
+        raise HTTPException(404, "Exception liée introuvable.")
+
+    ecriture = db.save_ecriture_ajustement({
+        "id": str(uuid.uuid4()), "projet_id": projet_id,
+        "exception_id": body.exception_id, "libelle": body.libelle.strip(),
+        "type_anomalie": body.type_anomalie, "justification": body.justification,
+        "total_debits": total_d, "total_credits": total_c,
+        "cree_par": body.cree_par,
+    }, lignes)
+    db.log(projet_id, "action_humaine", {
+        "action": "creer_ecriture_ajustement", "id": ecriture["id"],
+        "libelle": body.libelle.strip()[:80], "montant": total_d,
+        "exception_id": body.exception_id,
+    })
+    return _enrichir_ecriture(ecriture)
+
+
+@router.patch("/projets/{projet_id}/ajustements/{ecriture_id}")
+def update_ajustement(projet_id: str, ecriture_id: str, body: UpdateEcritureBody):
+    """Modifie une écriture (contenu et/ou statut).
+
+    - Le contenu (lignes, libellé…) n'est modifiable que tant que l'écriture
+      n'est pas passée.
+    - Les transitions de statut suivent le cycle de vie :
+      proposée → acceptée client → passée / refusée. « Passée » est terminal.
+    """
+    from ..ajustements import (valider_lignes, AjustementError, TYPES_ANOMALIE,
+                               TRANSITIONS_STATUT, LIBELLES_STATUT)
+    db = _get_db(projet_id)
+    _exiger_projet_actif(db, projet_id)
+    ecriture = db.get_ecriture_ajustement(ecriture_id)
+    if not ecriture or ecriture.get("projet_id") != projet_id:
+        raise HTTPException(404, "Écriture introuvable.")
+
+    fields: dict = {}
+    lignes = None
+
+    # Modification de contenu — interdite une fois l'écriture passée
+    contenu_modifie = any(v is not None for v in (body.libelle, body.lignes,
+                                                  body.type_anomalie, body.justification))
+    if contenu_modifie:
+        if ecriture["statut"] == "passee":
+            raise HTTPException(400, "Écriture passée (comptabilisée) : son contenu ne se "
+                                     "modifie plus. Créez une écriture complémentaire si besoin.")
+        if body.libelle is not None:
+            if len(body.libelle.strip()) < 5:
+                raise HTTPException(400, "Libellé trop court (5 caractères minimum).")
+            fields["libelle"] = body.libelle.strip()
+        if body.type_anomalie is not None:
+            if body.type_anomalie not in TYPES_ANOMALIE:
+                raise HTTPException(400, f"Type d'anomalie invalide : {body.type_anomalie}.")
+            fields["type_anomalie"] = body.type_anomalie
+        if body.justification is not None:
+            fields["justification"] = body.justification
+        if body.lignes is not None:
+            lignes = [l.model_dump() for l in body.lignes]
+            try:
+                total_d, total_c = valider_lignes(lignes)
+            except AjustementError as e:
+                raise HTTPException(400, str(e))
+            fields["total_debits"] = total_d
+            fields["total_credits"] = total_c
+
+    # Transition de statut
+    if body.statut is not None and body.statut != ecriture["statut"]:
+        autorisees = TRANSITIONS_STATUT.get(ecriture["statut"], [])
+        if body.statut not in autorisees:
+            raise HTTPException(400, f"Transition interdite : "
+                                     f"{LIBELLES_STATUT.get(ecriture['statut'])} → "
+                                     f"{LIBELLES_STATUT.get(body.statut, body.statut)}.")
+        fields["statut"] = body.statut
+
+    if not fields and lignes is None:
+        return _enrichir_ecriture(ecriture)
+
+    updated = db.update_ecriture_ajustement(ecriture_id, fields, lignes)
+    db.log(projet_id, "action_humaine", {
+        "action": "modifier_ecriture_ajustement", "id": ecriture_id,
+        "statut": fields.get("statut"), "acteur": body.acteur,
+        "contenu_modifie": contenu_modifie,
+    })
+    return _enrichir_ecriture(updated)
+
+
+@router.delete("/projets/{projet_id}/ajustements/{ecriture_id}")
+def delete_ajustement(projet_id: str, ecriture_id: str):
+    """Supprime une écriture — seulement tant qu'elle est proposée ou refusée."""
+    db = _get_db(projet_id)
+    _exiger_projet_actif(db, projet_id)
+    ecriture = db.get_ecriture_ajustement(ecriture_id)
+    if not ecriture or ecriture.get("projet_id") != projet_id:
+        raise HTTPException(404, "Écriture introuvable.")
+    if ecriture["statut"] in ("acceptee_client", "passee"):
+        raise HTTPException(400, "Cette écriture est acceptée ou passée : elle fait partie "
+                                 "du dossier et ne se supprime plus.")
+    db.delete_ecriture_ajustement(ecriture_id)
+    db.log(projet_id, "action_humaine", {"action": "supprimer_ecriture_ajustement",
+                                         "id": ecriture_id})
+    return {"deleted": True}
+
+
+@router.post("/projets/{projet_id}/ajustements/proposer/{exception_id}")
+def proposer_ajustement_depuis_exception(projet_id: str, exception_id: str):
+    """L'IA propose le schéma comptable de l'écriture corrigeant une exception.
+
+    Le MONTANT vient du code (incidence saisie par l'auditeur, sinon montant
+    estimé par le contrôle). L'IA choisit les comptes et le sens — le moteur
+    vérifie ensuite l'équilibre et que chaque montant est bien celui imposé."""
+    from ..ajustements import valider_lignes, AjustementError, TOLERANCE_EQUILIBRE
+    from ..normes import libelle_referentiel_comptable
+    db = _get_db(projet_id)
+    projet, anon = _llm_guard(db, projet_id)
+    exc = db.get_exception(exception_id)
+    if not exc:
+        raise HTTPException(404, "Exception introuvable.")
+
+    montant = exc.get("montant_incidence") or exc.get("montant_estime")
+    if not montant or float(montant) <= 0:
+        raise HTTPException(400, "Cette exception ne porte aucun montant (incidence ou estimation) : "
+                                 "l'écriture ne peut pas être proposée. Saisissez les lignes manuellement.")
+    montant = round(float(montant), 2)
+
+    entites = [v for v in [projet.get("client"), projet.get("nif")] if v]
+    exc_anon = anon.pseudonymiser_dict(exc, ["description", "decision_humaine"], entites)
+
+    try:
+        from ..llm.claude import ClaudeClient
+        llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+        proposition = llm.proposer_ecriture_ajustement(
+            exc_anon, montant, {"exercice": projet.get("exercice")},
+            libelle_referentiel_comptable(projet.get("referentiel_comptable")))
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+    # Garde-fou : le LLM ne calcule jamais — on vérifie que l'écriture est
+    # équilibrée ET que son total est exactement le montant imposé par le code.
+    lignes = proposition.get("lignes") or []
+    try:
+        total_d, _ = valider_lignes(lignes)
+    except AjustementError as e:
+        raise HTTPException(502, f"Proposition IA invalide ({e}). Relancez ou saisissez manuellement.")
+    if abs(total_d - montant) > TOLERANCE_EQUILIBRE:
+        raise HTTPException(502, f"Proposition IA rejetée : total {total_d:,.2f} ≠ montant "
+                                 f"calculé {montant:,.2f}. Relancez ou saisissez manuellement.")
+
+    db.log(projet_id, "appel_ia", {"action": "proposer_ecriture_ajustement",
+                                   "exception_id": exception_id, "montant": montant})
+    # Proposition NON enregistrée : l'auditeur la relit, l'ajuste et la crée lui-même.
+    return {"proposition": {
+        "libelle": proposition.get("libelle") or f"Correction — {exc.get('controle_ref')}",
+        "type_anomalie": proposition.get("type_anomalie", "factuelle"),
+        "justification": anon.re_identifier(proposition.get("justification") or ""),
+        "exception_id": exception_id,
+        "lignes": lignes,
+        "montant": montant,
+    }}
+
+
+@router.get("/projets/{projet_id}/balance-ajustee")
+def get_balance_ajustee(projet_id: str, seulement_ajustes: bool = False):
+    """Balance ajustée = balance importée + écritures PASSÉES.
+
+    Chaque ligne garde ses sources (provenance) : celles de la balance
+    importée et celles des lignes d'écritures."""
+    from ..ajustements import balance_ajustee
+    db = _get_db(projet_id)
+    if not db.get_projet(projet_id):
+        raise HTTPException(404, "Projet introuvable.")
+    _, _, rows_balance, *_ = _get_donnees_segmentees(db, projet_id)
+    soldes_bruts = _aggreger_soldes_nets(rows_balance, tuple("123456789"))
+    ecritures = db.list_ecritures_ajustement(projet_id)
+    result = balance_ajustee(soldes_bruts, ecritures)
+    if seulement_ajustes:
+        result["lignes"] = [l for l in result["lignes"] if l["ajustement"] != 0]
+    return result

@@ -113,6 +113,20 @@ Diligences de périphérie (module `controls/peripherie.py`, page « Diligences 
 - 580 : Déclarations écrites (projet de lettre d'affirmation généré par l'IA)
 - 260/265 : Communication à la gouvernance (projet de lettre généré par l'IA)
 
+## Écritures d'ajustement (ISA 450 — module `ajustements.py`)
+
+Une exception chiffrée peut être matérialisée en **écriture d'ajustement**
+(lignes compte/débit/crédit). Cycle de vie : `proposee → acceptee_client →
+passee` ou `refusee` ; `passee` est terminal (contenu gelé, suppression
+interdite). Le moteur impose l'équilibre débits = crédits. L'IA peut proposer
+le SCHÉMA comptable depuis une exception, mais **le montant vient toujours du
+code** (incidence ou montant estimé) et le moteur re-vérifie équilibre + montant.
+Chaque ligne porte une `DonneeSourcee` (localisation `ajustement:…`,
+`fichier_source_id` NULL — exclue des agrégats de la balance importée).
+Les écritures **passées** construisent la **balance ajustée**
+(`GET /balance-ajustee`) ; les non passées chiffrent l'état récapitulatif
+ISA 450 (effets résultat / capitaux propres), versé au dossier exporté.
+
 ## Seuils (ISA 320/450)
 
 Trois seuils calculés en planification (`planning/thresholds.py`) :

@@ -157,6 +157,17 @@ Pour trancher une exception :
 
 > **Cumul ISA 450 :** Probare additionne les montants des anomalies **non corrigées** et les compare au seuil de signification. Si le cumul dépasse le seuil, le passage en génération est **bloqué** : soit vous enregistrez les corrections du client, soit vous confirmez explicitement le dépassement — en sachant qu'il devra se traduire dans l'opinion (réserve ou refus). Cette confirmation est journalisée.
 
+### Les écritures d'ajustement (ISA 450)
+
+Une anomalie chiffrée peut être **matérialisée en écriture comptable** à proposer au client, depuis l'écran **Ajustements** (ou directement depuis une exception tranchée « non corrigée » via le lien *Proposer l'écriture d'ajustement*).
+
+1. **Créer l'écriture** : saisissez les lignes (compte, débit, crédit) — le logiciel refuse toute écriture déséquilibrée. Depuis une exception, l'**IA propose le schéma comptable** (comptes et sens) mais le **montant vient toujours du moteur** (incidence saisie ou écart calculé) et il est re-vérifié.
+2. **Suivre son cycle de vie** : *proposée au client* → *acceptée* → **passée** (le client l'a comptabilisée) ou *refusée*. Une écriture passée est définitive : contenu gelé, suppression impossible.
+3. **Lire les effets** : chaque écriture affiche son effet sur le **résultat** et sur les **capitaux propres**, calculés par le logiciel. L'état récapitulatif en haut de l'écran cumule les effets des écritures **non passées** — c'est le chiffrage comptable de vos anomalies subsistantes.
+4. **Consulter la balance ajustée** : balance importée + écritures passées, compte par compte (brut / ajustement / ajusté), avec provenance conservée.
+
+À la clôture d'une écriture **passée**, pensez à trancher l'exception liée comme « corrigée par le client » : le cumul ISA 450 diminuera d'autant. L'état récapitulatif des ajustements et la balance ajustée figurent dans le dossier de travail exporté.
+
 ### Étape 7 — Rapport et génération
 
 Une fois toutes les exceptions tranchées :

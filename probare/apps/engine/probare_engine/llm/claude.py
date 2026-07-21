@@ -1370,6 +1370,64 @@ Réponds UNIQUEMENT avec un JSON valide :
         "impossibilite": "Impossibilité d'exprimer une opinion",
     }
 
+    # ─── Écritures d'ajustement (M1) ─────────────────────────────────────────
+
+    def proposer_ecriture_ajustement(
+        self,
+        exception: dict,
+        montant: float,               # calculé par le code — l'IA ne le choisit pas
+        contexte_projet: dict,
+        referentiel_comptable: str,
+    ) -> dict:
+        """Sonnet propose le SCHÉMA comptable de l'écriture corrigeant une
+        anomalie : comptes débités/crédités, libellé, type et justification.
+        Le montant est imposé par le code (incidence de l'exception) — l'IA
+        choisit les comptes et le sens, jamais les chiffres."""
+        prompt = f"""Tu es auditeur senior. Une anomalie a été relevée et son montant a été
+calculé par le moteur déterministe. Propose l'écriture d'ajustement qui la corrigerait,
+dans le référentiel comptable : {referentiel_comptable}.
+
+Anomalie ({exception.get('nep_ref', '')}, contrôle {exception.get('controle_ref', '')}) :
+{exception.get('description', '')}
+
+Décision de l'auditeur (si déjà tranchée) : {exception.get('decision_humaine') or '(non tranchée)'}
+
+MONTANT DE L'ÉCRITURE (imposé, calculé par le code) : {montant:.2f}
+Exercice : {contexte_projet.get('exercice', 'N')}
+
+Règles IMPÉRATIVES :
+- Chaque ligne porte EXACTEMENT le montant {montant:.2f} (ou une décomposition dont
+  la somme des débits = somme des crédits = {montant:.2f}). N'invente AUCUN autre montant.
+- Numéros de comptes du plan comptable ({referentiel_comptable}), cohérents avec l'anomalie.
+- Chaque ligne mouvemente UN seul sens (débit OU crédit).
+- "type_anomalie" : "factuelle" (erreur avérée), "jugement" (estimation contestée)
+  ou "extrapolee" (projetée depuis un sondage).
+- La justification est un PROJET au conditionnel : l'auditeur vérifiera avant de proposer au client.
+
+Réponds UNIQUEMENT avec un JSON valide :
+{{
+  "libelle": "Libellé court de l'écriture",
+  "type_anomalie": "factuelle|jugement|extrapolee",
+  "justification": "Justification au conditionnel (2-3 phrases)",
+  "lignes": [
+    {{"compte": "XXXXXX", "libelle": "…", "debit": {montant:.2f}, "credit": 0}},
+    {{"compte": "XXXXXX", "libelle": "…", "debit": 0, "credit": {montant:.2f}}}
+  ]
+}}"""
+
+        resp = self._messages_create(
+            model=MODEL_DEFAULT,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_DEFAULT, "proposer_ecriture_ajustement",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and result.get("lignes"):
+            return result
+        raise RuntimeError("Réponse IA illisible : l'écriture n'a pas pu être proposée. Relancez.")
+
     # ─── Diligences ISA de périphérie (M3) ───────────────────────────────────
 
     def evaluer_diligence_peripherie(

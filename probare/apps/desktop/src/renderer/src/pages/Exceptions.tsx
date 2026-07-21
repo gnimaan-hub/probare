@@ -189,6 +189,7 @@ function ExceptionCard({
   onRelancerIA: (exc: Exception) => void
   relancing: boolean
 }) {
+  const navigate = useNavigate()
   const isTranchee = exc.statut === 'tranchee'
 
   return (
@@ -272,6 +273,16 @@ function ExceptionCard({
                 )}
               </div>
               <p className="text-xs text-emerald-800">{exc.decision_humaine}</p>
+              {exc.type_resolution === 'non_corrigee' && (
+                <button
+                  onClick={() => navigate(`/projet/${exc.projet_id}/ajustements?exception=${exc.id}`)}
+                  className="mt-2 text-xs text-primary-600 hover:text-primary-800 font-medium flex items-center gap-1"
+                  title="Matérialiser l'anomalie en écriture comptable à proposer au client"
+                >
+                  <ArrowRight className="w-3 h-3" />
+                  Proposer l'écriture d'ajustement au client
+                </button>
+              )}
               <p className="text-xs text-emerald-600 mt-1">
                 Par {exc.decideur} · {formatDate(exc.horodatage)}
               </p>

@@ -320,6 +320,36 @@ class ProjectDB:
             UNIQUE(projet_id, controle_ref)
         );
 
+        CREATE TABLE IF NOT EXISTS ecriture_ajustement (
+            id TEXT PRIMARY KEY,
+            projet_id TEXT NOT NULL REFERENCES projet(id),
+            exception_id TEXT REFERENCES exception(id),
+            libelle TEXT NOT NULL,
+            type_anomalie TEXT CHECK(type_anomalie IN ('factuelle','jugement','extrapolee'))
+                DEFAULT 'factuelle',
+            statut TEXT CHECK(statut IN ('proposee','acceptee_client','passee','refusee'))
+                DEFAULT 'proposee',
+            justification TEXT,
+            total_debits REAL DEFAULT 0,
+            total_credits REAL DEFAULT 0,
+            issu_ia INTEGER DEFAULT 0,
+            cree_par TEXT,
+            cree_le TEXT,
+            modifie_le TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS ecriture_ajustement_ligne (
+            id TEXT PRIMARY KEY,
+            ecriture_id TEXT NOT NULL REFERENCES ecriture_ajustement(id),
+            projet_id TEXT NOT NULL,
+            ordre INTEGER DEFAULT 0,
+            compte TEXT NOT NULL,
+            libelle TEXT,
+            debit REAL DEFAULT 0,
+            credit REAL DEFAULT 0,
+            donnee_id TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS peripherie_reponse (
             id TEXT PRIMARY KEY,
             projet_id TEXT NOT NULL REFERENCES projet(id),
@@ -886,6 +916,116 @@ class ProjectDB:
         )
         self.conn.commit()
         return self.get_peripherie_evaluation(projet_id, diligence)
+
+    # --- Écritures d'ajustement (M1 — ISA 450) ---
+
+    def _inserer_lignes_ajustement(self, ecriture_id: str, projet_id: str,
+                                   lignes: list[dict]) -> None:
+        """Insère les lignes et crée une DonneeSourcee par montant non nul :
+        toute valeur entrant ensuite dans la balance ajustée reste tracée
+        (provenance = l'écriture d'ajustement elle-même)."""
+        uuid4 = __import__("uuid").uuid4
+        now = _now()
+        donnees = []
+        for ordre, l in enumerate(lignes):
+            lid = str(uuid4())
+            montant = float(l.get("debit") or 0) or float(l.get("credit") or 0)
+            sens = "debit" if float(l.get("debit") or 0) > 0 else "credit"
+            did = str(uuid4())
+            donnees.append({
+                "id": did, "projet_id": projet_id, "fichier_source_id": None,
+                "valeur": montant, "type": "montant",
+                "localisation": f"ajustement:{ecriture_id}:{ordre}:{sens}",
+                "extrait_par": "ecriture_ajustement", "horodatage": now,
+            })
+            self.conn.execute(
+                """INSERT INTO ecriture_ajustement_ligne
+                   (id, ecriture_id, projet_id, ordre, compte, libelle, debit, credit, donnee_id)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (lid, ecriture_id, projet_id, ordre,
+                 str(l.get("compte") or "").strip(), l.get("libelle"),
+                 round(float(l.get("debit") or 0), 2),
+                 round(float(l.get("credit") or 0), 2), did)
+            )
+        if donnees:
+            self.save_donnees_sourcees(donnees)
+
+    def _supprimer_lignes_ajustement(self, ecriture_id: str) -> None:
+        rows = self.conn.execute(
+            "SELECT donnee_id FROM ecriture_ajustement_ligne WHERE ecriture_id=?",
+            (ecriture_id,)
+        ).fetchall()
+        ids = [r["donnee_id"] for r in rows if r["donnee_id"]]
+        if ids:
+            ph = ",".join("?" for _ in ids)
+            self.conn.execute(f"DELETE FROM donnee_sourcee WHERE id IN ({ph})", ids)
+        self.conn.execute(
+            "DELETE FROM ecriture_ajustement_ligne WHERE ecriture_id=?", (ecriture_id,))
+
+    def save_ecriture_ajustement(self, data: dict, lignes: list[dict]) -> dict:
+        now = _now()
+        self.conn.execute(
+            """INSERT INTO ecriture_ajustement
+               (id, projet_id, exception_id, libelle, type_anomalie, statut,
+                justification, total_debits, total_credits, issu_ia, cree_par,
+                cree_le, modifie_le)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (data["id"], data["projet_id"], data.get("exception_id"),
+             data["libelle"], data.get("type_anomalie", "factuelle"),
+             data.get("statut", "proposee"), data.get("justification"),
+             data.get("total_debits", 0), data.get("total_credits", 0),
+             int(data.get("issu_ia", 0)), data.get("cree_par"), now, now)
+        )
+        self._inserer_lignes_ajustement(data["id"], data["projet_id"], lignes)
+        self.conn.commit()
+        return self.get_ecriture_ajustement(data["id"])
+
+    def get_ecriture_ajustement(self, ecriture_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM ecriture_ajustement WHERE id=?", (ecriture_id,)
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        lignes = self.conn.execute(
+            "SELECT * FROM ecriture_ajustement_ligne WHERE ecriture_id=? ORDER BY ordre",
+            (ecriture_id,)
+        ).fetchall()
+        d["lignes"] = [dict(l) for l in lignes]
+        return d
+
+    def list_ecritures_ajustement(self, projet_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT id FROM ecriture_ajustement WHERE projet_id=? ORDER BY cree_le",
+            (projet_id,)
+        ).fetchall()
+        return [self.get_ecriture_ajustement(r["id"]) for r in rows]
+
+    def update_ecriture_ajustement(self, ecriture_id: str, fields: dict,
+                                   lignes: list[dict] | None = None) -> dict | None:
+        allowed = {"libelle", "type_anomalie", "statut", "justification",
+                   "exception_id", "total_debits", "total_credits", "cree_par"}
+        upd = {k: v for k, v in fields.items() if k in allowed}
+        ecriture = self.get_ecriture_ajustement(ecriture_id)
+        if not ecriture:
+            return None
+        if upd:
+            upd["modifie_le"] = _now()
+            set_clause = ", ".join(f"{k}=?" for k in upd)
+            self.conn.execute(
+                f"UPDATE ecriture_ajustement SET {set_clause} WHERE id=?",
+                list(upd.values()) + [ecriture_id])
+        if lignes is not None:
+            self._supprimer_lignes_ajustement(ecriture_id)
+            self._inserer_lignes_ajustement(ecriture_id, ecriture["projet_id"], lignes)
+        self.conn.commit()
+        return self.get_ecriture_ajustement(ecriture_id)
+
+    def delete_ecriture_ajustement(self, ecriture_id: str) -> bool:
+        self._supprimer_lignes_ajustement(ecriture_id)
+        self.conn.execute("DELETE FROM ecriture_ajustement WHERE id=?", (ecriture_id,))
+        self.conn.commit()
+        return True
 
     # --- Données sourcées ---
 
