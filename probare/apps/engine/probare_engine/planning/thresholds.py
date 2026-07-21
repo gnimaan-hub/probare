@@ -17,6 +17,13 @@ LIBELLES_AGREGAT: dict[str, str] = {
 }
 
 
+# Seuil des anomalies manifestement insignifiantes (« clearly trivial », ISA 450) :
+# fraction du seuil de signification en dessous de laquelle une anomalie peut être
+# écartée du cumul sans autre diligence. La pratique usuelle est 1 à 5 % du seuil.
+TAUX_INSIGNIFIANCE_DEFAUT = 0.03
+TAUX_INSIGNIFIANCE_MAX = 0.05
+
+
 def taux_defaut(agregat_type: str) -> float:
     return TAUX_DEFAUT.get(agregat_type, 0.01)
 
@@ -26,19 +33,24 @@ def calculer_seuils(
     agregat_valeur: float,
     taux_signification: float,
     taux_planification: float = 0.75,
+    taux_insignifiance: float = TAUX_INSIGNIFIANCE_DEFAUT,
 ) -> dict:
     """
-    Retourne les deux seuils calculés.
+    Retourne les trois seuils calculés (signification, planification,
+    anomalies manifestement insignifiantes).
     Ne fait aucun appel LLM, aucune lecture de base.
     """
     seuil = abs(agregat_valeur) * taux_signification
     seuil_plan = seuil * taux_planification
+    seuil_insign = seuil * taux_insignifiance
     return {
         "agregat_type": agregat_type,
         "agregat_libelle": LIBELLES_AGREGAT.get(agregat_type, agregat_type),
         "agregat_valeur": round(agregat_valeur, 2),
         "taux_signification": taux_signification,
         "taux_planification": taux_planification,
+        "taux_insignifiance": taux_insignifiance,
         "seuil_signification": round(seuil, 2),
         "seuil_planification": round(seuil_plan, 2),
+        "seuil_insignifiance": round(seuil_insign, 2),
     }

@@ -102,3 +102,24 @@ Normes utilisées (numérotation commune ISA/NEP) :
 - 520 : Procédures analytiques
 - 530 : Sondages
 - 230 : Documentation des travaux
+
+Diligences de périphérie (module `controls/peripherie.py`, page « Diligences ») :
+- 210/220 : Acceptation et maintien de la mission
+- 240 : Fraude (les risques proposés par l'IA alimentent la cartographie, non validés)
+- 550 : Parties liées
+- 560 : Événements postérieurs
+- 570 : Continuité d'exploitation — indicateurs calculés depuis la balance ;
+  **conclusion signée obligatoire avant l'étape `generation`** (garde pipeline)
+- 580 : Déclarations écrites (projet de lettre d'affirmation généré par l'IA)
+- 260/265 : Communication à la gouvernance (projet de lettre généré par l'IA)
+
+## Seuils (ISA 320/450)
+
+Trois seuils calculés en planification (`planning/thresholds.py`) :
+seuil de signification, seuil de planification (75 %), **seuil des anomalies
+manifestement insignifiantes** (défaut 3 % du seuil, plafonné à 5 %). Une exception
+non critique dont le montant est ≤ seuil d'insignifiance peut être tranchée
+`insignifiante` : hors cumul 450, mais journalisée et listée au dossier.
+Des **seuils spécifiques par cycle** (toujours INFÉRIEURS au seuil global,
+justification obligatoire) remplacent le seuil global pour les contrôles du
+cycle (`_seuil_cycle` dans les routes).

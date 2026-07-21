@@ -320,6 +320,36 @@ class ProjectDB:
             UNIQUE(projet_id, controle_ref)
         );
 
+        CREATE TABLE IF NOT EXISTS peripherie_reponse (
+            id TEXT PRIMARY KEY,
+            projet_id TEXT NOT NULL REFERENCES projet(id),
+            diligence TEXT NOT NULL,
+            question_id TEXT NOT NULL,
+            reponse TEXT CHECK(reponse IN ('oui', 'non', 'na')),
+            commentaire TEXT,
+            repondu_le TEXT,
+            UNIQUE(projet_id, diligence, question_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS peripherie_evaluation (
+            id TEXT PRIMARY KEY,
+            projet_id TEXT NOT NULL,
+            diligence TEXT NOT NULL,
+            score REAL,
+            niveau TEXT,
+            synthese_ia TEXT,
+            points_attention TEXT,
+            diligences_complementaires TEXT,
+            indicateurs_json TEXT,
+            conclusion TEXT,
+            conclu_par TEXT,
+            conclu_le TEXT,
+            lettre_ia TEXT,
+            lettre_generee_le TEXT,
+            evalue_le TEXT,
+            UNIQUE(projet_id, diligence)
+        );
+
         CREATE TABLE IF NOT EXISTS opinion (
             projet_id TEXT PRIMARY KEY REFERENCES projet(id),
             rigueur TEXT,
@@ -381,6 +411,12 @@ class ProjectDB:
             ("exception", "montant_estime", "REAL"),
             # NEP 505 : procédures alternatives en cas de non-réponse
             ("circularisation", "procedures_alternatives", "TEXT"),
+            # M2 — Seuils complémentaires (NEP 320/450)
+            ("projet", "seuil_insignifiance", "REAL"),
+            ("planification", "taux_insignifiance", "REAL"),
+            ("planification", "seuil_insignifiance_calcule", "REAL"),
+            # M2 — Seuils spécifiques par cycle : {cycle: {seuil, justification}}
+            ("planification", "seuils_specifiques_json", "TEXT"),
         ]
         for table, col, typedef in migrations:
             try:
@@ -443,7 +479,7 @@ class ProjectDB:
     def update_projet(self, projet_id: str, data: dict) -> dict | None:
         fields = {k: v for k, v in data.items()
                   if k in ("nom","client","nif","exercice","seuil_signification",
-                           "seuil_planification","consentement_client",
+                           "seuil_planification","seuil_insignifiance","consentement_client",
                            "consentement_horodatage","etat_courant","cycles_couverts",
                            "nature_mission","referentiel_comptable","client_id","archive")}
         # Sérialiser cycles_couverts en JSON si c'est une liste
@@ -741,6 +777,116 @@ class ProjectDB:
                 pass
         return None
 
+    # --- Diligences ISA de périphérie (M3 : 210/220, 240, 550, 560, 570, 580, 260/265) ---
+
+    def save_peripherie_reponse(self, projet_id: str, diligence: str,
+                                question_id: str, reponse: str, commentaire: str = "") -> dict:
+        rid = str(__import__("uuid").uuid4())
+        now = _now()
+        self.conn.execute(
+            """INSERT INTO peripherie_reponse
+               (id, projet_id, diligence, question_id, reponse, commentaire, repondu_le)
+               VALUES (?,?,?,?,?,?,?)
+               ON CONFLICT(projet_id, diligence, question_id) DO UPDATE SET
+                 reponse=excluded.reponse,
+                 commentaire=excluded.commentaire,
+                 repondu_le=excluded.repondu_le""",
+            (rid, projet_id, diligence, question_id, reponse, commentaire, now)
+        )
+        self.conn.commit()
+        return {"projet_id": projet_id, "diligence": diligence,
+                "question_id": question_id, "reponse": reponse, "commentaire": commentaire}
+
+    def list_peripherie_reponses(self, projet_id: str, diligence: str | None = None) -> list[dict]:
+        if diligence:
+            rows = self.conn.execute(
+                "SELECT * FROM peripherie_reponse WHERE projet_id=? AND diligence=?",
+                (projet_id, diligence)
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM peripherie_reponse WHERE projet_id=?", (projet_id,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def _deserialize_peripherie_evaluation(self, d: dict) -> dict:
+        for field in ("points_attention", "diligences_complementaires"):
+            val = d.get(field)
+            if val and isinstance(val, str):
+                try:
+                    d[field] = json.loads(val)
+                except Exception:
+                    d[field] = []
+            elif not val:
+                d[field] = []
+        val = d.get("indicateurs_json")
+        if val and isinstance(val, str):
+            try:
+                d["indicateurs_json"] = json.loads(val)
+            except Exception:
+                d["indicateurs_json"] = None
+        return d
+
+    def save_peripherie_evaluation(self, projet_id: str, diligence: str, data: dict) -> dict:
+        """Upsert de l'évaluation d'une diligence — préserve conclusion et lettre existantes."""
+        eid = str(__import__("uuid").uuid4())
+        now = _now()
+        indicateurs = data.get("indicateurs_json")
+        self.conn.execute(
+            """INSERT INTO peripherie_evaluation
+               (id, projet_id, diligence, score, niveau, synthese_ia,
+                points_attention, diligences_complementaires, indicateurs_json, evalue_le)
+               VALUES (?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(projet_id, diligence) DO UPDATE SET
+                 score=excluded.score, niveau=excluded.niveau,
+                 synthese_ia=excluded.synthese_ia,
+                 points_attention=excluded.points_attention,
+                 diligences_complementaires=excluded.diligences_complementaires,
+                 indicateurs_json=excluded.indicateurs_json,
+                 evalue_le=excluded.evalue_le""",
+            (eid, projet_id, diligence,
+             data.get("score"), data.get("niveau"),
+             data.get("synthese_ia") or data.get("synthese"),
+             json.dumps(data.get("points_attention", []), ensure_ascii=False),
+             json.dumps(data.get("diligences_complementaires", []), ensure_ascii=False),
+             json.dumps(indicateurs, ensure_ascii=False) if indicateurs is not None else None,
+             now)
+        )
+        self.conn.commit()
+        return self.get_peripherie_evaluation(projet_id, diligence)
+
+    def get_peripherie_evaluation(self, projet_id: str, diligence: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM peripherie_evaluation WHERE projet_id=? AND diligence=?",
+            (projet_id, diligence)
+        ).fetchone()
+        return self._deserialize_peripherie_evaluation(dict(row)) if row else None
+
+    def list_peripherie_evaluations(self, projet_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM peripherie_evaluation WHERE projet_id=?", (projet_id,)
+        ).fetchall()
+        return [self._deserialize_peripherie_evaluation(dict(r)) for r in rows]
+
+    def conclure_peripherie(self, projet_id: str, diligence: str,
+                            conclusion: str, conclu_par: str) -> dict | None:
+        self.conn.execute(
+            """UPDATE peripherie_evaluation SET conclusion=?, conclu_par=?, conclu_le=?
+               WHERE projet_id=? AND diligence=?""",
+            (conclusion, conclu_par, _now(), projet_id, diligence)
+        )
+        self.conn.commit()
+        return self.get_peripherie_evaluation(projet_id, diligence)
+
+    def save_peripherie_lettre(self, projet_id: str, diligence: str, lettre: str) -> dict | None:
+        self.conn.execute(
+            """UPDATE peripherie_evaluation SET lettre_ia=?, lettre_generee_le=?
+               WHERE projet_id=? AND diligence=?""",
+            (lettre, _now(), projet_id, diligence)
+        )
+        self.conn.commit()
+        return self.get_peripherie_evaluation(projet_id, diligence)
+
     # --- Données sourcées ---
 
     def save_donnees_sourcees(self, donnees: list[dict]) -> int:
@@ -928,6 +1074,9 @@ class ProjectDB:
         - 'sans_incidence': explication obtenue, aucune anomalie avérée.
         - 'non_corrigee'  : anomalie non corrigée — montant_incidence entre dans le
                             cumul comparé au seuil de signification.
+        - 'insignifiante' : anomalie manifestement insignifiante — montant_incidence
+                            inférieur au seuil d'insignifiance ; écartée du cumul mais
+                            journalisée et listée au dossier.
         type_resolution None = tranchement rétrocompatible non typé.
         """
         self.conn.execute(
@@ -961,14 +1110,20 @@ class ProjectDB:
         non_corrigees = [e for e in tranchees if e.get("type_resolution") == "non_corrigee"]
         corrigees = [e for e in tranchees if e.get("type_resolution") == "corrigee"]
         sans_incidence = [e for e in tranchees if e.get("type_resolution") == "sans_incidence"]
+        # M2 (ISA 450) : anomalies manifestement insignifiantes — écartées du cumul
+        # mais comptées et listées au dossier (jamais silencieuses).
+        insignifiantes = [e for e in tranchees if e.get("type_resolution") == "insignifiante"]
         non_typees = [e for e in tranchees if not e.get("type_resolution")]
 
         cumul = sum(abs(float(e.get("montant_incidence") or 0.0)) for e in non_corrigees)
+        total_insignifiantes = sum(
+            abs(float(e.get("montant_incidence") or 0.0)) for e in insignifiantes)
         seuil_sig = float(seuil_signification or 0.0)
         seuil_plan = float(seuil_planification or 0.0)
 
         return {
             "cumul_non_corrigees": round(cumul, 2),
+            "total_insignifiantes": round(total_insignifiantes, 2),
             "seuil_signification": seuil_sig or None,
             "seuil_planification": seuil_plan or None,
             "depasse_seuil_signification": bool(seuil_sig and cumul > seuil_sig),
@@ -979,12 +1134,19 @@ class ProjectDB:
             "nb_corrigees": len(corrigees),
             "nb_non_corrigees": len(non_corrigees),
             "nb_sans_incidence": len(sans_incidence),
+            "nb_insignifiantes": len(insignifiantes),
             "nb_non_typees": len(non_typees),
             "exceptions_non_corrigees": [
                 {"id": e["id"], "controle_ref": e.get("controle_ref"),
                  "description": e.get("description"),
                  "montant_incidence": e.get("montant_incidence")}
                 for e in non_corrigees
+            ],
+            "exceptions_insignifiantes": [
+                {"id": e["id"], "controle_ref": e.get("controle_ref"),
+                 "description": e.get("description"),
+                 "montant_incidence": e.get("montant_incidence")}
+                for e in insignifiantes
             ],
         }
 
@@ -1094,7 +1256,8 @@ class ProjectDB:
     # --- Planification ---
 
     def _deserialize_planification(self, d: dict) -> dict:
-        for field in ("dirigeants", "facteurs_risque_inherent", "variations_json", "agregats_json"):
+        for field in ("dirigeants", "facteurs_risque_inherent", "variations_json", "agregats_json",
+                      "seuils_specifiques_json"):
             val = d.get(field)
             if val and isinstance(val, str):
                 try:
@@ -1102,7 +1265,7 @@ class ProjectDB:
                 except Exception:
                     d[field] = [] if field in ("dirigeants", "facteurs_risque_inherent", "variations_json") else {}
             elif not val:
-                d[field] = [] if field != "agregats_json" else {}
+                d[field] = [] if field in ("dirigeants", "facteurs_risque_inherent", "variations_json") else {}
         return d
 
     def get_or_create_planification(self, projet_id: str) -> dict:
@@ -1132,6 +1295,7 @@ class ProjectDB:
             "observations", "facteurs_risque_inherent", "balance_n1_fichier_id",
             "variations_json", "interpretation_variations", "variations_ia_horodatage",
             "agregat_type", "agregat_valeur", "taux_signification", "taux_planification",
+            "taux_insignifiance", "seuil_insignifiance_calcule", "seuils_specifiques_json",
             "seuil_calcule", "seuil_planification_calcule", "agregats_json", "statut",
             "note_synthese",
         }
@@ -1139,7 +1303,8 @@ class ProjectDB:
         for k, v in data.items():
             if k not in allowed:
                 continue
-            if k in ("dirigeants", "facteurs_risque_inherent", "variations_json", "agregats_json") and isinstance(v, (list, dict)):
+            if k in ("dirigeants", "facteurs_risque_inherent", "variations_json", "agregats_json",
+                     "seuils_specifiques_json") and isinstance(v, (list, dict)):
                 fields[k] = json.dumps(v)
             else:
                 fields[k] = v

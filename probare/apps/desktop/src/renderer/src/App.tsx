@@ -8,6 +8,7 @@ import { Ingestion } from './pages/Ingestion'
 import { Controles } from './pages/Controles'
 import { EvaluationCI } from './pages/EvaluationCI'
 import { Exceptions } from './pages/Exceptions'
+import { Diligences } from './pages/Diligences'
 import { DossierTravail } from './pages/DossierTravail'
 import { RapportAudit } from './pages/RapportAudit'
 import { Journal } from './pages/Journal'
@@ -127,6 +128,7 @@ export default function App() {
         <Route path="/projet/:projetId/evaluation-ci" element={<EvaluationCI />} />
         <Route path="/projet/:projetId/controles" element={<Controles />} />
         <Route path="/projet/:projetId/exceptions" element={<Exceptions />} />
+        <Route path="/projet/:projetId/diligences" element={<Diligences />} />
         <Route path="/projet/:projetId/dossier-travail" element={<DossierTravail />} />
         <Route path="/projet/:projetId/rapport-audit" element={<RapportAudit />} />
         {/* Rétrocompatibilité : l'ancienne route /rapport pointe vers le dossier de travail */}

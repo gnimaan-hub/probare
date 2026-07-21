@@ -105,7 +105,7 @@ C'est l'étape la plus structurante. Dans l'ordre :
 
 1. **Fiche entité** : forme juridique, activités, marchés, dirigeants, système d'information, facteurs de risque.
 2. **Variations N/N-1** : choisissez le fichier N et le fichier N-1 ; le logiciel calcule toutes les variations par compte et signale les significatives. L'IA peut ensuite les interpréter (zones de risque).
-3. **Seuil de signification (ISA 320)** : choisissez l'agrégat de référence — total bilan (1 %), chiffre d'affaires (1,5 %), résultat net (5 %) — et validez. Le seuil de signification et le seuil de planification (75 %) sont calculés et appliqués à toute la mission. *Le total bilan est calculé sur les seuls comptes de bilan (classes 1 à 5).*
+3. **Seuils (ISA 320 / 450)** : choisissez l'agrégat de référence — total bilan (1 %), chiffre d'affaires (1,5 %), résultat net (5 %) — et validez. Trois seuils sont calculés et appliqués à toute la mission : le seuil de signification, le seuil de planification (75 %) et le **seuil des anomalies manifestement insignifiantes** (3 % du seuil par défaut, réglable jusqu'à 5 %) — en dessous de ce dernier, une exception non critique peut être écartée du cumul ISA 450 tout en restant listée au dossier. Vous pouvez aussi définir des **seuils spécifiques par cycle** (toujours inférieurs au seuil global, justification obligatoire) pour durcir la détection sur une zone sensible. *Le total bilan est calculé sur les seuls comptes de bilan (classes 1 à 5).*
 4. **Cartographie des risques (ISA 315)** : l'IA propose des risques à partir de la fiche entité et des variations ; ajoutez les vôtres, puis **validez** ceux que vous retenez — seuls les risques validés comptent.
 5. **Programme de travail** : généré par l'IA à partir des risques validés et du registre des contrôles ; ajustez les priorités et le périmètre.
 6. **Note de planification** : générez la synthèse et téléchargez la note au format Word pour le dossier.
@@ -124,6 +124,22 @@ C'est l'étape la plus structurante. Dans l'ordre :
 
 **c) Sondages (ISA 530).** Créez un sondage par cycle : le logiciel calcule la taille d'échantillon (niveau de confiance, taux d'erreur toléré), tire l'échantillon de façon **reproductible** (graine enregistrée), et vous pointez chaque pièce (conforme / anomalie + montant). À la conclusion, l'erreur est **projetée sur la population** par extrapolation monétaire et l'IA rédige la conclusion du sondage.
 
+### Les Diligences de périphérie (ISA 210/220, 240, 550, 560, 570, 580, 260/265)
+
+L'écran **Diligences** (accessible à toute étape) couvre les diligences transversales de la mission : acceptation et maintien, fraude, parties liées, événements postérieurs, continuité d'exploitation, déclarations écrites et communication à la gouvernance. Pour chacune :
+
+1. Répondez au questionnaire (oui / non / N.A., commentaires) — le score est calculé par le logiciel ;
+2. Lancez l'**évaluation** (3 réponses minimum) : l'IA rédige la synthèse, les points d'attention, les diligences à mener et un projet de conclusion au conditionnel ;
+3. Réalisez les diligences puis **signez la conclusion** de votre nom.
+
+Points particuliers :
+
+- **Fraude (ISA 240)** : les risques identifiés par l'IA sont versés à la cartographie des risques — validez-les à l'étape Planification.
+- **Continuité (ISA 570)** : les indicateurs financiers (capitaux propres, résultat, fonds de roulement, trésorerie) sont calculés depuis la balance importée. **La conclusion signée est obligatoire avant la génération du dossier.**
+- **Déclarations écrites (ISA 580)** et **gouvernance (ISA 260/265)** : l'IA rédige un projet de lettre à partir du contenu réel du dossier (anomalies tranchées, faiblesses du contrôle interne). *Générer n'est pas envoyer* — relisez et adaptez avant tout envoi.
+
+L'état de chaque diligence (score, synthèse, conclusion signée) est versé au dossier de travail exporté.
+
 ### Étape 6 — Exceptions (ISA 450) : le cœur de votre travail
 
 Chaque exception levée est **automatiquement interprétée par l'IA** (si activée) : explication, hypothèses de cause, diligences à mener, et un **projet de décision rédigé au conditionnel** — il ne prétend jamais que des vérifications ont été faites : c'est à vous de les faire.
@@ -136,6 +152,7 @@ Pour trancher une exception :
    - **Corrigée par le client** : l'anomalie a été corrigée, aucune incidence résiduelle ;
    - **Sans incidence** : explication obtenue, aucune anomalie avérée ;
    - **Non corrigée** : l'anomalie demeure — saisissez son **montant d'incidence** ;
+   - **Manifestement insignifiante** (si le seuil d'insignifiance est défini et que l'exception n'est pas critique) : montant dérisoire, écarté du cumul ISA 450 mais **listé au dossier** — saisissez son montant, qui doit rester sous le seuil d'insignifiance ;
 4. Signez de votre nom. Les exceptions **critiques** exigent en plus la saisie du mot VALIDER.
 
 > **Cumul ISA 450 :** Probare additionne les montants des anomalies **non corrigées** et les compare au seuil de signification. Si le cumul dépasse le seuil, le passage en génération est **bloqué** : soit vous enregistrez les corrections du client, soit vous confirmez explicitement le dépassement — en sachant qu'il devra se traduire dans l'opinion (réserve ou refus). Cette confirmation est journalisée.

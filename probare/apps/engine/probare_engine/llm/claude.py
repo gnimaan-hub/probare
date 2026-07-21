@@ -1370,6 +1370,157 @@ Réponds UNIQUEMENT avec un JSON valide :
         "impossibilite": "Impossibilité d'exprimer une opinion",
     }
 
+    # ─── Diligences ISA de périphérie (M3) ───────────────────────────────────
+
+    def evaluer_diligence_peripherie(
+        self,
+        diligence: dict,          # définition (code, libelle, nep_ref, description)
+        reponses: list[dict],     # [{question_id, question, reponse, commentaire, risque_si_non}]
+        score_info: dict,         # calculé par le code (score, niveau, nb_oui/non/na)
+        contexte_projet: dict,
+        indicateurs: dict | None = None,   # ISA 570 : indicateurs calculés par le moteur
+    ) -> dict:
+        """Sonnet rédige la synthèse d'une diligence de périphérie (240, 550, 560,
+        570, 580, 210/220, 260/265). Score et indicateurs financiers viennent du
+        code — l'IA interprète, ne calcule jamais."""
+        reponses_txt = ""
+        for r in reponses:
+            if not r.get("reponse"):
+                continue
+            reponses_txt += f"\n- [{(r.get('reponse') or '?').upper()}] {r.get('question', r.get('question_id', ''))}"
+            if r.get("reponse") == "non" and r.get("risque_si_non"):
+                reponses_txt += f"\n  → Risque : {r['risque_si_non']}"
+            if r.get("commentaire"):
+                reponses_txt += f"\n  → Commentaire auditeur : {r['commentaire']}"
+
+        indicateurs_txt = ""
+        if indicateurs:
+            indicateurs_txt = f"""
+
+Indicateurs financiers CALCULÉS PAR LE MOTEUR depuis la balance (à citer tels quels, ne recalcule rien) :
+- Capitaux propres : {indicateurs.get('capitaux_propres')}
+- Capital social : {indicateurs.get('capital_social')}
+- Résultat de l'exercice : {indicateurs.get('resultat_exercice')}
+- Fonds de roulement : {indicateurs.get('fonds_roulement')}
+- Trésorerie nette : {indicateurs.get('tresorerie_nette')}
+- Alertes levées par le moteur : {'; '.join(indicateurs.get('alertes') or []) or 'aucune'}"""
+
+        fraude_json = ""
+        if diligence.get("code") == "fraude":
+            fraude_json = """,
+  "risques_fraude": [
+    {"libelle": "Risque de fraude identifié (court)", "description": "…", "cycle": "tresorerie|achats|ventes|paie|impots|stocks|immobilisations|capitaux_propres", "niveau": "faible|moyen|eleve"}
+  ]"""
+
+        prompt = f"""Tu es auditeur senior. Tu documentes la diligence « {diligence.get('libelle')} »
+({diligence.get('nep_ref')}) d'une mission d'audit contractuel à Djibouti.
+
+{diligence.get('description', '')}
+
+Entité : {contexte_projet.get('client', 'N/A')} — Exercice {contexte_projet.get('exercice', 'N/A')}
+
+Score du questionnaire (calculé par le code) : {score_info.get('nb_oui')}/{(score_info.get('nb_oui') or 0) + (score_info.get('nb_non') or 0)} (score {float(score_info.get('score') or 0):.0%}) → Niveau : {str(score_info.get('niveau', '?')).upper()}
+
+Réponses au questionnaire :{reponses_txt or ' (aucune)'}{indicateurs_txt}
+
+Rédige une synthèse professionnelle de cette diligence : ce que les réponses (et
+indicateurs le cas échéant) révèlent, les points d'attention, et les diligences
+complémentaires à mener AVANT de conclure. Propose un PROJET de conclusion rédigé
+au conditionnel, à la première personne de l'auditeur — il ne doit jamais affirmer
+que des vérifications non listées ont été faites.
+N'invente aucun chiffre non fourni ci-dessus.
+
+Réponds UNIQUEMENT avec ce JSON valide :
+{{
+  "synthese": "Paragraphe de synthèse (3-5 phrases)",
+  "points_attention": ["Point d'attention 1", "Point 2"],
+  "diligences_complementaires": ["Diligence à mener 1", "Diligence 2"],
+  "conclusion_proposee": "Projet de conclusion au conditionnel, prêt à être validé ou modifié par l'auditeur"{fraude_json}
+}}"""
+
+        resp = self._messages_create(
+            model=MODEL_DEFAULT,
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_DEFAULT, f"evaluer_diligence_{diligence.get('code')}",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+
+        result = self._parse_json(resp.content[0].text)
+        if not isinstance(result, dict) or "synthese" not in result:
+            return {
+                "synthese": f"Évaluation automatique : score {float(score_info.get('score') or 0):.0%}, "
+                            f"niveau {score_info.get('niveau')}.",
+                "points_attention": [], "diligences_complementaires": [],
+                "conclusion_proposee": "",
+            }
+        return result
+
+    def generer_lettre_peripherie(
+        self,
+        type_lettre: str,          # 'affirmation' (NEP 580) | 'gouvernance' (NEP 260/265)
+        contexte_projet: dict,
+        elements: dict,            # contenu réel du dossier, calculé par le code
+    ) -> dict:
+        """Sonnet rédige un projet de lettre (affirmation NEP 580 ou communication
+        gouvernance NEP 260/265) à partir du contenu réel du dossier. Tous les
+        montants cités viennent de `elements` (code) — jamais du LLM."""
+        if type_lettre == "affirmation":
+            titre = f"lettre d'affirmation de la direction ({norme(580)})"
+            consigne = (
+                "La lettre est écrite À LA PREMIÈRE PERSONNE DE LA DIRECTION de l'entité, "
+                "adressée au cabinet d'audit. Elle confirme : la responsabilité de la direction "
+                "sur les comptes et le contrôle interne, l'exhaustivité des informations "
+                "communiquées, la position de la direction sur chaque anomalie non corrigée "
+                "listée ci-dessous, l'absence de fraude connue non déclarée, l'exhaustivité "
+                "des parties liées et des événements postérieurs, et l'appréciation de la "
+                "continuité d'exploitation."
+            )
+        else:
+            titre = f"lettre de communication à la gouvernance ({norme(260)} / {norme(265)})"
+            consigne = (
+                "La lettre est écrite PAR LE CABINET D'AUDIT, adressée à l'organe de "
+                "gouvernance de l'entité. Elle communique : l'étendue des travaux réalisés, "
+                "les anomalies significatives relevées (corrigées et non corrigées, avec les "
+                "montants fournis ci-dessous cités tels quels), les faiblesses significatives "
+                "du contrôle interne listées ci-dessous avec leurs recommandations, et les "
+                "difficultés éventuelles rencontrées."
+            )
+
+        prompt = f"""Tu es auditeur légal agréé. Rédige un PROJET de {titre}.
+
+Entité : [NOM_SOCIÉTÉ] — Exercice {contexte_projet.get('exercice', 'N')}
+Cabinet : [NOM_CABINET]
+
+{consigne}
+
+Contenu réel du dossier (calculé par le code — cite ces éléments tels quels, n'invente RIEN d'autre) :
+{json.dumps(elements, ensure_ascii=False, indent=2)}
+
+Instructions :
+- Français professionnel. Utilise [NOM_SOCIÉTÉ], [NOM_CABINET], [DATE], [SIGNATAIRE] comme espaces réservés.
+- Chaque montant cité doit provenir du contenu ci-dessus, libellé tel quel.
+- Structure : objet, corps complet de la lettre (paragraphes), bloc signature.
+- C'est un PROJET : l'auditeur le relira et l'adaptera avant tout envoi.
+
+Réponds UNIQUEMENT avec un JSON :
+{{"objet": "...", "corps": "texte complet de la lettre, paragraphes séparés par des sauts de ligne"}}"""
+
+        resp = self._messages_create(
+            model=MODEL_DEFAULT,
+            max_tokens=3000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_DEFAULT, f"generer_lettre_{type_lettre}",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+
+        if resp.stop_reason == "max_tokens":
+            raise RuntimeError("Réponse IA tronquée : la lettre n'a pas pu être générée entièrement. Relancez.")
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and result.get("corps"):
+            return result
+        raise RuntimeError("Réponse IA illisible : la lettre n'a pas pu être générée. Relancez.")
+
     def proposer_opinion(
         self,
         projet: dict,

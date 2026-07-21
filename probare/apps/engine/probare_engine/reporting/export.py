@@ -64,6 +64,7 @@ def generer_dossier_travail(
     output_path: Path,
     controles_ignores: list[dict] | None = None,
     synthese_anomalies: dict | None = None,
+    diligences_peripherie: list[dict] | None = None,
 ) -> Path:
     """Génère le dossier de travail en .docx.
     Lève ProvenanceError si un chiffre non sourcé est détecté.
@@ -168,10 +169,11 @@ def generer_dossier_travail(
                 "corrigee": "Anomalie corrigée par le client",
                 "sans_incidence": "Sans incidence — explication obtenue, aucune anomalie avérée",
                 "non_corrigee": "Anomalie NON corrigée",
+                "insignifiante": "Anomalie manifestement insignifiante — écartée du cumul",
             }
             txt_res = labels_res.get(type_res, type_res)
             mi = exc.get("montant_incidence")
-            if type_res == "non_corrigee" and isinstance(mi, (int, float)):
+            if type_res in ("non_corrigee", "insignifiante") and isinstance(mi, (int, float)):
                 txt_res += f" — incidence : {mi:,.2f}"
             p.add_run(f"\n   Résolution ({norme(450)}) : {txt_res}")
         if exc.get("interpretation_llm"):
@@ -186,6 +188,7 @@ def generer_dossier_travail(
             f"Anomalies corrigées : {sa.get('nb_corrigees', 0)} — "
             f"Sans incidence : {sa.get('nb_sans_incidence', 0)} — "
             f"Non corrigées : {sa.get('nb_non_corrigees', 0)} — "
+            f"Manifestement insignifiantes : {sa.get('nb_insignifiantes', 0)} — "
             f"Tranchées sans typologie : {sa.get('nb_non_typees', 0)}\n"
         )
         cumul = sa.get("cumul_non_corrigees", 0.0)
@@ -218,6 +221,25 @@ def generer_dossier_travail(
                 f"[{e_nc.get('controle_ref')}] {(e_nc.get('description') or '')[:120]}",
                 style="List Bullet",
             )
+        # M2 (ISA 450) : les anomalies manifestement insignifiantes sont hors
+        # cumul mais restent LISTÉES au dossier — jamais silencieuses.
+        exc_insign = sa.get("exceptions_insignifiantes") or []
+        if exc_insign:
+            seuil_ins = sa.get("seuil_insignifiance")
+            p_ins = doc.add_paragraph()
+            p_ins.add_run(
+                f"Anomalies manifestement insignifiantes (écartées du cumul"
+                + (f", seuil d'insignifiance : {seuil_ins:,.2f}" if isinstance(seuil_ins, (int, float)) else "")
+                + f") — total : {sa.get('total_insignifiantes', 0.0):,.2f} :"
+            ).italic = True
+            for e_i in exc_insign:
+                mi = e_i.get("montant_incidence")
+                doc.add_paragraph(
+                    f"[{e_i.get('controle_ref')}] {(e_i.get('description') or '')[:120]} — "
+                    f"montant : {mi:,.2f}" if isinstance(mi, (int, float)) else
+                    f"[{e_i.get('controle_ref')}] {(e_i.get('description') or '')[:120]}",
+                    style="List Bullet",
+                )
 
     # Section contrôles non exécutés (NEP 230)
     if controles_ignores:
@@ -231,6 +253,50 @@ def generer_dossier_travail(
                 f"[{ci.get('controle_ref')}] ({ci.get('cycle', '?')}) — {ci.get('raison', '')}",
                 style="List Bullet",
             )
+
+    # Section diligences ISA de périphérie (M3)
+    if diligences_peripherie:
+        doc.add_heading(_titre_section("Diligences ISA de périphérie de mission"), level=1)
+        doc.add_paragraph(
+            "État des diligences transversales de la mission (acceptation, fraude, "
+            "parties liées, événements postérieurs, continuité d'exploitation, "
+            "déclarations écrites, communication à la gouvernance)."
+        )
+        labels_statut = {
+            "non_commencee": "Non commencée",
+            "en_cours": "En cours",
+            "evaluee": "Évaluée — conclusion en attente",
+            "conclue": "Conclue",
+        }
+        for d in diligences_peripherie:
+            doc.add_heading(f"{d.get('libelle')} ({d.get('nep_ref')})", level=2)
+            doc.add_paragraph(f"Statut : {labels_statut.get(d.get('statut'), d.get('statut'))}")
+            si = d.get("score_info") or {}
+            if si:
+                doc.add_paragraph(
+                    f"Questionnaire : {si.get('nb_oui', 0)} oui / {si.get('nb_non', 0)} non / "
+                    f"{si.get('nb_na', 0)} n.a. — niveau : {si.get('label', si.get('niveau', '?'))}"
+                )
+            ev = d.get("evaluation") or {}
+            if ev.get("synthese_ia"):
+                doc.add_paragraph(f"Synthèse : {ev['synthese_ia']}")
+            indic = ev.get("indicateurs_json") or {}
+            if indic:
+                doc.add_paragraph(
+                    "Indicateurs calculés (moteur) : "
+                    f"capitaux propres {indic.get('capitaux_propres'):,.2f} — "
+                    f"résultat {indic.get('resultat_exercice'):,.2f} — "
+                    f"fonds de roulement {indic.get('fonds_roulement'):,.2f} — "
+                    f"trésorerie nette {indic.get('tresorerie_nette'):,.2f}"
+                )
+                for alerte in indic.get("alertes") or []:
+                    doc.add_paragraph(f"⚠ {alerte}", style="List Bullet")
+            if ev.get("conclusion"):
+                p_c = doc.add_paragraph()
+                p_c.add_run(
+                    f"Conclusion : {ev['conclusion']} "
+                    f"(signée par {ev.get('conclu_par', 'N/A')})"
+                ).bold = True
 
     # Section feuilles de travail
     doc.add_heading(_titre_section("Feuilles de travail par cycle"), level=1)

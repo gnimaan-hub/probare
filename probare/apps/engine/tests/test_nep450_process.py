@@ -108,7 +108,15 @@ class TestGardesPipeline:
         # rendue dans le référentiel actif (ISA par défaut, NEP en option).
         with pytest.raises(PipelineError, match=r"ANOMALIES_SEUIL_DEPASSE.*450"):
             transition(db, pid, "generation")
-        # Confirmation explicite → passe, et le journal en garde trace
+        # Confirmation explicite → reste bloqué par la garde ISA 570 (M3) :
+        # la conclusion sur la continuité d'exploitation doit être documentée.
+        with pytest.raises(PipelineError, match="570"):
+            transition(db, pid, "generation", confirmer_depassement_seuil=True)
+        db.save_peripherie_evaluation(pid, "continuite", {"score": 1.0, "niveau": "favorable"})
+        db.conclure_peripherie(pid, "continuite",
+                               "La continuité d'exploitation n'appellerait pas de réserve.",
+                               "Auditeur Test")
+        # Confirmation explicite + continuité conclue → passe, journal en garde trace
         p = transition(db, pid, "generation", confirmer_depassement_seuil=True)
         assert p["etat_courant"] == "generation"
 

@@ -38,8 +38,11 @@ interface Planification {
   agregat_valeur?: number
   taux_signification?: number
   taux_planification?: number
+  taux_insignifiance?: number
   seuil_calcule?: number
   seuil_planification_calcule?: number
+  seuil_insignifiance_calcule?: number
+  seuils_specifiques_json?: Record<string, { seuil: number; justification: string }>
   agregats_json?: Record<string, number>
   statut?: string
   note_synthese?: string
@@ -428,7 +431,7 @@ export function Planification() {
               locked={locked}
               projetId={projetId!}
               currentSeuil={projetActif?.seuil_signification}
-              onApplied={(p, proj) => { setPlan(p); setProjetActif(proj) }}
+              onApplied={(p, proj) => { setPlan(p); if (proj) setProjetActif(proj) }}
             />
           </section>
 
@@ -1042,11 +1045,13 @@ function SeuilsSection({
   const [agregat, setAgregat] = useState(plan?.agregat_type || 'total_bilan')
   const [tauxSign, setTauxSign] = useState((plan?.taux_signification || 0.01) * 100)
   const [tauxPlan, setTauxPlan] = useState((plan?.taux_planification || 0.75) * 100)
+  const [tauxInsign, setTauxInsign] = useState((plan?.taux_insignifiance || 0.03) * 100)
 
   const agregats = plan?.agregats_json || {}
   const valeurAgregat = agregats[agregat] || 0
   const seuilCalcule = valeurAgregat * (tauxSign / 100)
   const seuilPlanCalc = seuilCalcule * (tauxPlan / 100)
+  const seuilInsignCalc = seuilCalcule * (tauxInsign / 100)
 
   const handleApply = async () => {
     if (!valeurAgregat) {
@@ -1059,6 +1064,7 @@ function SeuilsSection({
         agregat_type: agregat,
         taux_signification: tauxSign / 100,
         taux_planification: tauxPlan / 100,
+        taux_insignifiance: tauxInsign / 100,
       })
       onApplied(res.planification, res.projet)
       toast.success(`Seuils appliqués : ${formatMontant(res.seuils.seuil_signification)} de signification.`)
@@ -1155,6 +1161,28 @@ function SeuilsSection({
           </div>
           <p className="text-xs text-slate-400 mt-1">Recommandé : 75% (rigueur accrue)</p>
         </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">
+            Anomalies manifestement insignifiantes (% du seuil)
+          </label>
+          <div className="relative">
+            <input
+              className="input-field pr-8"
+              type="number"
+              step="0.5"
+              min="0.5"
+              max="5"
+              value={tauxInsign}
+              onChange={(e) => setTauxInsign(parseFloat(e.target.value) || 3)}
+              disabled={locked}
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span>
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            {normeLabel('450')} — en dessous de ce montant, une anomalie peut être écartée
+            du cumul (elle reste listée au dossier). Pratique usuelle : 1 à 5 %.
+          </p>
+        </div>
       </div>
 
       {/* Résultats calculés */}
@@ -1183,6 +1211,14 @@ function SeuilsSection({
             {seuilPlanCalc ? formatMontant(seuilPlanCalc) : '—'}
           </span>
         </div>
+        <div className="flex items-center justify-between text-sm border-t border-border pt-2">
+          <span className="text-slate-600">
+            × {tauxInsign.toFixed(1)}% = Seuil des anomalies insignifiantes
+          </span>
+          <span className={`font-medium ${seuilInsignCalc ? 'text-slate-700' : 'text-slate-400'}`}>
+            {seuilInsignCalc ? formatMontant(seuilInsignCalc) : '—'}
+          </span>
+        </div>
       </div>
 
       {currentSeuil && (
@@ -1198,6 +1234,147 @@ function SeuilsSection({
           {applying ? <Spinner size="sm" /> : <Target className="w-4 h-4" />}
           Appliquer ces seuils à la mission
         </button>
+      )}
+
+      <SeuilsSpecifiquesBlock
+        plan={plan}
+        locked={locked}
+        projetId={projetId}
+        seuilGlobal={plan?.seuil_calcule || currentSeuil}
+        onApplied={onApplied}
+      />
+    </div>
+  )
+}
+
+// ─── SECTION 3bis : Seuils spécifiques par cycle (M2 — ISA 320) ───────────────
+
+function SeuilsSpecifiquesBlock({
+  plan, locked, projetId, seuilGlobal, onApplied
+}: {
+  plan: Planification | null
+  locked: boolean
+  projetId: string
+  seuilGlobal?: number
+  onApplied: (p: Planification, proj: any) => void
+}) {
+  const { put } = useApi()
+  const toast = useToast()
+  const { projetActif } = useProjetStore()
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [valeurs, setValeurs] = useState<Record<string, { seuil: string; justification: string }>>({})
+
+  const cyclesCouverts: string[] = projetActif?.cycles_couverts || []
+  const existants = plan?.seuils_specifiques_json || {}
+
+  useEffect(() => {
+    const init: Record<string, { seuil: string; justification: string }> = {}
+    for (const [cycle, cfg] of Object.entries(existants)) {
+      init[cycle] = { seuil: String(cfg.seuil), justification: cfg.justification || '' }
+    }
+    setValeurs(init)
+    if (Object.keys(init).length > 0) setOpen(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan?.seuils_specifiques_json])
+
+  const setValeur = (cycle: string, patch: Partial<{ seuil: string; justification: string }>) =>
+    setValeurs((v) => {
+      const courant = v[cycle] || { seuil: '', justification: '' }
+      return { ...v, [cycle]: { ...courant, ...patch } }
+    })
+
+  const handleSave = async () => {
+    const seuils: Record<string, { seuil: number; justification: string }> = {}
+    for (const [cycle, v] of Object.entries(valeurs)) {
+      const num = parseFloat((v.seuil || '').replace(',', '.'))
+      if (!num || num <= 0) continue
+      seuils[cycle] = { seuil: num, justification: v.justification || '' }
+    }
+    setSaving(true)
+    try {
+      const res = await put(`/projets/${projetId}/planification/seuils-specifiques`, { seuils })
+      onApplied(res.planification, null)
+      toast.success(Object.keys(seuils).length
+        ? `Seuils spécifiques enregistrés pour ${Object.keys(seuils).length} cycle(s).`
+        : 'Seuils spécifiques effacés — le seuil global s\'applique à tous les cycles.')
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!seuilGlobal) return null
+
+  const nbActifs = Object.keys(existants).length
+
+  return (
+    <div className="border-t border-border pt-4 space-y-3">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-primary-700"
+      >
+        <Filter className="w-4 h-4" />
+        Seuils spécifiques par cycle ({normeLabel('320')})
+        {nbActifs > 0 && (
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary-100 text-primary-700">
+            {nbActifs} actif{nbActifs > 1 ? 's' : ''}
+          </span>
+        )}
+        <span className="text-slate-400 text-xs">{open ? 'masquer' : 'afficher'}</span>
+      </button>
+
+      {open && (
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">
+            Un seuil spécifique <strong>remplace le seuil global pour les contrôles du cycle</strong> —
+            il doit être inférieur au seuil global ({formatMontant(seuilGlobal)}) : il durcit la
+            détection sur une zone sensible, il ne l'assouplit jamais. La justification figure au
+            dossier. Laissez vide pour appliquer le seuil global.
+          </p>
+          <div className="space-y-2">
+            {cyclesCouverts.map((cycle) => {
+              const cfg = CYCLES.find((c) => c.id === cycle)
+              const v = valeurs[cycle] || { seuil: '', justification: '' }
+              const num = parseFloat((v.seuil || '').replace(',', '.'))
+              const invalide = !!v.seuil && (!num || num <= 0 || num >= (seuilGlobal || 0))
+              return (
+                <div key={cycle} className="grid grid-cols-[10rem_1fr_2fr] gap-2 items-start">
+                  <span className="text-sm text-slate-700 pt-2">{cfg?.label || cycle}</span>
+                  <div>
+                    <input
+                      className={`input-field ${invalide ? 'border-red-300' : ''}`}
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder={`< ${Math.round(seuilGlobal)}`}
+                      value={v.seuil}
+                      onChange={(e) => setValeur(cycle, { seuil: e.target.value })}
+                      disabled={locked}
+                    />
+                    {invalide && (
+                      <p className="text-xs text-red-600 mt-0.5">Doit être positif et inférieur au seuil global.</p>
+                    )}
+                  </div>
+                  <input
+                    className="input-field"
+                    placeholder="Justification (obligatoire, figure au dossier)"
+                    value={v.justification}
+                    onChange={(e) => setValeur(cycle, { justification: e.target.value })}
+                    disabled={locked || !v.seuil}
+                  />
+                </div>
+              )
+            })}
+          </div>
+          {!locked && (
+            <button onClick={handleSave} disabled={saving} className="btn-secondary gap-2">
+              {saving ? <Spinner size="sm" /> : <Save className="w-4 h-4" />}
+              Enregistrer les seuils spécifiques
+            </button>
+          )}
+        </div>
       )}
     </div>
   )

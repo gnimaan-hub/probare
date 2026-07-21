@@ -20,6 +20,13 @@ const severiteLabel: Record<string, string> = {
   critique: 'Critique',
 }
 
+const resolutionLabel: Record<string, string> = {
+  corrigee: 'Corrigée par le client',
+  sans_incidence: 'Sans incidence',
+  non_corrigee: 'Non corrigée — au cumul des anomalies',
+  insignifiante: 'Manifestement insignifiante — hors cumul',
+}
+
 const urgenceColor: Record<string, string> = {
   faible: 'bg-slate-100 text-slate-600',
   moyenne: 'bg-amber-100 text-amber-700',
@@ -254,7 +261,16 @@ function ExceptionCard({
           )}
           {exc.decision_humaine && (
             <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
-              <div className="text-xs font-semibold text-emerald-700 mb-1">Décision de l'auditeur</div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-semibold text-emerald-700">Décision de l'auditeur</span>
+                {exc.type_resolution && (
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                    {resolutionLabel[exc.type_resolution] || exc.type_resolution}
+                    {typeof exc.montant_incidence === 'number' && exc.montant_incidence > 0 &&
+                      ` · ${exc.montant_incidence.toLocaleString('fr-FR')} FDJ`}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-emerald-800">{exc.decision_humaine}</p>
               <p className="text-xs text-emerald-600 mt-1">
                 Par {exc.decideur} · {formatDate(exc.horodatage)}
@@ -302,6 +318,7 @@ function ExceptionCard({
 interface TrancherModalProps {
   exc: Exception
   mode: 'valider' | 'modifier'
+  seuilInsignifiance?: number | null
   onClose: () => void
   onConfirmed: (
     decision: string,
@@ -317,7 +334,7 @@ const TYPES_RESOLUTION = [
   { value: 'non_corrigee', label: 'Non corrigée', hint: 'Anomalie maintenue — son montant entre dans le cumul des anomalies (norme 450) comparé au seuil.' },
 ]
 
-function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) {
+function TrancherModal({ exc, mode, seuilInsignifiance, onClose, onConfirmed }: TrancherModalProps) {
   const [decision, setDecision] = useState(exc.decision_proposee || '')
   const [decideur, setDecideur] = useState('')
   const [typeResolution, setTypeResolution] = useState('')
@@ -337,9 +354,24 @@ function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) 
   const CONFIRMATION_REQUISE = 'VALIDER'
   const isValidationMode = mode === 'valider'
 
+  // M2 (norme 450) : la résolution « manifestement insignifiante » n'est proposée
+  // que si le seuil d'insignifiance est défini et que l'exception n'est pas critique.
+  const seuilInsign = typeof seuilInsignifiance === 'number' && seuilInsignifiance > 0
+    ? seuilInsignifiance : null
+  const typesResolution = seuilInsign && !isCritique
+    ? [...TYPES_RESOLUTION, {
+        value: 'insignifiante',
+        label: 'Manifestement insignifiante',
+        hint: `Montant dérisoire (≤ ${seuilInsign.toLocaleString('fr-FR')} FDJ) — écarté du cumul des anomalies mais listé au dossier.`,
+      }]
+    : TYPES_RESOLUTION
+
+  const montantRequis = typeResolution === 'non_corrigee' || typeResolution === 'insignifiante'
+  const montantNum = Number(montantIncidence.replace(',', '.'))
   const montantValide =
-    typeResolution !== 'non_corrigee' ||
-    (montantIncidence.trim() !== '' && Number(montantIncidence.replace(',', '.')) > 0)
+    !montantRequis ||
+    (montantIncidence.trim() !== '' && montantNum > 0 &&
+     (typeResolution !== 'insignifiante' || (seuilInsign !== null && montantNum <= seuilInsign)))
 
   const peutSoumettre =
     typeResolution !== '' &&
@@ -352,8 +384,7 @@ function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) 
     e.preventDefault()
     if (!peutSoumettre) return
     setLoading(true)
-    const montant =
-      typeResolution === 'non_corrigee' ? Number(montantIncidence.replace(',', '.')) : null
+    const montant = montantRequis ? Number(montantIncidence.replace(',', '.')) : null
     onConfirmed(
       isValidationMode ? (exc.decision_proposee || decision) : decision,
       decideur,
@@ -452,7 +483,7 @@ function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) 
               Nature de la résolution ({normeLabel('450')}) <span className="text-red-500">*</span>
             </label>
             <div className="space-y-2">
-              {TYPES_RESOLUTION.map((t) => (
+              {typesResolution.map((t) => (
                 <label
                   key={t.value}
                   className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
@@ -478,10 +509,12 @@ function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) 
             </div>
           </div>
 
-          {typeResolution === 'non_corrigee' && (
+          {montantRequis && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Montant de l'incidence (FDJ) <span className="text-red-500">*</span>
+                {typeResolution === 'insignifiante'
+                  ? 'Montant de l\'anomalie (FDJ)'
+                  : 'Montant de l\'incidence (FDJ)'} <span className="text-red-500">*</span>
               </label>
               <input
                 className="input-field"
@@ -503,10 +536,25 @@ function TrancherModal({ exc, mode, onClose, onConfirmed }: TrancherModalProps) 
                   </span>
                 </p>
               )}
-              <p className="text-xs text-slate-500 mt-1">
-                Ce montant sera cumulé avec les autres anomalies non corrigées et comparé
-                au seuil de signification avant la génération du dossier ({normeLabel('450')}).
-              </p>
+              {typeResolution === 'insignifiante' ? (
+                <>
+                  {seuilInsign !== null && montantIncidence.trim() !== '' && montantNum > seuilInsign && (
+                    <p className="text-xs text-red-600 mt-1">
+                      Ce montant dépasse le seuil d'insignifiance
+                      ({seuilInsign.toLocaleString('fr-FR')} FDJ) : choisissez une autre résolution.
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-500 mt-1">
+                    Une anomalie manifestement insignifiante est écartée du cumul {normeLabel('450')}
+                    {' '}mais reste journalisée et listée au dossier de travail.
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-slate-500 mt-1">
+                  Ce montant sera cumulé avec les autres anomalies non corrigées et comparé
+                  au seuil de signification avant la génération du dossier ({normeLabel('450')}).
+                </p>
+              )}
             </div>
           )}
 
@@ -795,6 +843,7 @@ export function Exceptions() {
           <TrancherModal
             exc={pendingValider}
             mode="valider"
+            seuilInsignifiance={projetActif?.seuil_insignifiance}
             onClose={() => setPendingValider(null)}
             onConfirmed={handleTrancher}
           />
@@ -803,6 +852,7 @@ export function Exceptions() {
           <TrancherModal
             exc={pendingTrancher}
             mode="modifier"
+            seuilInsignifiance={projetActif?.seuil_insignifiance}
             onClose={() => setPendingTrancher(null)}
             onConfirmed={handleTrancher}
           />

@@ -1262,6 +1262,23 @@ def get_registre(projet_id: str | None = None):
     ]}
 
 
+def _seuil_cycle(db, projet: dict, cycle: str) -> tuple[float, str | None]:
+    """M2 (ISA 320) : seuil applicable aux contrôles d'un cycle.
+
+    Retourne (seuil, note). Un seuil spécifique défini en planification pour le
+    cycle remplace le seuil de signification global (il est toujours inférieur,
+    la route de saisie l'impose). La note documente la substitution (NEP 230)."""
+    seuil_global = float(projet.get("seuil_signification") or 0)
+    plan = db.get_or_create_planification(projet["id"])
+    specifiques = plan.get("seuils_specifiques_json") or {}
+    cfg = specifiques.get(cycle) if isinstance(specifiques, dict) else None
+    if cfg and float(cfg.get("seuil") or 0) > 0:
+        seuil = float(cfg["seuil"])
+        return seuil, (f"Seuil spécifique du cycle appliqué ({seuil:,.0f} au lieu de "
+                       f"{seuil_global:,.0f}) — {cfg.get('justification', '')}")
+    return seuil_global, None
+
+
 def _seuils_ci(db, projet_id: str, cycle: str) -> dict:
     """
     Retourne les multiplicateurs de sensibilité selon le niveau de risque CI du cycle.
@@ -1307,7 +1324,7 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
     if not donnees_all:
         raise HTTPException(400, "Aucune donnée importée.")
 
-    seuil = float(projet.get("seuil_signification") or 0)
+    seuil, note_seuil = _seuil_cycle(db, projet, "tresorerie")
     exercice = projet.get("exercice")
     ci = _seuils_ci(db, projet_id, "tresorerie")
     ci_facteur = ci["facteur"]
@@ -1461,6 +1478,7 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_tresorerie",
+        "note_seuil": note_seuil,
         "nb_resultats": len(resultats_total),
         "nb_exceptions": len(exceptions_total),
         "nb_ignores": len(ignores),
@@ -1500,7 +1518,7 @@ def run_controles_achats(projet_id: str, body: dict = {}):
         raise HTTPException(400, "Aucune donnée importée.")
 
     exercice = projet.get("exercice")
-    seuil = float(projet.get("seuil_signification") or 0)
+    seuil, note_seuil = _seuil_cycle(db, projet, "achats")
     ci = _seuils_ci(db, projet_id, "achats")
     ci_facteur = ci["facteur"]
     resultats_total, exceptions_total, ignores = [], [], []
@@ -1626,6 +1644,7 @@ def run_controles_achats(projet_id: str, body: dict = {}):
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_achats",
+        "note_seuil": note_seuil,
         "nb_resultats": len(resultats_total),
         "nb_exceptions": len(exceptions_total),
         "nb_ignores": len(ignores),
@@ -1665,7 +1684,7 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
         raise HTTPException(400, "Aucune donnée importée.")
 
     exercice = projet.get("exercice")
-    seuil = float(projet.get("seuil_signification") or 0)
+    seuil, note_seuil = _seuil_cycle(db, projet, "ventes")
     ci = _seuils_ci(db, projet_id, "ventes")
     ci_facteur = ci["facteur"]
     resultats_total, exceptions_total, ignores = [], [], []
@@ -1797,6 +1816,7 @@ def run_controles_ventes(projet_id: str, body: dict = {}):
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_ventes",
+        "note_seuil": note_seuil,
         "nb_resultats": len(resultats_total),
         "nb_exceptions": len(exceptions_total),
         "nb_ignores": len(ignores),
@@ -1835,7 +1855,7 @@ def run_controles_immobilisations(projet_id: str, body: dict = {}):
     if not donnees_all:
         raise HTTPException(400, "Aucune donnée importée.")
 
-    seuil = float(projet.get("seuil_signification") or 0)
+    seuil, note_seuil = _seuil_cycle(db, projet, "immobilisations")
     exercice = projet.get("exercice")
     ci = _seuils_ci(db, projet_id, "immobilisations")
     ci_facteur = ci["facteur"]
@@ -1913,6 +1933,7 @@ def run_controles_immobilisations(projet_id: str, body: dict = {}):
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_immobilisations",
+        "note_seuil": note_seuil,
         "nb_resultats": len(resultats_total),
         "nb_exceptions": len(exceptions_total),
         "nb_ignores": len(ignores),
@@ -1950,7 +1971,7 @@ def run_controles_stocks(projet_id: str, body: dict = {}):
     if not donnees_all:
         raise HTTPException(400, "Aucune donnée importée.")
 
-    seuil = float(projet.get("seuil_signification") or 0)
+    seuil, note_seuil = _seuil_cycle(db, projet, "stocks")
     exercice = projet.get("exercice")
     ci = _seuils_ci(db, projet_id, "stocks")
     ci_facteur = ci["facteur"]
@@ -2033,6 +2054,7 @@ def run_controles_stocks(projet_id: str, body: dict = {}):
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_stocks",
+        "note_seuil": note_seuil,
         "nb_resultats": len(resultats_total),
         "nb_exceptions": len(exceptions_total),
         "nb_ignores": len(ignores),
@@ -2070,7 +2092,7 @@ def run_controles_paie(projet_id: str, body: dict = {}):
     if not donnees_all:
         raise HTTPException(400, "Aucune donnée importée.")
 
-    seuil = float(projet.get("seuil_signification") or 0)
+    seuil, note_seuil = _seuil_cycle(db, projet, "paie")
     exercice = projet.get("exercice")
     ci = _seuils_ci(db, projet_id, "paie")
     ci_facteur = ci["facteur"]
@@ -2149,6 +2171,7 @@ def run_controles_paie(projet_id: str, body: dict = {}):
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_paie",
+        "note_seuil": note_seuil,
         "nb_resultats": len(resultats_total),
         "nb_exceptions": len(exceptions_total),
         "nb_ignores": len(ignores),
@@ -2186,7 +2209,7 @@ def run_controles_impots(projet_id: str, body: dict = {}):
     if not donnees_all:
         raise HTTPException(400, "Aucune donnée importée.")
 
-    seuil = float(projet.get("seuil_signification") or 0)
+    seuil, note_seuil = _seuil_cycle(db, projet, "impots")
     exercice = projet.get("exercice")
     ci = _seuils_ci(db, projet_id, "impots")
     ci_facteur = ci["facteur"]
@@ -2268,6 +2291,7 @@ def run_controles_impots(projet_id: str, body: dict = {}):
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_impots",
+        "note_seuil": note_seuil,
         "nb_resultats": len(resultats_total),
         "nb_exceptions": len(exceptions_total),
         "nb_ignores": len(ignores),
@@ -2305,7 +2329,7 @@ def run_controles_capitaux_propres(projet_id: str, body: dict = {}):
     if not donnees_all:
         raise HTTPException(400, "Aucune donnée importée.")
 
-    seuil = float(projet.get("seuil_signification") or 0)
+    seuil, note_seuil = _seuil_cycle(db, projet, "capitaux_propres")
     ci = _seuils_ci(db, projet_id, "capitaux_propres")
     ci_facteur = ci["facteur"]
     resultats_total, exceptions_total, ignores = [], [], []
@@ -2383,6 +2407,7 @@ def run_controles_capitaux_propres(projet_id: str, body: dict = {}):
 
     db.log(projet_id, "transition_etat", {
         "action": "controles_capitaux_propres",
+        "note_seuil": note_seuil,
         "nb_resultats": len(resultats_total),
         "nb_exceptions": len(exceptions_total),
         "nb_ignores": len(ignores),
@@ -2501,11 +2526,13 @@ class TrancheeBody(BaseModel):
     # 'corrigee'       — anomalie corrigée par le client
     # 'sans_incidence' — explication obtenue, aucune anomalie avérée
     # 'non_corrigee'   — anomalie maintenue ; montant_incidence requis (> 0)
+    # 'insignifiante'  — anomalie manifestement insignifiante (M2) ; montant requis,
+    #                    inférieur au seuil d'insignifiance ; hors cumul mais au dossier
     type_resolution: str | None = None
     montant_incidence: float | None = None
 
 
-_TYPES_RESOLUTION = {"corrigee", "sans_incidence", "non_corrigee"}
+_TYPES_RESOLUTION = {"corrigee", "sans_incidence", "non_corrigee", "insignifiante"}
 
 
 @router.post("/projets/{projet_id}/exceptions/{exception_id}/trancher")
@@ -2517,7 +2544,27 @@ def trancher_exception(projet_id: str, exception_id: str, body: TrancheeBody):
     if body.type_resolution == "non_corrigee" and not (body.montant_incidence and body.montant_incidence > 0):
         raise HTTPException(400, "Une anomalie non corrigée doit porter un montant d'incidence "
                                  f"positif ({norme(450)}) pour entrer dans le cumul comparé au seuil.")
-    montant = body.montant_incidence if body.type_resolution == "non_corrigee" else None
+    if body.type_resolution == "insignifiante":
+        projet = db.get_projet(projet_id)
+        seuil_insign = float((projet or {}).get("seuil_insignifiance") or 0)
+        if seuil_insign <= 0:
+            raise HTTPException(400, "Aucun seuil d'anomalies manifestement insignifiantes n'est "
+                                     f"défini ({norme(450)}). Calculez les seuils en Planification "
+                                     "avant d'utiliser cette résolution.")
+        if not (body.montant_incidence and body.montant_incidence > 0):
+            raise HTTPException(400, "Une anomalie insignifiante doit porter son montant "
+                                     "(positif) pour être documentée au dossier.")
+        if body.montant_incidence > seuil_insign:
+            raise HTTPException(400, f"Le montant ({body.montant_incidence:,.0f}) dépasse le seuil "
+                                     f"d'insignifiance ({seuil_insign:,.0f}) : cette anomalie ne peut "
+                                     f"pas être écartée comme manifestement insignifiante ({norme(450)}). "
+                                     "Tranchez-la comme corrigée, sans incidence ou non corrigée.")
+        exc_courante = db.get_exception(exception_id)
+        if exc_courante and exc_courante.get("severite") == "critique":
+            raise HTTPException(400, "Une exception critique ne peut pas être écartée comme "
+                                     "manifestement insignifiante : elle exige un tranchement motivé.")
+    montant = (body.montant_incidence
+               if body.type_resolution in ("non_corrigee", "insignifiante") else None)
     exc = db.trancher_exception(
         exception_id, body.decision_humaine, body.decideur,
         type_resolution=body.type_resolution, montant_incidence=montant,
@@ -2542,11 +2589,14 @@ def synthese_exceptions(projet_id: str):
     projet = db.get_projet(projet_id)
     if not projet:
         raise HTTPException(404, "Projet introuvable.")
-    return db.synthese_anomalies(
+    synthese = db.synthese_anomalies(
         projet_id,
         projet.get("seuil_signification"),
         projet.get("seuil_planification"),
     )
+    # M2 : le seuil d'insignifiance accompagne la synthèse (affichage UI, dossier)
+    synthese["seuil_insignifiance"] = projet.get("seuil_insignifiance")
+    return synthese
 
 
 @router.post("/projets/{projet_id}/exceptions/{exception_id}/interpreter")
@@ -2650,6 +2700,10 @@ def exporter_dossier(projet_id: str):
     synthese = db.synthese_anomalies(
         projet_id, projet.get("seuil_signification"), projet.get("seuil_planification"),
     )
+    synthese["seuil_insignifiance"] = projet.get("seuil_insignifiance")
+
+    # M3 : état des diligences ISA de périphérie versé au dossier (NEP 230)
+    diligences_dossier = get_peripherie(projet_id).get("diligences", [])
 
     output_dir = DATA_DIR / projet_id / "exports"
     output_path = output_dir / f"dossier_travail_{projet_id[:8]}.docx"
@@ -2657,7 +2711,8 @@ def exporter_dossier(projet_id: str):
     try:
         generer_dossier_travail(projet, resultats, exceptions, feuilles, output_path,
                                 controles_ignores=controles_ignores,
-                                synthese_anomalies=synthese)
+                                synthese_anomalies=synthese,
+                                diligences_peripherie=diligences_dossier)
     except ProvenanceError as e:
         raise HTTPException(422, str(e))
 
@@ -3844,6 +3899,17 @@ class CalculSeuilsBody(BaseModel):
     agregat_type: str = "total_bilan"
     taux_signification: float = 0.01
     taux_planification: float = 0.75
+    # M2 (ISA 450) : seuil des anomalies manifestement insignifiantes,
+    # en fraction du seuil de signification (pratique usuelle : 1 à 5 %).
+    taux_insignifiance: float = 0.03
+
+
+class SeuilsSpecifiquesBody(BaseModel):
+    # M2 (ISA 320) : seuils spécifiques par cycle — {cycle: {seuil, justification}}.
+    # Un seuil spécifique remplace le seuil global pour les contrôles du cycle ;
+    # il doit être INFÉRIEUR au seuil global (un seuil spécifique sert à durcir
+    # la détection sur une zone sensible, jamais à l'assouplir).
+    seuils: dict[str, dict]
 
 
 class RisqueBody(BaseModel):
@@ -4001,9 +4067,15 @@ def calculer_seuils(projet_id: str, body: CalculSeuilsBody):
     if not agregat_valeur:
         raise HTTPException(400, f"Agrégat '{body.agregat_type}' non disponible. Calculez d'abord les variations.")
 
+    from ..planning.thresholds import TAUX_INSIGNIFIANCE_MAX
+    if not (0 < body.taux_insignifiance <= TAUX_INSIGNIFIANCE_MAX):
+        raise HTTPException(400, f"Le taux d'insignifiance doit être compris entre 0 et "
+                                 f"{TAUX_INSIGNIFIANCE_MAX:.0%} du seuil de signification ({norme(450)}).")
+
     result = calc_seuils(
         body.agregat_type, agregat_valeur,
         body.taux_signification, body.taux_planification,
+        body.taux_insignifiance,
     )
 
     # Mettre à jour la planification et le projet
@@ -4012,12 +4084,15 @@ def calculer_seuils(projet_id: str, body: CalculSeuilsBody):
         "agregat_valeur": agregat_valeur,
         "taux_signification": body.taux_signification,
         "taux_planification": body.taux_planification,
+        "taux_insignifiance": body.taux_insignifiance,
         "seuil_calcule": result["seuil_signification"],
         "seuil_planification_calcule": result["seuil_planification"],
+        "seuil_insignifiance_calcule": result["seuil_insignifiance"],
     })
     db.update_projet(projet_id, {
         "seuil_signification": result["seuil_signification"],
         "seuil_planification": result["seuil_planification"],
+        "seuil_insignifiance": result["seuil_insignifiance"],
     })
     db.log(projet_id, "calcul_seuils", result)
     return {
@@ -4025,6 +4100,53 @@ def calculer_seuils(projet_id: str, body: CalculSeuilsBody):
         "planification": db.get_or_create_planification(projet_id),
         "projet": db.get_projet(projet_id),
     }
+
+
+@router.put("/projets/{projet_id}/planification/seuils-specifiques")
+def update_seuils_specifiques(projet_id: str, body: SeuilsSpecifiquesBody):
+    """M2 (ISA 320) : seuils spécifiques par cycle, avec justification obligatoire.
+
+    Un seuil spécifique remplace le seuil global pour les contrôles du cycle
+    concerné. Il doit être positif et INFÉRIEUR au seuil de signification global
+    (il sert à durcir la détection sur une zone sensible, jamais à l'assouplir)."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+
+    seuil_global = float(projet.get("seuil_signification") or 0)
+    if seuil_global <= 0:
+        raise HTTPException(400, f"Définissez d'abord le seuil de signification global ({norme(320)}) "
+                                 "avant de fixer des seuils spécifiques.")
+
+    cycles_couverts = set(projet.get("cycles_couverts") or [])
+    valides: dict[str, dict] = {}
+    for cycle, cfg in (body.seuils or {}).items():
+        if cycle not in cycles_couverts:
+            raise HTTPException(400, f"Cycle « {cycle} » hors du périmètre de la mission.")
+        try:
+            seuil = float(cfg.get("seuil") or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"Seuil spécifique invalide pour le cycle {cycle}.")
+        justification = str(cfg.get("justification") or "").strip()
+        if seuil <= 0:
+            raise HTTPException(400, f"Le seuil spécifique du cycle {cycle} doit être positif.")
+        if seuil >= seuil_global:
+            raise HTTPException(400, f"Le seuil spécifique du cycle {cycle} doit être inférieur "
+                                     f"au seuil global ({seuil_global:,.0f}) : un seuil spécifique "
+                                     f"durcit la détection, il ne l'assouplit pas ({norme(320)}).")
+        if len(justification) < 10:
+            raise HTTPException(400, f"Justifiez le seuil spécifique du cycle {cycle} "
+                                     "(10 caractères minimum) — la justification figure au dossier.")
+        valides[cycle] = {"seuil": round(seuil, 2), "justification": justification}
+
+    db.update_planification(projet_id, {"seuils_specifiques_json": valides})
+    db.log(projet_id, "action_humaine", {
+        "action": "seuils_specifiques",
+        "cycles": {c: v["seuil"] for c, v in valides.items()},
+    })
+    return {"seuils_specifiques": valides,
+            "planification": db.get_or_create_planification(projet_id)}
 
 
 # --- Risques ---
@@ -4685,3 +4807,258 @@ def delete_sondage(projet_id: str, sondage_id: str):
     db.delete_sondage(sondage_id)
     db.log(projet_id, "action_humaine", {"action": "supprimer_sondage", "id": sondage_id})
     return {"deleted": True}
+
+
+# ─── Diligences ISA de périphérie (M3 : 210/220, 240, 550, 560, 570, 580, 260/265) ───
+
+class PeripherieReponseBody(BaseModel):
+    reponses: list[dict]  # [{question_id, reponse, commentaire}]
+
+
+class PeripherieConclusionBody(BaseModel):
+    conclusion: str
+    conclu_par: str
+
+
+def _statut_diligence(defn: dict, reponses: list[dict], evaluation: dict | None) -> str:
+    """Statut d'avancement d'une diligence pour l'UI : non_commencee →
+    en_cours → evaluee → conclue."""
+    if evaluation and evaluation.get("conclusion"):
+        return "conclue"
+    if evaluation and evaluation.get("evalue_le"):
+        return "evaluee"
+    if any(r.get("reponse") for r in reponses):
+        return "en_cours"
+    return "non_commencee"
+
+
+@router.get("/projets/{projet_id}/peripherie")
+def get_peripherie(projet_id: str):
+    """Retourne les 7 diligences de périphérie : questions, réponses, score
+    calculé, évaluation IA, conclusion et lettre éventuelles."""
+    from ..controls.peripherie import liste_diligences, calculer_niveau_diligence
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+
+    evaluations = {e["diligence"]: e for e in db.list_peripherie_evaluations(projet_id)}
+    reponses_all = db.list_peripherie_reponses(projet_id)
+
+    result = []
+    for defn in liste_diligences():
+        code = defn["code"]
+        reponses_map = {r["question_id"]: r for r in reponses_all if r["diligence"] == code}
+        questions = []
+        for q in defn["questions"]:
+            rep = reponses_map.get(q["id"], {})
+            questions.append({**q, "reponse": rep.get("reponse"),
+                              "commentaire": rep.get("commentaire", ""),
+                              "repondu_le": rep.get("repondu_le")})
+        avec_reponse = [q for q in questions if q.get("reponse")]
+        score_info = calculer_niveau_diligence(avec_reponse) if avec_reponse else None
+        evaluation = evaluations.get(code)
+        result.append({
+            **{k: v for k, v in defn.items() if k != "questions"},
+            "questions": questions,
+            "nb_repondues": len(avec_reponse),
+            "nb_total": len(questions),
+            "score_info": score_info,
+            "evaluation": evaluation,
+            "statut": _statut_diligence(defn, questions, evaluation),
+        })
+    return {"diligences": result, "projet_id": projet_id}
+
+
+@router.post("/projets/{projet_id}/peripherie/{diligence}/reponses")
+def save_peripherie_reponses(projet_id: str, diligence: str, body: PeripherieReponseBody):
+    """Enregistre les réponses au questionnaire d'une diligence de périphérie."""
+    from ..controls.peripherie import get_diligence
+    db = _get_db(projet_id)
+    if not get_diligence(diligence):
+        raise HTTPException(400, f"Diligence inconnue : {diligence}")
+
+    for rep in body.reponses:
+        qid = rep.get("question_id")
+        reponse = rep.get("reponse")
+        if not qid or reponse not in ("oui", "non", "na"):
+            continue
+        db.save_peripherie_reponse(projet_id, diligence, qid, reponse, rep.get("commentaire", ""))
+
+    db.log(projet_id, "action_humaine", {
+        "action": "peripherie_reponses",
+        "diligence": diligence,
+        "nb_reponses": len(body.reponses),
+    })
+    return {"diligence": diligence,
+            "nb_enregistrees": len(db.list_peripherie_reponses(projet_id, diligence))}
+
+
+@router.post("/projets/{projet_id}/peripherie/{diligence}/evaluer")
+def evaluer_peripherie(projet_id: str, diligence: str):
+    """Évalue une diligence : score déterministe + synthèse IA. Pour la
+    continuité (ISA 570), les indicateurs financiers sont calculés par le
+    moteur depuis la balance. Pour la fraude (ISA 240), les risques proposés
+    par l'IA alimentent la cartographie des risques (non validés)."""
+    from ..controls.peripherie import get_diligence, calculer_niveau_diligence, indicateurs_continuite
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    defn = get_diligence(diligence)
+    if not defn:
+        raise HTTPException(400, f"Diligence inconnue : {diligence}")
+
+    reponses_map = {r["question_id"]: r for r in db.list_peripherie_reponses(projet_id, diligence)}
+    reponses_enrichies = []
+    for q in defn["questions"]:
+        rep = reponses_map.get(q["id"], {})
+        reponses_enrichies.append({
+            "question_id": q["id"], "question": q["question"],
+            "reponse": rep.get("reponse"), "commentaire": rep.get("commentaire", ""),
+            "risque_si_non": q.get("risque_si_non", ""),
+        })
+    avec_reponse = [r for r in reponses_enrichies if r.get("reponse")]
+    if len(avec_reponse) < 3:
+        raise HTTPException(400, "Répondez à au moins 3 questions avant de déclencher l'évaluation.")
+
+    score_info = calculer_niveau_diligence(avec_reponse)
+
+    # ISA 570 : indicateurs financiers déterministes depuis la balance importée.
+    indicateurs = None
+    if diligence == "continuite":
+        try:
+            _, _, rows_balance, *_ = _get_donnees_segmentees(db, projet_id)
+        except Exception:
+            rows_balance = []
+        if rows_balance:
+            indicateurs = indicateurs_continuite(
+                rows_balance, float(projet.get("seuil_signification") or 0) or None)
+
+    if not os.environ.get("ANTHROPIC_API_KEY") or not projet.get("consentement_client"):
+        evaluation = {
+            "synthese": f"Score : {score_info['score']:.0%} — Niveau {score_info['niveau'].upper()}. "
+                        "(Mode dégradé : synthèse IA indisponible.)",
+            "points_attention": [], "diligences_complementaires": [],
+            "conclusion_proposee": "",
+        }
+    else:
+        from ..llm.claude import ClaudeClient
+        anon = Anonymizer()
+        entites = [v for v in [projet.get("client"), projet.get("nif")] if v]
+        ctx = {k: v for k, v in projet.items() if k not in ("client", "nif")}
+        ctx["client"] = anon.pseudonymiser(projet.get("client") or "", entites) if entites else projet.get("client")
+        try:
+            llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+            evaluation = llm.evaluer_diligence_peripherie(
+                defn, reponses_enrichies, score_info, ctx, indicateurs)
+        except RuntimeError as e:
+            raise HTTPException(503, str(e))
+
+    # ISA 240 : injecter les risques de fraude proposés dans la cartographie
+    # (issus de l'IA, NON validés — l'auditeur les valide en Planification).
+    risques_crees = 0
+    if diligence == "fraude":
+        for r in (evaluation.pop("risques_fraude", None) or [])[:8]:
+            if not isinstance(r, dict) or not r.get("libelle"):
+                continue
+            db.save_risque({
+                "id": str(uuid.uuid4()), "projet_id": projet_id,
+                "libelle": str(r.get("libelle"))[:200],
+                "description": r.get("description"),
+                "cycle": r.get("cycle"), "niveau": r.get("niveau", "moyen"),
+                "source": "fraude_240", "issu_ia": 1, "valide_auditeur": 0,
+            })
+            risques_crees += 1
+
+    data = {
+        **evaluation,
+        "score": score_info["score"],
+        "niveau": score_info["niveau"],
+        "indicateurs_json": indicateurs,
+    }
+    saved = db.save_peripherie_evaluation(projet_id, diligence, data)
+    db.log(projet_id, "appel_ia", {
+        "action": "evaluer_peripherie", "diligence": diligence,
+        "niveau": score_info["niveau"], "score": score_info["score"],
+        "risques_fraude_crees": risques_crees,
+    })
+    return {"evaluation": saved, "score_info": score_info,
+            "indicateurs": indicateurs, "risques_fraude_crees": risques_crees}
+
+
+@router.post("/projets/{projet_id}/peripherie/{diligence}/conclure")
+def conclure_peripherie(projet_id: str, diligence: str, body: PeripherieConclusionBody):
+    """L'auditeur signe la conclusion d'une diligence. Pour la continuité
+    (ISA 570), cette conclusion est un prérequis du passage en génération."""
+    from ..controls.peripherie import get_diligence
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    if not get_diligence(diligence):
+        raise HTTPException(400, f"Diligence inconnue : {diligence}")
+    if len(body.conclusion.strip()) < 20:
+        raise HTTPException(400, "La conclusion doit être argumentée (20 caractères minimum).")
+    if len(body.conclu_par.strip()) < 2:
+        raise HTTPException(400, "Le nom du signataire est requis.")
+    if not db.get_peripherie_evaluation(projet_id, diligence):
+        raise HTTPException(400, "Évaluez d'abord la diligence avant de signer sa conclusion.")
+
+    saved = db.conclure_peripherie(projet_id, diligence,
+                                   body.conclusion.strip(), body.conclu_par.strip())
+    db.log(projet_id, "action_humaine", {
+        "action": "conclure_peripherie", "diligence": diligence,
+        "conclu_par": body.conclu_par.strip(),
+        "conclusion": body.conclusion.strip()[:100],
+    })
+    return {"evaluation": saved}
+
+
+@router.post("/projets/{projet_id}/peripherie/{diligence}/generer-lettre")
+def generer_lettre_peripherie(projet_id: str, diligence: str):
+    """Génère le projet de lettre lié à la diligence : lettre d'affirmation
+    (ISA 580) ou communication à la gouvernance (ISA 260/265). Le contenu chiffré
+    (anomalies, faiblesses CI, seuil) vient du code — l'IA rédige, ne calcule pas."""
+    from ..controls.peripherie import get_diligence
+    db = _get_db(projet_id)
+    defn = get_diligence(diligence)
+    if not defn:
+        raise HTTPException(400, f"Diligence inconnue : {diligence}")
+    if not defn.get("lettre"):
+        raise HTTPException(400, f"La diligence « {defn['libelle']} » ne produit pas de lettre.")
+    projet, anon = _llm_guard(db, projet_id)
+
+    # Contenu réel du dossier, calculé par le code déterministe.
+    synthese = db.synthese_anomalies(
+        projet_id, projet.get("seuil_signification"), projet.get("seuil_planification"))
+    faiblesses_ci = []
+    for e in db.get_qci_evaluations(projet_id):
+        for f in (e.get("faiblesses") or [])[:5]:
+            faiblesses_ci.append({"cycle": e.get("cycle"), "faiblesse": f})
+    elements = {
+        "exercice": projet.get("exercice"),
+        "seuil_signification": projet.get("seuil_signification"),
+        "anomalies_non_corrigees": synthese.get("exceptions_non_corrigees", []),
+        "cumul_anomalies_non_corrigees": synthese.get("cumul_non_corrigees"),
+        "nb_anomalies_corrigees": synthese.get("nb_corrigees"),
+        "nb_anomalies_insignifiantes": synthese.get("nb_insignifiantes"),
+        "faiblesses_controle_interne": faiblesses_ci[:15],
+    }
+
+    try:
+        from ..llm.claude import ClaudeClient
+        llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+        lettre = llm.generer_lettre_peripherie(defn["lettre"], projet, elements)
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+    # La lettre s'accroche à l'évaluation : créer la ligne si le questionnaire
+    # n'a pas encore été évalué (la lettre peut précéder l'évaluation).
+    if not db.get_peripherie_evaluation(projet_id, diligence):
+        db.save_peripherie_evaluation(projet_id, diligence, {})
+    saved = db.save_peripherie_lettre(
+        projet_id, diligence, json.dumps(lettre, ensure_ascii=False))
+    db.log(projet_id, "appel_ia", {"action": "generer_lettre_peripherie",
+                                   "diligence": diligence, "type": defn["lettre"]})
+    return {"lettre": lettre, "evaluation": saved}

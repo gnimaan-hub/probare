@@ -8,6 +8,7 @@ export interface Projet {
   exercice?: string
   seuil_signification?: number
   seuil_planification?: number
+  seuil_insignifiance?: number
   consentement_client: boolean
   consentement_horodatage?: string
   etat_courant: string
@@ -48,7 +49,7 @@ export interface Exception {
   statut: 'ouverte' | 'tranchee'
   decision_humaine?: string
   decideur?: string
-  type_resolution?: 'corrigee' | 'sans_incidence' | 'non_corrigee' | null
+  type_resolution?: 'corrigee' | 'sans_incidence' | 'non_corrigee' | 'insignifiante' | null
   montant_incidence?: number | null
   montant_estime?: number | null
   interpretation_llm?: string

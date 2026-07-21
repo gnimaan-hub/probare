@@ -90,6 +90,16 @@ def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
                 "ou confirmez explicitement le passage en génération en acceptant "
                 "l'incidence sur l'opinion (confirmer_depassement_seuil=true)."
             )
+        # M3 (ISA 570) : la conclusion sur la continuité d'exploitation doit être
+        # documentée et signée avant d'assembler le dossier.
+        eval_continuite = db.get_peripherie_evaluation(projet_id, "continuite")
+        if not eval_continuite or not eval_continuite.get("conclusion"):
+            raise PipelineError(
+                f"La conclusion sur la continuité d'exploitation ({norme(570)}) n'est pas "
+                "documentée. Complétez la diligence « Continuité d'exploitation » "
+                "(questionnaire, évaluation, conclusion signée) dans l'écran Diligences "
+                "avant de passer en génération."
+            )
 
 
 def transition(
