@@ -1254,12 +1254,13 @@ def list_resultats(projet_id: str, cycle: str | None = None):
 
 @router.get("/projets/{projet_id}/controles/registre")
 def get_registre(projet_id: str | None = None):
-    from ..controls.registry import REGISTRE
+    from ..controls.registry import REGISTRE, ASSERTIONS
     return {"controles": [
         {"ref": c.ref, "libelle": c.libelle, "nep_ref": c.nep_ref,
-         "cycle": c.cycle, "description": c.description, "severite_defaut": c.severite_defaut}
+         "cycle": c.cycle, "description": c.description,
+         "severite_defaut": c.severite_defaut, "assertions": c.assertions}
         for c in REGISTRE.values()
-    ]}
+    ], "assertions": ASSERTIONS}
 
 
 def _seuil_cycle(db, projet: dict, cycle: str) -> tuple[float, str | None]:
@@ -4260,6 +4261,67 @@ def delete_risque(projet_id: str, risque_id: str):
     return {"deleted": True}
 
 
+@router.get("/projets/{projet_id}/planification/couverture")
+def get_matrice_couverture(projet_id: str):
+    """Matrice de couverture risque ↔ assertion ↔ procédures (M4 — ISA 315 révisée).
+
+    Croise les risques VALIDÉS (cycle × assertions) avec les procédures
+    disponibles (contrôles du registre, sondages, circularisations) et signale
+    les assertions à risque non couvertes."""
+    from ..planning.couverture import matrice_couverture
+    db = _get_db(projet_id)
+    if not db.get_projet(projet_id):
+        raise HTTPException(404, "Projet introuvable.")
+    risques_valides = [r for r in db.list_risques(projet_id) if r.get("valide_auditeur")]
+    sondages = db.list_sondages(projet_id)
+    circularisations = db.list_circularisations(projet_id)
+    return matrice_couverture(risques_valides, sondages, circularisations)
+
+
+@router.post("/projets/{projet_id}/planification/couverture/proposer-procedures")
+def proposer_procedures_couverture(projet_id: str):
+    """L'IA propose une procédure complémentaire pour chaque assertion à risque
+    non couverte, et l'ajoute au programme de travail (statut inclus)."""
+    from ..planning.couverture import matrice_couverture
+    from ..llm.claude import ClaudeClient
+    db = _get_db(projet_id)
+    projet, _ = _llm_guard(db, projet_id)
+
+    risques_valides = [r for r in db.list_risques(projet_id) if r.get("valide_auditeur")]
+    matrice = matrice_couverture(risques_valides, db.list_sondages(projet_id),
+                                 db.list_circularisations(projet_id))
+    trous = matrice["trous"]
+    if not trous:
+        return {"procedures_ajoutees": [], "message": "Toutes les assertions à risque sont couvertes."}
+
+    try:
+        llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
+        ctx = {"client": projet.get("client"), "exercice": projet.get("exercice")}
+        propositions = llm.proposer_procedures_complementaires(trous, ctx)
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+    ajoutees = []
+    for p in propositions:
+        libelle = str(p.get("procedure") or "").strip()
+        if not libelle:
+            continue
+        item = db.save_programme_item({
+            "id": str(uuid.uuid4()), "projet_id": projet_id,
+            "cycle": p.get("cycle"), "controle_ref": None,
+            "libelle": libelle,
+            "priorite": "haute" if p.get("priorite") == "haute" else "normale",
+            "statut": "inclus", "issu_ia": 1,
+            "notes": f"Procédure complémentaire — assertion « {p.get('assertion', '')} » "
+                     f"non couverte (M4).",
+        })
+        ajoutees.append(item)
+
+    db.log(projet_id, "appel_ia", {"action": "proposer_procedures_couverture",
+                                   "nb_trous": len(trous), "nb_ajoutees": len(ajoutees)})
+    return {"procedures_ajoutees": ajoutees, "nb_trous": len(trous)}
+
+
 @router.post("/projets/{projet_id}/planification/risques/{risque_id}/reformuler")
 def reformuler_risque(projet_id: str, risque_id: str):
     """Haiku reformule un risque manuel pour l'homogénéiser avec les risques IA."""
@@ -4427,9 +4489,14 @@ def generer_synthese(projet_id: str):
     try:
         all_risques  = db.list_risques(projet_id)
         all_programme = db.list_programme_items(projet_id)
+        from ..planning.couverture import matrice_couverture
+        couverture = matrice_couverture(
+            [r for r in all_risques if r.get("valide_auditeur")],
+            db.list_sondages(projet_id), db.list_circularisations(projet_id))
         output_dir = DATA_DIR / projet_id / "exports"
         output_path = output_dir / f"note_planification_{projet_id[:8]}.docx"
-        generer_note_planification(projet, plan, all_risques, all_programme, note, output_path)
+        generer_note_planification(projet, plan, all_risques, all_programme, note,
+                                   output_path, couverture=couverture)
         db.log(projet_id, "action_ia", {"action": "generer_note_planification_docx",
                                          "fichier": str(output_path)})
         docx_pret = True

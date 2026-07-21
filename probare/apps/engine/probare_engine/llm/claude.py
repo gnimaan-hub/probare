@@ -1370,6 +1370,53 @@ Réponds UNIQUEMENT avec un JSON valide :
         "impossibilite": "Impossibilité d'exprimer une opinion",
     }
 
+    # ─── Couverture risque/assertion (M4) ────────────────────────────────────
+
+    def proposer_procedures_complementaires(
+        self,
+        trous: list[dict],            # [{cycle, assertion, assertion_libelle, risques}]
+        contexte_projet: dict,
+    ) -> list[dict]:
+        """Sonnet propose une procédure d'audit pour chaque assertion à risque
+        non couverte. Ne calcule rien : il rédige des diligences à ajouter au
+        programme de travail. L'auditeur valide."""
+        if not trous:
+            return []
+        trous_txt = ""
+        for t in trous[:20]:
+            risques = "; ".join(r.get("libelle", "") for r in (t.get("risques") or [])[:3])
+            trous_txt += (f"\n- Cycle {t.get('cycle', '?').upper()}, "
+                          f"assertion « {t.get('assertion_libelle', t.get('assertion'))} » "
+                          f"— risque(s) : {risques or 'non précisé'}")
+
+        prompt = f"""Tu es auditeur senior. Certaines assertions à risque de cette mission ne sont
+couvertes par AUCUNE procédure du programme de travail. Propose, pour chacune, une
+procédure d'audit complémentaire concrète (test de détail, procédure analytique,
+observation physique, confirmation…) permettant de couvrir le risque ({norme(330)}).
+
+Entité : {contexte_projet.get('client', 'N/A')} — Exercice {contexte_projet.get('exercice', 'N/A')}
+
+Assertions à risque non couvertes :{trous_txt}
+
+Réponds UNIQUEMENT avec un JSON valide (une entrée par assertion non couverte) :
+{{
+  "procedures": [
+    {{"cycle": "…", "assertion": "…", "procedure": "Procédure concrète à réaliser (1-2 phrases)", "priorite": "haute|normale"}}
+  ]
+}}"""
+
+        resp = self._messages_create(
+            model=MODEL_DEFAULT,
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self._log(MODEL_DEFAULT, "proposer_procedures_complementaires",
+                  resp.usage.input_tokens, resp.usage.output_tokens)
+        result = self._parse_json(resp.content[0].text)
+        if isinstance(result, dict) and isinstance(result.get("procedures"), list):
+            return result["procedures"]
+        return []
+
     # ─── Écritures d'ajustement (M1) ─────────────────────────────────────────
 
     def proposer_ecriture_ajustement(

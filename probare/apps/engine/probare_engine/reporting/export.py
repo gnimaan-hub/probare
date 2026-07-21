@@ -391,6 +391,7 @@ def generer_note_planification(
     programme: list[dict],
     note_synthese: dict,
     output_path: Path,
+    couverture: dict | None = None,
 ) -> Path:
     """Génère la Note de Planification de l'Audit en .docx (NEP 300).
 
@@ -815,6 +816,37 @@ def generer_note_planification(
             row[1].text = (item.get("libelle") or "")[:120]
             row[2].text = item.get("priorite") or "—"
             row[3].text = (item.get("notes") or "")[:80]
+        doc.add_paragraph()
+
+    # ── Matrice de couverture risque ↔ assertion (M4 — ISA 315 révisée) ──
+    if couverture and couverture.get("lignes"):
+        h2(f"Couverture des risques par assertion ({norme(315)})")
+        taux = couverture.get("taux_couverture")
+        para(
+            f"{couverture.get('nb_couvertes', 0)} assertion(s) à risque couverte(s) sur "
+            f"{couverture.get('nb_cellules', 0)}"
+            + (f" ({taux:.0%})." if taux is not None else ".")
+            + (f" {couverture.get('nb_trous', 0)} assertion(s) à risque NON couverte(s)."
+               if couverture.get("nb_trous") else " Toutes les assertions à risque sont couvertes.")
+        )
+        tc = doc.add_table(rows=1, cols=4)
+        tc.style = "Table Grid"
+        hc = tc.rows[0].cells
+        for i, col in enumerate(["Cycle", "Assertion", "Procédures", "Couvert"]):
+            hc[i].text = col
+            hc[i].paragraphs[0].runs[0].bold = True
+        for l in couverture["lignes"]:
+            row = tc.add_row().cells
+            row[0].text = (l.get("cycle") or "").capitalize()
+            row[1].text = l.get("assertion_libelle") or l.get("assertion") or ""
+            procs = l.get("procedures") or []
+            row[2].text = ", ".join(p.get("ref") or p.get("libelle") or "" for p in procs[:6]) or "—"
+            row[3].text = "Oui" if l.get("couvert") else "NON"
+            if not l.get("couvert"):
+                for cell in row:
+                    for p in cell.paragraphs:
+                        for r in p.runs:
+                            r.font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
         doc.add_paragraph()
 
     doc.add_page_break()

@@ -113,6 +113,19 @@ Diligences de périphérie (module `controls/peripherie.py`, page « Diligences 
 - 580 : Déclarations écrites (projet de lettre d'affirmation généré par l'IA)
 - 260/265 : Communication à la gouvernance (projet de lettre généré par l'IA)
 
+## Couverture risque ↔ assertion (ISA 315 révisée — M4)
+
+Chaque contrôle du registre déclare les **assertions** qu'il couvre
+(`ControleDefinition.assertions`, vocabulaire canonique `ASSERTIONS` dans
+`controls/registry.py` : existence, exhaustivite, evaluation, cut_off, droits,
+presentation). Le module `planning/couverture.py` croise les **risques validés**
+(cycle × assertions) avec les procédures disponibles — contrôles du registre,
+sondages (ISA 530), circularisations (ISA 505) — et produit une **matrice de
+couverture** (`GET /planification/couverture`) qui signale les assertions à
+risque non couvertes (« trous »). L'IA peut proposer une procédure
+complémentaire par trou, ajoutée au programme de travail. La matrice figure
+dans la note de planification exportée.
+
 ## Écritures d'ajustement (ISA 450 — module `ajustements.py`)
 
 Une exception chiffrée peut être matérialisée en **écriture d'ajustement**

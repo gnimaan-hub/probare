@@ -4,10 +4,26 @@ Les définitions ci-dessous sont écrites avec le préfixe historique « NEP » 
 `enregistrer()` les normalise au chargement dans le référentiel actif du
 cabinet (ISA par défaut, NEP en option — voir probare_engine.normes).
 La numérotation étant identique entre NEP et ISA, seule la présentation change.
+
+M4 (ISA 315 révisée) : chaque contrôle déclare les ASSERTIONS qu'il couvre.
+C'est ce qui permet de démontrer, risque par risque, que chaque assertion à
+risque est couverte par au moins une procédure (matrice de couverture).
 """
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from ..normes import reformater_refs
+
+
+# Vocabulaire canonique des assertions d'audit — le même que celui utilisé par
+# la cartographie des risques (table `risque.assertions`) et par l'IA.
+ASSERTIONS: dict[str, str] = {
+    "existence":    "Existence / Réalité",
+    "exhaustivite": "Exhaustivité",
+    "evaluation":   "Évaluation / Exactitude",
+    "cut_off":      "Séparation des exercices (cut-off)",
+    "droits":       "Droits et obligations",
+    "presentation": "Présentation / Classement",
+}
 
 
 @dataclass
@@ -18,12 +34,18 @@ class ControleDefinition:
     cycle: str
     description: str
     severite_defaut: str = "significative"
+    # Assertions couvertes par le contrôle (codes du vocabulaire ASSERTIONS)
+    assertions: list[str] = field(default_factory=list)
 
 
 REGISTRE: dict[str, ControleDefinition] = {}
 
 
 def enregistrer(defn: ControleDefinition) -> ControleDefinition:
+    inconnues = [a for a in defn.assertions if a not in ASSERTIONS]
+    if inconnues:
+        raise ValueError(f"Contrôle {defn.ref} : assertions inconnues {inconnues}. "
+                         f"Vocabulaire : {sorted(ASSERTIONS)}")
     defn.nep_ref = reformater_refs(defn.nep_ref)
     defn.description = reformater_refs(defn.description)
     REGISTRE[defn.ref] = defn
@@ -36,6 +58,7 @@ def enregistrer(defn: ControleDefinition) -> ControleDefinition:
 
 enregistrer(ControleDefinition(
     ref="TRESOR-BAL-EQUIL",
+    assertions=["evaluation"],
     libelle="Équilibre de la balance",
     nep_ref="NEP 500",
     cycle="tresorerie",
@@ -45,6 +68,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="TRESOR-GL-COHER",
+    assertions=["exhaustivite", "evaluation"],
     libelle="Cohérence grand livre / balance",
     nep_ref="NEP 500",
     cycle="tresorerie",
@@ -54,6 +78,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="TRESOR-SEQ-PIECES",
+    assertions=["exhaustivite"],
     libelle="Continuité des séquences de pièces",
     nep_ref="NEP 330",
     cycle="tresorerie",
@@ -63,6 +88,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="TRESOR-VARIATION",
+    assertions=["evaluation"],
     libelle="Variations N/N-1 trésorerie",
     nep_ref="NEP 520",
     cycle="tresorerie",
@@ -72,6 +98,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="TRESOR-RAPPROCH",
+    assertions=["existence", "evaluation"],
     libelle="Rapprochement bancaire",
     nep_ref="NEP 500",
     cycle="tresorerie",
@@ -81,6 +108,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="TRESOR-SOLDE-ANORMAL",
+    assertions=["evaluation", "presentation"],
     libelle="Soldes créditeurs anormaux — Trésorerie",
     nep_ref="NEP 500",
     cycle="tresorerie",
@@ -93,6 +121,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="TRESOR-ROUND",
+    assertions=["existence"],
     libelle="Concentration de montants ronds — Trésorerie",
     nep_ref="NEP 520",
     cycle="tresorerie",
@@ -105,6 +134,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="TRESOR-CUT-OFF",
+    assertions=["cut_off"],
     libelle="Concentration d'écritures en fin d'exercice — Trésorerie",
     nep_ref="NEP 330",
     cycle="tresorerie",
@@ -122,6 +152,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="ACHAT-GL-COHER",
+    assertions=["exhaustivite", "evaluation"],
     libelle="Cohérence grand livre / balance — Achats",
     nep_ref="NEP 500",
     cycle="achats",
@@ -134,6 +165,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="ACHAT-SEQ-FACTURES",
+    assertions=["exhaustivite"],
     libelle="Continuité des séquences de factures — Achats",
     nep_ref="NEP 330",
     cycle="achats",
@@ -143,6 +175,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="ACHAT-VARIATION",
+    assertions=["evaluation"],
     libelle="Variations N/N-1 — Achats",
     nep_ref="NEP 520",
     cycle="achats",
@@ -152,6 +185,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="ACHAT-SOLDE-DEBITEUR",
+    assertions=["evaluation", "presentation"],
     libelle="Soldes débiteurs anormaux — Fournisseurs",
     nep_ref="NEP 500",
     cycle="achats",
@@ -165,6 +199,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="ACHAT-DOUBLON",
+    assertions=["existence"],
     libelle="Doublons de factures fournisseurs",
     nep_ref="NEP 330",
     cycle="achats",
@@ -178,6 +213,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="ACHAT-CONCENTRATION",
+    assertions=["existence"],
     libelle="Concentration des achats sur un fournisseur",
     nep_ref="NEP 520",
     cycle="achats",
@@ -190,6 +226,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="ACHAT-AVOIR",
+    assertions=["evaluation"],
     libelle="Ratio avoirs / achats anormal",
     nep_ref="NEP 520",
     cycle="achats",
@@ -203,6 +240,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="ACHAT-ROUND",
+    assertions=["existence"],
     libelle="Concentration de montants ronds — Achats",
     nep_ref="NEP 520",
     cycle="achats",
@@ -215,6 +253,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="ACHAT-CUT-OFF",
+    assertions=["cut_off"],
     libelle="Achats concentrés en fin d'exercice",
     nep_ref="NEP 330",
     cycle="achats",
@@ -232,6 +271,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="VENTE-GL-COHER",
+    assertions=["exhaustivite", "evaluation"],
     libelle="Cohérence grand livre / balance — Ventes",
     nep_ref="NEP 500",
     cycle="ventes",
@@ -244,6 +284,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="VENTE-SEQ-FACTURES",
+    assertions=["exhaustivite"],
     libelle="Continuité des séquences de factures — Ventes",
     nep_ref="NEP 330",
     cycle="ventes",
@@ -253,6 +294,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="VENTE-VARIATION",
+    assertions=["evaluation"],
     libelle="Variations N/N-1 — Ventes",
     nep_ref="NEP 520",
     cycle="ventes",
@@ -262,6 +304,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="VENTE-SOLDE-CREDITEUR",
+    assertions=["evaluation", "presentation"],
     libelle="Soldes créditeurs anormaux — Clients",
     nep_ref="NEP 500",
     cycle="ventes",
@@ -275,6 +318,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="VENTE-DOUBLON",
+    assertions=["existence"],
     libelle="Doublons de factures clients",
     nep_ref="NEP 330",
     cycle="ventes",
@@ -287,6 +331,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="VENTE-CONCENTRATION",
+    assertions=["evaluation"],
     libelle="Concentration des ventes sur un client",
     nep_ref="NEP 520",
     cycle="ventes",
@@ -299,6 +344,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="VENTE-AVOIR",
+    assertions=["existence"],
     libelle="Ratio avoirs / ventes anormal",
     nep_ref="NEP 520",
     cycle="ventes",
@@ -311,6 +357,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="VENTE-ROUND",
+    assertions=["existence"],
     libelle="Concentration de montants ronds — Ventes",
     nep_ref="NEP 520",
     cycle="ventes",
@@ -320,6 +367,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="VENTE-CUT-OFF",
+    assertions=["cut_off"],
     libelle="Ventes concentrées en fin d'exercice",
     nep_ref="NEP 330",
     cycle="ventes",
@@ -332,6 +380,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="VENTE-CREANCES-ECHUES",
+    assertions=["evaluation"],
     libelle="Créances clients anciennes (> 90 jours)",
     nep_ref="NEP 500",
     cycle="ventes",
@@ -349,6 +398,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="IMO-GL-COHER",
+    assertions=["exhaustivite", "evaluation"],
     libelle="Cohérence grand livre / balance — Immobilisations",
     nep_ref="NEP 500",
     cycle="immobilisations",
@@ -361,6 +411,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="IMO-AMORTISSEMENT",
+    assertions=["evaluation"],
     libelle="Sous-amortissement — Immobilisations sans amortissements cumulés",
     nep_ref="NEP 500",
     cycle="immobilisations",
@@ -374,6 +425,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="IMO-AMORT-EXCEDENT",
+    assertions=["evaluation"],
     libelle="Amortissements cumulés supérieurs à la valeur brute",
     nep_ref="NEP 500",
     cycle="immobilisations",
@@ -387,6 +439,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="IMO-VARIATION",
+    assertions=["existence", "evaluation"],
     libelle="Variations N/N-1 — Immobilisations",
     nep_ref="NEP 520",
     cycle="immobilisations",
@@ -400,6 +453,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="IMO-SOLDE-ANORMAL",
+    assertions=["evaluation", "presentation"],
     libelle="Soldes créditeurs anormaux — Immobilisations brutes",
     nep_ref="NEP 500",
     cycle="immobilisations",
@@ -418,6 +472,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="STOCK-GL-COHER",
+    assertions=["exhaustivite", "evaluation"],
     libelle="Cohérence grand livre / balance — Stocks",
     nep_ref="NEP 500",
     cycle="stocks",
@@ -430,6 +485,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="STOCK-SOLDE-ANORMAL",
+    assertions=["evaluation"],
     libelle="Soldes créditeurs anormaux — Stocks",
     nep_ref="NEP 500",
     cycle="stocks",
@@ -443,6 +499,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="STOCK-VARIATION",
+    assertions=["evaluation"],
     libelle="Variations N/N-1 — Stocks",
     nep_ref="NEP 520",
     cycle="stocks",
@@ -456,6 +513,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="STOCK-ROUND",
+    assertions=["existence", "evaluation"],
     libelle="Concentration de montants ronds — Stocks",
     nep_ref="NEP 520",
     cycle="stocks",
@@ -468,6 +526,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="STOCK-CUT-OFF",
+    assertions=["cut_off"],
     libelle="Mouvements de stocks concentrés en fin d'exercice",
     nep_ref="NEP 330",
     cycle="stocks",
@@ -486,6 +545,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="PAIE-GL-COHER",
+    assertions=["exhaustivite", "evaluation"],
     libelle="Cohérence grand livre / balance — Paie",
     nep_ref="NEP 500",
     cycle="paie",
@@ -498,6 +558,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="PAIE-VARIATION",
+    assertions=["existence", "evaluation"],
     libelle="Variations N/N-1 — Charges de personnel",
     nep_ref="NEP 520",
     cycle="paie",
@@ -511,6 +572,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="PAIE-RATIO-SOCIAL",
+    assertions=["exhaustivite", "evaluation"],
     libelle="Ratio charges sociales / salaires bruts hors norme",
     nep_ref="NEP 520",
     cycle="paie",
@@ -524,6 +586,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="PAIE-MENSUALITE",
+    assertions=["exhaustivite"],
     libelle="Régularité mensuelle des salaires",
     nep_ref="NEP 330",
     cycle="paie",
@@ -537,6 +600,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="PAIE-SOLDE-ANORMAL",
+    assertions=["evaluation", "presentation"],
     libelle="Soldes débiteurs anormaux — Dettes sociales",
     nep_ref="NEP 500",
     cycle="paie",
@@ -555,6 +619,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="TAXE-GL-COHER",
+    assertions=["exhaustivite", "evaluation"],
     libelle="Cohérence grand livre / balance — Impôts et taxes",
     nep_ref="NEP 500",
     cycle="impots",
@@ -567,6 +632,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="TAXE-VARIATION",
+    assertions=["evaluation"],
     libelle="Variations N/N-1 — Impôts et taxes",
     nep_ref="NEP 520",
     cycle="impots",
@@ -580,6 +646,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="TAXE-TVA-COHERENCE",
+    assertions=["exhaustivite", "evaluation"],
     libelle="Cohérence TVA déductible / TVA collectée",
     nep_ref="NEP 520",
     cycle="impots",
@@ -593,6 +660,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="TAXE-SOLDE-ANORMAL",
+    assertions=["evaluation", "presentation"],
     libelle="Soldes anormaux — Comptes de TVA et impôts",
     nep_ref="NEP 500",
     cycle="impots",
@@ -606,6 +674,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="TAXE-CUT-OFF",
+    assertions=["cut_off"],
     libelle="Charges fiscales concentrées en fin d'exercice",
     nep_ref="NEP 330",
     cycle="impots",
@@ -625,6 +694,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="CP-GL-COHER",
+    assertions=["exhaustivite", "evaluation"],
     libelle="Cohérence grand livre / balance — Capitaux propres",
     nep_ref="NEP 500",
     cycle="capitaux_propres",
@@ -637,6 +707,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="CP-VARIATION",
+    assertions=["droits", "evaluation"],
     libelle="Variations N/N-1 — Capitaux propres",
     nep_ref="NEP 520",
     cycle="capitaux_propres",
@@ -650,6 +721,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="CP-PROVISION-MOUVEMENT",
+    assertions=["existence", "evaluation"],
     libelle="Mouvements de provisions pour risques sans charge (15x / 68x)",
     nep_ref="NEP 500",
     cycle="capitaux_propres",
@@ -663,6 +735,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="CP-RESULTAT-COHERENCE",
+    assertions=["evaluation", "presentation"],
     libelle="Cohérence des comptes de résultat (120 / 129)",
     nep_ref="NEP 500",
     cycle="capitaux_propres",
@@ -676,6 +749,7 @@ enregistrer(ControleDefinition(
 
 enregistrer(ControleDefinition(
     ref="CP-SOLDE-ANORMAL",
+    assertions=["evaluation", "presentation"],
     libelle="Capitaux propres négatifs — Soldes débiteurs anormaux",
     nep_ref="NEP 500",
     cycle="capitaux_propres",
@@ -690,3 +764,9 @@ enregistrer(ControleDefinition(
 
 def get_controles_par_cycle(cycle: str) -> list[ControleDefinition]:
     return [c for c in REGISTRE.values() if c.cycle == cycle]
+
+
+def controles_couvrant(cycle: str, assertion: str) -> list[ControleDefinition]:
+    """Contrôles du cycle donné qui couvrent l'assertion donnée (M4)."""
+    return [c for c in REGISTRE.values()
+            if c.cycle == cycle and assertion in c.assertions]

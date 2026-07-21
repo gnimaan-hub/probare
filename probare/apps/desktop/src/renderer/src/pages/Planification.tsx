@@ -5,14 +5,14 @@ import {
   Building2, TrendingUp, Target, ShieldAlert, ClipboardList,
   Sparkles, ArrowRight, Save, Plus, Trash2, Check, X,
   Info, CheckCircle, AlertTriangle, BarChart3, Users,
-  Lock, ArrowUpDown, Filter, RefreshCw, Download,
+  Lock, ArrowUpDown, Filter, RefreshCw, Download, Grid3x3, Sparkles as SparklesIcon,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore } from '../stores/projetStore'
-import { formatMontant, formatDate, normeLabel } from '../lib/utils'
+import { formatMontant, formatDate, normeLabel, truncate } from '../lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -271,6 +271,7 @@ export function Planification() {
     { id: 'seuils',        label: 'Calcul des seuils',      icon: Target,        done: doneSeuils },
     { id: 'risques',       label: 'Cartographie des risques',icon: ShieldAlert,   done: doneRisques },
     { id: 'programme',     label: 'Programme de travail',   icon: ClipboardList, done: doneProgramme },
+    { id: 'couverture',    label: 'Couverture des risques', icon: Grid3x3,       done: doneRisques },
   ]
 
   const scrollTo = (id: string) => {
@@ -472,6 +473,19 @@ export function Planification() {
               onSyntheseGenerated={setNoteSynthese}
               onDocxPret={setNotePrete}
             />
+          </section>
+
+          {/* ════════════════════════════════════════════════════════════════ */}
+          {/* SECTION 6 — COUVERTURE DES RISQUES (M4)                        */}
+          {/* ════════════════════════════════════════════════════════════════ */}
+          <section
+            ref={(el) => { sectionRefs.current['couverture'] = el }}
+            id="couverture"
+          >
+            <SectionHeader icon={Grid3x3} title="Couverture des risques par assertion" done={doneRisques}
+              subtitle={`Chaque assertion à risque est-elle couverte par une procédure ? (${normeLabel('315')})`} />
+            <CouvertureSection projetId={projetId!} locked={locked}
+              doneRisques={doneRisques} onProgrammeChanged={setProgramme} />
           </section>
 
           {/* ── CTA finale ── */}
@@ -2018,6 +2032,208 @@ function ProgrammeSection({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── SECTION 6 : Couverture des risques par assertion (M4 — ISA 315) ─────────
+
+interface ProcedureCouverture { type: 'controle' | 'sondage' | 'circularisation'; ref: string; libelle: string }
+interface LigneCouverture {
+  cycle: string
+  assertion: string
+  assertion_libelle: string
+  risques: { id: string; libelle: string; niveau: string }[]
+  procedures: ProcedureCouverture[]
+  nb_procedures: number
+  couvert: boolean
+}
+interface Matrice {
+  assertions: Record<string, string>
+  lignes: LigneCouverture[]
+  trous: { cycle: string; assertion: string; assertion_libelle: string }[]
+  nb_cellules: number
+  nb_couvertes: number
+  nb_trous: number
+  taux_couverture: number | null
+}
+
+const TYPE_PROC_LABEL: Record<string, string> = {
+  controle: 'Contrôle', sondage: 'Sondage', circularisation: 'Circularisation',
+}
+
+function CouvertureSection({
+  projetId, locked, doneRisques, onProgrammeChanged,
+}: {
+  projetId: string
+  locked: boolean
+  doneRisques: boolean
+  onProgrammeChanged: (p: ProgrammeItem[]) => void
+}) {
+  const { get, post } = useApi()
+  const toast = useToast()
+  const [matrice, setMatrice] = useState<Matrice | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [proposing, setProposing] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      setMatrice(await get(`/projets/${projetId}/planification/couverture`))
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projetId])
+
+  useEffect(() => { if (doneRisques) load() }, [doneRisques, load])
+
+  const handleProposer = async () => {
+    setProposing(true)
+    try {
+      const res = await post(`/projets/${projetId}/planification/couverture/proposer-procedures`)
+      const n = (res.procedures_ajoutees || []).length
+      toast.success(n > 0
+        ? `${n} procédure(s) complémentaire(s) ajoutée(s) au programme de travail.`
+        : 'Toutes les assertions à risque sont déjà couvertes.')
+      // Recharger le programme dans le parent
+      try {
+        const prog = await get(`/projets/${projetId}/planification/programme`)
+        onProgrammeChanged(prog.programme || [])
+      } catch { /* non bloquant */ }
+      await load()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setProposing(false)
+    }
+  }
+
+  if (!doneRisques) {
+    return (
+      <div className="card p-5">
+        <p className="text-sm text-slate-400">
+          Validez d'abord des risques (section précédente) pour visualiser leur couverture par assertion.
+        </p>
+      </div>
+    )
+  }
+
+  if (loading && !matrice) {
+    return <div className="card p-5 flex justify-center"><Spinner size="sm" /></div>
+  }
+
+  if (!matrice || matrice.nb_cellules === 0) {
+    return (
+      <div className="card p-5">
+        <p className="text-sm text-slate-400">
+          Aucun risque validé ne porte d'assertion : qualifiez vos risques par assertion
+          (dans la cartographie) pour construire la matrice de couverture.
+        </p>
+      </div>
+    )
+  }
+
+  // Grouper par cycle pour l'affichage
+  const parCycle: Record<string, LigneCouverture[]> = {}
+  for (const l of matrice.lignes) (parCycle[l.cycle] ||= []).push(l)
+
+  const taux = matrice.taux_couverture
+  const cycleLabel = (id: string) => CYCLES.find((c) => c.id === id)?.label || id
+
+  return (
+    <div className="card p-5 space-y-4">
+      {/* Barre de synthèse */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className={`px-3 py-2 rounded-xl ${
+            matrice.nb_trous === 0 ? 'bg-emerald-50' : 'bg-amber-50'
+          }`}>
+            <p className="text-xs text-slate-500">Assertions à risque couvertes</p>
+            <p className={`text-lg font-bold ${matrice.nb_trous === 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+              {matrice.nb_couvertes}/{matrice.nb_cellules}
+              {taux !== null && <span className="text-sm font-normal ml-1">({Math.round(taux * 100)}%)</span>}
+            </p>
+          </div>
+          {matrice.nb_trous > 0 && (
+            <div className="flex items-center gap-1.5 text-sm text-amber-700">
+              <AlertTriangle className="w-4 h-4" />
+              {matrice.nb_trous} assertion(s) à risque non couverte(s)
+            </div>
+          )}
+        </div>
+        {!locked && matrice.nb_trous > 0 && (
+          <button onClick={handleProposer} disabled={proposing} className="btn-secondary text-sm">
+            {proposing ? <Spinner size="sm" /> : <SparklesIcon className="w-4 h-4" />}
+            Proposer des procédures (IA)
+          </button>
+        )}
+      </div>
+
+      {/* Matrice par cycle */}
+      <div className="space-y-4">
+        {Object.entries(parCycle).map(([cycle, lignes]) => (
+          <div key={cycle}>
+            <p className="text-sm font-semibold text-slate-700 mb-2">{cycleLabel(cycle)}</p>
+            <div className="space-y-1.5">
+              {lignes.map((l) => (
+                <div
+                  key={`${l.cycle}-${l.assertion}`}
+                  className={`rounded-lg border p-3 ${
+                    l.couvert ? 'border-emerald-100 bg-emerald-50/30' : 'border-red-200 bg-red-50/40'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        {l.couvert
+                          ? <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                          : <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />}
+                        <span className="text-sm font-medium text-slate-800">{l.assertion_libelle}</span>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        {l.risques.map((r) => (
+                          <span key={r.id} className={`text-[11px] px-1.5 py-0.5 rounded ${
+                            NIVEAUX[r.niveau]?.bg || 'bg-slate-100'
+                          } ${NIVEAUX[r.niveau]?.color || 'text-slate-600'}`} title={r.libelle}>
+                            {truncate(r.libelle, 40)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0 max-w-[45%]">
+                      {l.procedures.length > 0 ? (
+                        <div className="flex flex-wrap justify-end gap-1">
+                          {l.procedures.slice(0, 5).map((p, i) => (
+                            <span key={i} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600"
+                              title={`${TYPE_PROC_LABEL[p.type]} — ${p.libelle}`}>
+                              {p.ref}
+                            </span>
+                          ))}
+                          {l.procedures.length > 5 && (
+                            <span className="text-[10px] text-slate-400">+{l.procedures.length - 5}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-red-600 font-medium">Aucune procédure</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-xs text-slate-400">
+        La matrice croise vos risques validés (par cycle et assertion) avec les procédures
+        disponibles : contrôles déterministes, sondages ({normeLabel('530')}) et
+        circularisations ({normeLabel('505')}). Une assertion à risque sans procédure est un
+        trou de couverture à combler avant la fin de la planification.
+      </p>
     </div>
   )
 }
