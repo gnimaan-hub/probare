@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Settings, FolderOpen, Upload,
   ShieldCheck, AlertTriangle, FileText, ChevronLeft,
-  Activity, ArrowLeft, ClipboardList, BarChart2, Building2, Stamp, ListChecks, Scale
+  Activity, ArrowLeft, ClipboardList, BarChart2, Building2, Stamp, ListChecks, Scale, ScanSearch
 } from 'lucide-react'
 import { useProjetStore } from '../../stores/projetStore'
 import { ETATS_PIPELINE, getEtatIndex } from '../../lib/utils'
@@ -27,6 +27,7 @@ const projetNavItems: NavItemDef[] = [
   { to: 'ingestion',        icon: Upload,        label: 'Ingestion',            minEtat: 'evaluation_ci' },
   { to: 'planification',    icon: ClipboardList, label: 'Planification',        minEtat: 'ingestion' },
   { to: 'controles',        icon: BarChart2,     label: 'Travaux substantifs',  minEtat: 'planification' },
+  { to: 'journal-entries',  icon: ScanSearch,    label: 'Écritures de journal', minEtat: 'planification' },
   { to: 'exceptions',       icon: AlertTriangle, label: 'Exceptions',           minEtat: 'travaux_substantifs' },
   { to: 'ajustements',      icon: Scale,         label: 'Ajustements',          minEtat: 'travaux_substantifs' },
   { to: 'diligences',       icon: ListChecks,    label: 'Diligences',           minEtat: 'cadrage' },

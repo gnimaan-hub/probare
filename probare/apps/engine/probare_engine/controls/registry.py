@@ -762,6 +762,105 @@ enregistrer(ControleDefinition(
 ))
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# TESTS DES ÉCRITURES DE JOURNAL (transversal, tout le grand livre) — 8 signaux
+# D1 — NEP/ISA 240 : détection du contournement des contrôles par la direction.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+enregistrer(ControleDefinition(
+    ref="JET-DESEQUILIBRE",
+    assertions=["evaluation"],
+    libelle="Pièces déséquilibrées (débits ≠ crédits)",
+    nep_ref="NEP 240",
+    cycle="journal",
+    description="Écritures dont la somme des débits diffère de la somme des crédits au sein d'une même pièce.",
+    severite_defaut="critique",
+))
+
+enregistrer(ControleDefinition(
+    ref="JET-SOUS-SEUIL",
+    assertions=["existence"],
+    libelle="Montants juste sous le seuil de signification",
+    nep_ref="NEP 240",
+    cycle="journal",
+    description="Écritures dont le montant est juste en dessous du seuil (structuration pour éviter la revue).",
+    severite_defaut="significative",
+))
+
+enregistrer(ControleDefinition(
+    ref="JET-CONTREPARTIE",
+    assertions=["existence"],
+    libelle="Contreparties inhabituelles",
+    nep_ref="NEP 240",
+    cycle="journal",
+    description="Pièces mettant en relation directe un compte de résultat (6/7) et la trésorerie (5) sans compte de tiers (4).",
+    severite_defaut="significative",
+))
+
+enregistrer(ControleDefinition(
+    ref="JET-WEEKEND",
+    assertions=["existence"],
+    libelle="Écritures datées un week-end",
+    nep_ref="NEP 240",
+    cycle="journal",
+    description="Écritures comptabilisées un samedi ou un dimanche — hors calendrier d'exploitation habituel.",
+    severite_defaut="significative",
+))
+
+enregistrer(ControleDefinition(
+    ref="JET-CUTOFF-TARDIF",
+    assertions=["cut_off"],
+    libelle="Écritures de clôture tardives",
+    nep_ref="NEP 240",
+    cycle="journal",
+    description="Écritures passées dans les tout derniers jours de l'exercice — risque d'ajustement de dernière minute.",
+    severite_defaut="significative",
+))
+
+enregistrer(ControleDefinition(
+    ref="JET-SANS-PIECE",
+    assertions=["exhaustivite"],
+    libelle="Écritures sans numéro de pièce",
+    nep_ref="NEP 240",
+    cycle="journal",
+    description="Écritures dépourvues de référence de pièce justificative.",
+    severite_defaut="significative",
+))
+
+enregistrer(ControleDefinition(
+    ref="JET-LIBELLE",
+    assertions=["existence"],
+    libelle="Libellés absents ou génériques",
+    nep_ref="NEP 240",
+    cycle="journal",
+    description="Écritures au libellé vide ou fourre-tout (« divers », « OD », « régularisation »…).",
+    severite_defaut="mineure",
+))
+
+enregistrer(ControleDefinition(
+    ref="JET-MONTANT-ROND",
+    assertions=["existence"],
+    libelle="Montants ronds de grande ampleur",
+    nep_ref="NEP 240",
+    cycle="journal",
+    description="Écritures dont le montant est un rond de grande ampleur (multiple d'un million) — estimation ou montant fictif potentiel.",
+    severite_defaut="mineure",
+))
+
+
+# Correspondance signal JET → référence de contrôle du registre.
+JET_SIGNAL_REF: dict[str, str] = {
+    "desequilibre":    "JET-DESEQUILIBRE",
+    "sous_seuil":      "JET-SOUS-SEUIL",
+    "contrepartie":    "JET-CONTREPARTIE",
+    "weekend":         "JET-WEEKEND",
+    "cutoff_tardif":   "JET-CUTOFF-TARDIF",
+    "sans_piece":      "JET-SANS-PIECE",
+    "libelle_suspect": "JET-LIBELLE",
+    "montant_rond":    "JET-MONTANT-ROND",
+}
+
+
 def get_controles_par_cycle(cycle: str) -> list[ControleDefinition]:
     return [c for c in REGISTRE.values() if c.cycle == cycle]
 

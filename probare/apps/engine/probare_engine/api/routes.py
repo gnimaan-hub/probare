@@ -2507,6 +2507,131 @@ def _aggreger_soldes_nets(
     return result
 
 
+# ─── Tests des écritures de journal (D1 — ISA 240) ────────────────────────────
+
+@router.post("/projets/{projet_id}/controles/journal-entries")
+def run_journal_entry_testing(projet_id: str, body: dict = {}):
+    """Journal Entry Testing (ISA 240) sur l'INTÉGRALITÉ du grand livre.
+
+    Score de risque déterministe par écriture (somme pondérée de signaux) ;
+    les écritures au score ≥ seuil de signalement sont retenues pour revue
+    ciblée. Produit un résultat par signal (documenté au dossier), une exception
+    par signal déclenché (interprétée par l'IA), et stocke les écritures
+    signalées pour pointage."""
+    from ..controls.journal_entries import analyser_journal, SIGNAUX, SEUIL_SIGNALEMENT_DEFAUT
+    from ..controls.registry import JET_SIGNAL_REF
+    from ..controls.engine import _result_ok, _result_exception
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    _exiger_etat_pour_controles(projet)
+
+    donnees_all, rows_gl, rows_balance, ids_gl, ids_balance, ids_releve = \
+        _get_donnees_segmentees(db, projet_id)
+    if not donnees_all:
+        raise HTTPException(400, "Aucune donnée importée.")
+    if not ids_gl:
+        raise HTTPException(400, "Le test des écritures de journal exige un grand livre "
+                                 "(mouvements). Importez le grand livre de l'exercice.")
+
+    seuil = float(projet.get("seuil_signification") or 0)
+    exercice = projet.get("exercice")
+    try:
+        seuil_signalement = int(body.get("seuil_signalement") or SEUIL_SIGNALEMENT_DEFAUT)
+    except (TypeError, ValueError):
+        seuil_signalement = SEUIL_SIGNALEMENT_DEFAUT
+
+    analyse = analyser_journal(rows_gl, seuil, exercice, seuil_signalement)
+
+    # Sources par signal (pour la traçabilité des exceptions)
+    sources_par_signal: dict[str, list[str]] = {s: [] for s in SIGNAUX}
+    for e in analyse["signalees"]:
+        for s in e["signaux"]:
+            if len(sources_par_signal[s]) < 50:
+                sources_par_signal[s].extend(e["sources"][:3])
+
+    resultats_total, exceptions_total = [], []
+    for signal, defn in SIGNAUX.items():
+        ref = JET_SIGNAL_REF[signal]
+        count = analyse["par_signal"].get(signal, 0)
+        if count == 0:
+            resultats_total.append(_result_ok(
+                projet_id, ref, 0,
+                f"Aucune écriture concernée par : {defn['libelle']}.", []))
+        else:
+            res, exc = _result_exception(
+                projet_id, ref, count,
+                f"{count} écriture(s) présentent le signal « {defn['libelle']} » "
+                f"(NEP 240 — test des écritures de journal).",
+                sources_par_signal[signal][:50],
+                est_montant=False,
+            )
+            resultats_total.append(res)
+            if exc:
+                exceptions_total.append(exc)
+
+    enregistrees = _persister_controles(
+        db, projet_id, resultats_total, exceptions_total, cycle="journal")
+
+    # Stocker les écritures signalées pour la revue ciblée (pointage)
+    db.remplacer_jet_ecritures(projet_id, analyse["signalees"])
+
+    db.log(projet_id, "action_humaine", {
+        "action": "journal_entry_testing",
+        "nb_ecritures": analyse["nb_ecritures"],
+        "nb_signalees": analyse["nb_signalees"],
+        "seuil_signalement": seuil_signalement,
+    })
+    _auto_interpreter(db, projet_id, projet, enregistrees)
+
+    return {
+        "analyse": {k: v for k, v in analyse.items() if k != "signalees"},
+        "nb_signalees": analyse["nb_signalees"],
+        "ecritures": db.list_jet_ecritures(projet_id),
+        "exceptions": db.list_exceptions(projet_id),
+    }
+
+
+@router.get("/projets/{projet_id}/journal-entries")
+def get_journal_entries(projet_id: str):
+    """Écritures signalées par le dernier test JET, avec la synthèse de pointage."""
+    db = _get_db(projet_id)
+    if not db.get_projet(projet_id):
+        raise HTTPException(404, "Projet introuvable.")
+    ecritures = db.list_jet_ecritures(projet_id)
+    from ..controls.journal_entries import SIGNAUX
+    return {
+        "ecritures": ecritures,
+        "nb_signalees": len(ecritures),
+        "nb_pointees": sum(1 for e in ecritures if e.get("commentaire") or e.get("est_anomalie")),
+        "nb_anomalies": sum(1 for e in ecritures if e.get("est_anomalie")),
+        "signaux_libelles": {k: v["libelle"] for k, v in SIGNAUX.items()},
+    }
+
+
+class PointageJetBody(BaseModel):
+    est_anomalie: bool
+    commentaire: str | None = None
+
+
+@router.patch("/projets/{projet_id}/journal-entries/{ecriture_id}")
+def pointer_journal_entry(projet_id: str, ecriture_id: str, body: PointageJetBody):
+    """Pointe une écriture signalée : conforme ou anomalie, avec commentaire."""
+    db = _get_db(projet_id)
+    if not db.get_projet(projet_id):
+        raise HTTPException(404, "Projet introuvable.")
+    ecriture = db.get_jet_ecriture(ecriture_id)
+    if not ecriture or ecriture.get("projet_id") != projet_id:
+        raise HTTPException(404, "Écriture introuvable.")
+    updated = db.pointer_jet_ecriture(ecriture_id, body.est_anomalie, body.commentaire)
+    db.log(projet_id, "action_humaine", {
+        "action": "pointer_jet_ecriture", "id": ecriture_id,
+        "est_anomalie": body.est_anomalie,
+    })
+    return updated
+
+
 # ─── Exceptions ───────────────────────────────────────────────────────────────
 
 @router.get("/projets/{projet_id}/exceptions")

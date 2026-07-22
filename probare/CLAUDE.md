@@ -113,6 +113,23 @@ Diligences de périphérie (module `controls/peripherie.py`, page « Diligences 
 - 580 : Déclarations écrites (projet de lettre d'affirmation généré par l'IA)
 - 260/265 : Communication à la gouvernance (projet de lettre généré par l'IA)
 
+## Tests des écritures de journal (ISA 240 — D1, module `controls/journal_entries.py`)
+
+Diligence obligatoire, **transversale** (tout le grand livre, pas par cycle) :
+`analyser_journal()` regroupe les lignes par pièce et attribue à chaque écriture
+un **score de risque déterministe** = somme pondérée de signaux (déséquilibre,
+montant juste sous le seuil, contrepartie inhabituelle 6/7↔5 sans tiers 4,
+week-end, clôture tardive, sans pièce, libellé générique, montant rond). Les
+écritures au score ≥ seuil de signalement (défaut 3) sont retenues pour revue
+ciblée, stockées dans `jet_ecriture` (pointables conforme/anomalie, pointage
+préservé à la ré-exécution). Les 8 signaux sont des contrôles du registre
+(cycle `journal`, NEP 240) : la route `POST /controles/journal-entries` produit
+un résultat par signal + une exception par signal déclenché (interprétée par
+l'IA), et `remplacer_jet_ecritures` stocke la sélection. Garde-fou : si le grand
+livre ne porte quasiment aucun numéro de pièce, le signal « sans pièce » est
+neutralisé (caractéristique du fichier, pas une anomalie de masse). Le LLM ne
+calcule jamais le score.
+
 ## Couverture risque ↔ assertion (ISA 315 révisée — M4)
 
 Chaque contrôle du registre déclare les **assertions** qu'il couvre

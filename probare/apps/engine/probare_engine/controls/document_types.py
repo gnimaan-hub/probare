@@ -238,6 +238,15 @@ PRECONDITIONS_CONTROLES: dict[str, list[str]] = {
     "CP-PROVISION-MOUVEMENT":["grand_livre"],
     "CP-RESULTAT-COHERENCE": ["balance"],
     "CP-SOLDE-ANORMAL":      ["balance"],
+    # Tests des écritures de journal (D1 — NEP 240) : tout le grand livre
+    "JET-DESEQUILIBRE":      ["grand_livre"],
+    "JET-SOUS-SEUIL":        ["grand_livre"],
+    "JET-CONTREPARTIE":      ["grand_livre"],
+    "JET-WEEKEND":           ["grand_livre"],
+    "JET-CUTOFF-TARDIF":     ["grand_livre"],
+    "JET-SANS-PIECE":        ["grand_livre"],
+    "JET-LIBELLE":           ["grand_livre"],
+    "JET-MONTANT-ROND":      ["grand_livre"],
 }
 
 

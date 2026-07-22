@@ -320,6 +320,23 @@ class ProjectDB:
             UNIQUE(projet_id, controle_ref)
         );
 
+        CREATE TABLE IF NOT EXISTS jet_ecriture (
+            id TEXT PRIMARY KEY,
+            projet_id TEXT NOT NULL REFERENCES projet(id),
+            numero_piece TEXT,
+            date_piece TEXT,
+            libelle TEXT,
+            montant REAL,
+            comptes TEXT,
+            nb_lignes INTEGER,
+            signaux TEXT,
+            score INTEGER,
+            sources TEXT,
+            est_anomalie INTEGER DEFAULT 0,
+            commentaire TEXT,
+            cree_le TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS ecriture_ajustement (
             id TEXT PRIMARY KEY,
             projet_id TEXT NOT NULL REFERENCES projet(id),
@@ -916,6 +933,73 @@ class ProjectDB:
         )
         self.conn.commit()
         return self.get_peripherie_evaluation(projet_id, diligence)
+
+    # --- Tests des écritures de journal (D1 — ISA 240) ---
+
+    def _deserialize_jet(self, d: dict) -> dict:
+        for field in ("signaux", "comptes", "sources"):
+            val = d.get(field)
+            if val and isinstance(val, str):
+                try:
+                    d[field] = json.loads(val)
+                except Exception:
+                    d[field] = []
+            elif not val:
+                d[field] = []
+        return d
+
+    def remplacer_jet_ecritures(self, projet_id: str, ecritures: list[dict]) -> None:
+        """Remplace la sélection JET du projet (une nouvelle passe efface l'ancienne).
+
+        Préserve le pointage (est_anomalie / commentaire) des écritures déjà
+        revues et toujours présentes, repérées par leur clé (numéro de pièce +
+        date + montant)."""
+        anciens = {
+            (e.get("numero_piece"), e.get("date_piece"), e.get("montant")): e
+            for e in self.list_jet_ecritures(projet_id)
+        }
+        self.conn.execute("DELETE FROM jet_ecriture WHERE projet_id=?", (projet_id,))
+        now = _now()
+        for e in ecritures:
+            cle = (e.get("numero_piece"), e.get("date_piece"), e.get("montant"))
+            ancien = anciens.get(cle)
+            self.conn.execute(
+                """INSERT INTO jet_ecriture
+                   (id, projet_id, numero_piece, date_piece, libelle, montant,
+                    comptes, nb_lignes, signaux, score, sources, est_anomalie,
+                    commentaire, cree_le)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (str(__import__("uuid").uuid4()), projet_id,
+                 e.get("numero_piece"), e.get("date_piece"), e.get("libelle"),
+                 e.get("montant"), json.dumps(e.get("comptes", []), ensure_ascii=False),
+                 e.get("nb_lignes"), json.dumps(e.get("signaux", []), ensure_ascii=False),
+                 e.get("score"), json.dumps(e.get("sources", []), ensure_ascii=False),
+                 int(ancien.get("est_anomalie", 0)) if ancien else 0,
+                 ancien.get("commentaire") if ancien else None, now)
+            )
+        self.conn.commit()
+
+    def list_jet_ecritures(self, projet_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM jet_ecriture WHERE projet_id=? ORDER BY score DESC, montant DESC",
+            (projet_id,)
+        ).fetchall()
+        return [self._deserialize_jet(dict(r)) for r in rows]
+
+    def get_jet_ecriture(self, ecriture_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM jet_ecriture WHERE id=?", (ecriture_id,)
+        ).fetchone()
+        return self._deserialize_jet(dict(row)) if row else None
+
+    def pointer_jet_ecriture(self, ecriture_id: str, est_anomalie: bool,
+                             commentaire: str | None) -> dict | None:
+        self.conn.execute(
+            "UPDATE jet_ecriture SET est_anomalie=?, commentaire=? WHERE id=?",
+            (int(est_anomalie), commentaire, ecriture_id)
+        )
+        self.conn.commit()
+        return self.get_jet_ecriture(ecriture_id)
 
     # --- Écritures d'ajustement (M1 — ISA 450) ---
 
