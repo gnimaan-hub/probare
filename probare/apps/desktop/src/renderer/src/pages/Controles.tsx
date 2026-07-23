@@ -1373,7 +1373,7 @@ export function Controles() {
               }`}
             >
               <Play className="w-3.5 h-3.5" />
-              Procédures analytiques
+              Contrôles par cycle
             </button>
             <button
               onClick={() => setSousOnglet('detail')}

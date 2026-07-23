@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Layout } from './components/layout/Layout'
 import { Dashboard } from './pages/Dashboard'
+import { MissionCockpit } from './pages/MissionCockpit'
 import { Cadrage } from './pages/Cadrage'
 import { Ingestion } from './pages/Ingestion'
 import { Controles } from './pages/Controles'
@@ -125,6 +126,7 @@ export default function App() {
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route element={<Layout />}>
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/projet/:projetId" element={<MissionCockpit />} />
         <Route path="/projet/:projetId/cadrage" element={<Cadrage />} />
         <Route path="/projet/:projetId/ingestion" element={<Ingestion />} />
         <Route path="/projet/:projetId/evaluation-ci" element={<EvaluationCI />} />

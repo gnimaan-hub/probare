@@ -11,8 +11,11 @@ import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
+import { useMissionProgress } from '../hooks/useMissionProgress'
 import { useProjetStore } from '../stores/projetStore'
 import { formatMontant, formatDate, normeLabel, truncate } from '../lib/utils'
+import { stepParRoute } from '../lib/mission'
+import { StepFooter } from '../components/mission/StepFooter'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -212,9 +215,11 @@ export function Planification() {
   const [balances, setBalances] = useState<FichierSource[]>([])
   const [noteSynthese, setNoteSynthese] = useState<NoteSynthese | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeSection, setActiveSection] = useState('fiche-entite')
+  const [activeSection, setActiveSection] = useState('analytique')
   const [transitioning, setTransitioning] = useState(false)
   const [notePrete, setNotePrete] = useState(false)
+  const { progression } = useMissionProgress(projetId)
+  const step = stepParRoute('planification')!
 
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
 
@@ -258,7 +263,6 @@ export function Planification() {
     return raw as InterpretationVariations
   })()
 
-  const doneFiche = !!(plan?.activites_principales || plan?.forme_juridique)
   const doneAnalytics = !!(plan?.variations_json?.length)
   const doneSeuils = !!(plan?.seuil_calcule)
   const doneRisques = risques.filter((r) => r.valide_auditeur).length > 0
@@ -266,7 +270,6 @@ export function Planification() {
   const doneProgramme = noteSynthese !== null || programme.some((p) => p.statut === 'inclus' || (p as any).statut === 1)
 
   const sections = [
-    { id: 'fiche-entite',  label: 'Fiche entité',           icon: Building2,     done: doneFiche },
     { id: 'analytique',    label: 'Procédures analytiques', icon: TrendingUp,    done: doneAnalytics },
     { id: 'seuils',        label: 'Calcul des seuils',      icon: Target,        done: doneSeuils },
     { id: 'risques',       label: 'Cartographie des risques',icon: ShieldAlert,   done: doneRisques },
@@ -327,24 +330,12 @@ export function Planification() {
         title="Planification"
         subtitle={projetActif?.nom}
         actions={
-          <div className="flex items-center gap-2">
-            {notePrete && (
-              <button onClick={handleTelechargerNote} className="btn-secondary gap-2">
-                <Download className="w-4 h-4" />
-                Note de planification
-              </button>
-            )}
-            {!locked && (
-              <button
-                onClick={handlePasserControles}
-                disabled={transitioning}
-                className="btn-primary gap-2"
-              >
-                {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
-                Passer aux travaux substantifs
-              </button>
-            )}
-          </div>
+          notePrete && (
+            <button onClick={handleTelechargerNote} className="btn-secondary gap-2">
+              <Download className="w-4 h-4" />
+              Note de planification
+            </button>
+          )
         }
       />
 
@@ -380,23 +371,6 @@ export function Planification() {
               </p>
             </div>
           )}
-
-          {/* ════════════════════════════════════════════════════════════════ */}
-          {/* SECTION 1 — FICHE ENTITÉ                                       */}
-          {/* ════════════════════════════════════════════════════════════════ */}
-          <section
-            ref={(el) => { sectionRefs.current['fiche-entite'] = el }}
-            id="fiche-entite"
-          >
-            <SectionHeader icon={Building2} title="Fiche entité" done={doneFiche}
-              subtitle="Prise de connaissance de l'entité auditée (PLA-01)" />
-            <FicheEntiteForm
-              plan={plan}
-              locked={locked}
-              onSaved={(updated) => setPlan(updated)}
-              projetId={projetId!}
-            />
-          </section>
 
           {/* ════════════════════════════════════════════════════════════════ */}
           {/* SECTION 2 — PROCÉDURES ANALYTIQUES                             */}
@@ -488,26 +462,15 @@ export function Planification() {
               doneRisques={doneRisques} onProgrammeChanged={setProgramme} />
           </section>
 
-          {/* ── CTA finale ── */}
+          {/* ── Guidage prochaine étape ── */}
           {!locked && (
-            <div className="card p-6 flex items-center justify-between">
-              <div>
-                <p className="font-semibold text-slate-900">Planification terminée ?</p>
-                <p className="text-sm text-slate-500 mt-0.5">
-                  {doneRisques
-                    ? `${risques.filter((r) => r.valide_auditeur).length} risque(s) validé(s) · ${programme.filter((p) => p.statut === 'inclus').length} contrôle(s) au programme`
-                    : 'Identifiez et validez au moins un risque avant de continuer.'}
-                </p>
-              </div>
-              <button
-                onClick={handlePasserControles}
-                disabled={transitioning}
-                className="btn-primary gap-2 flex-shrink-0"
-              >
-                {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
-                Passer aux travaux substantifs
-              </button>
-            </div>
+            <StepFooter
+              projetId={projetId!}
+              step={step}
+              progression={progression}
+              onAdvance={handlePasserControles}
+              advancing={transitioning}
+            />
           )}
         </main>
       </div>
@@ -539,236 +502,7 @@ function SectionHeader({
   )
 }
 
-// ─── SECTION 1 : Fiche entité ─────────────────────────────────────────────────
-
-function FicheEntiteForm({
-  plan, locked, onSaved, projetId
-}: {
-  plan: Planification | null
-  locked: boolean
-  onSaved: (p: Planification) => void
-  projetId: string
-}) {
-  const { patch, post } = useApi()
-  const toast = useToast()
-  const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({
-    forme_juridique: '',
-    date_creation_entreprise: '',
-    activites_principales: '',
-    marches_principaux: '',
-    systeme_information: '',
-    effectif: '',
-    observations: '',
-  })
-  const [dirigeants, setDirigeants] = useState<Dirigeant[]>([])
-  const [facteurs, setFacteurs] = useState<string[]>([])
-  const [newFacteur, setNewFacteur] = useState('')
-  const [newDir, setNewDir] = useState({ nom: '', fonction: '', email: '' })
-  const [showAddDir, setShowAddDir] = useState(false)
-
-  useEffect(() => {
-    if (!plan) return
-    setForm({
-      forme_juridique: plan.forme_juridique || '',
-      date_creation_entreprise: plan.date_creation_entreprise || '',
-      activites_principales: plan.activites_principales || '',
-      marches_principaux: plan.marches_principaux || '',
-      systeme_information: plan.systeme_information || '',
-      effectif: plan.effectif?.toString() || '',
-      observations: plan.observations || '',
-    })
-    setDirigeants(plan.dirigeants || [])
-    setFacteurs(plan.facteurs_risque_inherent || [])
-  }, [plan?.id])
-
-  const handleSave = async () => {
-    setSaving(true)
-    try {
-      const res = await patch(`/projets/${projetId}/planification/fiche-entite`, {
-        ...form,
-        effectif: form.effectif ? parseInt(form.effectif) : undefined,
-        dirigeants,
-        facteurs_risque_inherent: facteurs,
-      })
-      onSaved(res.planification)
-      toast.success('Fiche entité enregistrée.')
-    } catch (e: any) {
-      toast.error(e.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const addDirigeant = () => {
-    if (!newDir.nom.trim()) return
-    setDirigeants([...dirigeants, { ...newDir }])
-    setNewDir({ nom: '', fonction: '', email: '' })
-    setShowAddDir(false)
-  }
-
-  const addFacteur = () => {
-    const f = newFacteur.trim()
-    if (!f || facteurs.includes(f)) return
-    setFacteurs([...facteurs, f])
-    setNewFacteur('')
-  }
-
-  return (
-    <div className="card p-5 space-y-5">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Forme juridique</label>
-          <select className="input-field" value={form.forme_juridique}
-            onChange={(e) => setForm((f) => ({ ...f, forme_juridique: e.target.value }))}
-            disabled={locked}>
-            <option value="">— Sélectionner —</option>
-            {FORMES_JURIDIQUES.map((fj) => <option key={fj} value={fj}>{fj}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Date de création</label>
-          <input className="input-field" type="date" value={form.date_creation_entreprise}
-            onChange={(e) => setForm((f) => ({ ...f, date_creation_entreprise: e.target.value }))}
-            disabled={locked} />
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Activités principales</label>
-        <textarea className="input-field min-h-[72px]" rows={3}
-          placeholder="Décrivez les activités principales de l'entité auditée…"
-          value={form.activites_principales}
-          onChange={(e) => setForm((f) => ({ ...f, activites_principales: e.target.value }))}
-          disabled={locked} />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Marchés principaux</label>
-          <input className="input-field" placeholder="ex : Local, Export, BTP, Grande distribution…"
-            value={form.marches_principaux}
-            onChange={(e) => setForm((f) => ({ ...f, marches_principaux: e.target.value }))}
-            disabled={locked} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Effectif</label>
-          <input className="input-field" type="number" placeholder="Nombre de salariés"
-            value={form.effectif}
-            onChange={(e) => setForm((f) => ({ ...f, effectif: e.target.value }))}
-            disabled={locked} />
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Système d'information</label>
-        <input className="input-field"
-          placeholder="ERP, logiciel comptable, version… ex : Sage 100 v21, Dext, Excel"
-          value={form.systeme_information}
-          onChange={(e) => setForm((f) => ({ ...f, systeme_information: e.target.value }))}
-          disabled={locked} />
-      </div>
-
-      {/* Dirigeants */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="block text-sm font-medium text-slate-700">Dirigeants et responsables clés</label>
-          {!locked && (
-            <button onClick={() => setShowAddDir(!showAddDir)}
-              className="text-xs btn-ghost gap-1 text-primary-600">
-              <Plus className="w-3 h-3" />Ajouter
-            </button>
-          )}
-        </div>
-        {showAddDir && (
-          <div className="grid grid-cols-3 gap-2 mb-2 p-3 bg-slate-50 rounded-lg">
-            <input className="input-field text-sm" placeholder="Nom" value={newDir.nom}
-              onChange={(e) => setNewDir((d) => ({ ...d, nom: e.target.value }))} />
-            <input className="input-field text-sm" placeholder="Fonction" value={newDir.fonction}
-              onChange={(e) => setNewDir((d) => ({ ...d, fonction: e.target.value }))} />
-            <div className="flex gap-1">
-              <input className="input-field text-sm flex-1" placeholder="Email (opt.)" value={newDir.email}
-                onChange={(e) => setNewDir((d) => ({ ...d, email: e.target.value }))} />
-              <button onClick={addDirigeant} className="btn-primary px-2"><Check className="w-3.5 h-3.5" /></button>
-            </div>
-          </div>
-        )}
-        {dirigeants.length > 0 ? (
-          <div className="space-y-1.5">
-            {dirigeants.map((d, i) => (
-              <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50">
-                <Users className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                <span className="text-sm font-medium text-slate-700">{d.nom}</span>
-                <span className="text-xs text-slate-400">— {d.fonction}</span>
-                {d.email && <span className="text-xs text-slate-400">{d.email}</span>}
-                {!locked && (
-                  <button onClick={() => setDirigeants(dirigeants.filter((_, j) => j !== i))}
-                    className="ml-auto text-slate-300 hover:text-red-500 transition-colors">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-slate-400 italic">Aucun dirigeant renseigné.</p>
-        )}
-      </div>
-
-      {/* Facteurs de risque inhérents */}
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">
-          Facteurs de risque inhérents identifiés
-        </label>
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {facteurs.map((f) => (
-            <span key={f}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-amber-50 text-amber-800 border border-amber-200">
-              {f}
-              {!locked && (
-                <button onClick={() => setFacteurs(facteurs.filter((x) => x !== f))}>
-                  <X className="w-2.5 h-2.5 ml-0.5" />
-                </button>
-              )}
-            </span>
-          ))}
-        </div>
-        {!locked && (
-          <div className="flex gap-2">
-            <input className="input-field text-sm flex-1"
-              placeholder="ex : Forte saisonnalité, Transactions avec parties liées…"
-              value={newFacteur}
-              onKeyDown={(e) => e.key === 'Enter' && addFacteur()}
-              onChange={(e) => setNewFacteur(e.target.value)} />
-            <button onClick={addFacteur} className="btn-secondary px-3">
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Observations particulières</label>
-        <textarea className="input-field" rows={2}
-          placeholder="Autres informations utiles pour l'audit : litiges, restructuration, changement de direction…"
-          value={form.observations}
-          onChange={(e) => setForm((f) => ({ ...f, observations: e.target.value }))}
-          disabled={locked} />
-      </div>
-
-      {!locked && (
-        <div className="flex justify-end pt-1">
-          <button onClick={handleSave} disabled={saving} className="btn-primary gap-2">
-            {saving ? <Spinner size="sm" /> : <Save className="w-4 h-4" />}
-            Enregistrer la fiche
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── SECTION 2 : Procédures analytiques ──────────────────────────────────────
+// ─── SECTION : Procédures analytiques ────────────────────────────────────────
 
 function AnalytiquesSection({
   plan, balances, interpretation, locked, projetId, seuil, onUpdated

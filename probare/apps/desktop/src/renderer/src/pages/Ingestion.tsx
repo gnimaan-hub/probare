@@ -9,11 +9,14 @@ import {
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
+import { StepFooter } from '../components/mission/StepFooter'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
+import { useMissionProgress } from '../hooks/useMissionProgress'
 import { useProjetStore } from '../stores/projetStore'
 import { useSyncProjet } from '../hooks/useProjet'
 import { formatDate } from '../lib/utils'
+import { stepParRoute } from '../lib/mission'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -413,6 +416,8 @@ export function Ingestion() {
   const [documentsRequis, setDocumentsRequis] = useState<DocRequis[]>([])
   const [uploading, setUploading] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
+  const { progression } = useMissionProgress(projetId)
+  const step = stepParRoute('ingestion')!
 
   // Modals
   const [ongletsModal, setOngletsModal] = useState<{ fichier: FichierImporte; data: any } | null>(null)
@@ -542,21 +547,6 @@ export function Ingestion() {
       <Header
         title="Ingestion des documents"
         subtitle={projetActif?.nom}
-        actions={
-          <div className="flex gap-2">
-            {!locked && (
-              <button
-                onClick={handlePasserExtraction}
-                disabled={transitioning || !canPasser}
-                className="btn-primary"
-                title={!canPasser ? `Documents requis manquants : ${manquantsRequis.map(d => d.label).join(', ')}` : ''}
-              >
-                {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
-                Passer à la planification
-              </button>
-            )}
-          </div>
-        }
       />
 
       <div className="flex-1 overflow-y-auto p-6">
@@ -612,6 +602,23 @@ export function Ingestion() {
             <div className="text-center py-6 text-sm text-slate-400">
               Aucun document importé.
             </div>
+          )}
+
+          {!locked && (
+            <StepFooter
+              projetId={projetId!}
+              step={step}
+              progression={progression}
+              onAdvance={handlePasserExtraction}
+              advancing={transitioning}
+              blockedReason={
+                !canPasser
+                  ? (fichiers.length === 0
+                      ? 'Importez au moins un document comptable.'
+                      : `Documents requis manquants : ${manquantsRequis.map(d => d.label).join(', ')}.`)
+                  : undefined
+              }
+            />
           )}
         </div>
       </div>

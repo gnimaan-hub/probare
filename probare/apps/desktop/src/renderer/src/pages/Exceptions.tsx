@@ -10,6 +10,7 @@ import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
+import { useMissionProgress } from '../hooks/useMissionProgress'
 import { useProjetStore, type Exception, type FichierSource } from '../stores/projetStore'
 import { useSyncProjet } from '../hooks/useProjet'
 import { formatDate, normeLabel } from '../lib/utils'
@@ -623,6 +624,7 @@ export function Exceptions() {
   const toast = useToast()
   const { projetActif, setProjetActif, exceptions, setExceptions, fichiers, setFichiers } = useProjetStore()
   useSyncProjet()
+  const { progression } = useMissionProgress(projetId)
 
   const [pendingTrancher, setPendingTrancher] = useState<Exception | null>(null)
   const [pendingValider, setPendingValider] = useState<Exception | null>(null)
@@ -801,6 +803,46 @@ export function Exceptions() {
                 </div>
               </div>
             </motion.div>
+          )}
+
+          {/* Diligences obligatoires restantes avant la génération du dossier (ISA 240 / 570) */}
+          {progression && (!progression.transversal.journal_entries.fait || !progression.transversal.continuite.conclue) && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <p className="text-sm font-semibold text-amber-800">
+                  Diligences obligatoires à compléter avant de générer le dossier
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                {!progression.transversal.journal_entries.fait && (
+                  <button
+                    onClick={() => navigate(`/projet/${projetId}/journal-entries`)}
+                    className="w-full flex items-center justify-between gap-2 text-left text-xs bg-white border border-amber-200 rounded-lg px-3 py-2 hover:border-amber-300 transition-colors"
+                  >
+                    <span className="text-slate-700">
+                      Tests des écritures de journal ({normeLabel('240')}) — non exécutés
+                    </span>
+                    <span className="text-amber-700 font-medium flex items-center gap-1">
+                      Lancer l'analyse <ArrowRight className="w-3 h-3" />
+                    </span>
+                  </button>
+                )}
+                {!progression.transversal.continuite.conclue && (
+                  <button
+                    onClick={() => navigate(`/projet/${projetId}/diligences`)}
+                    className="w-full flex items-center justify-between gap-2 text-left text-xs bg-white border border-amber-200 rounded-lg px-3 py-2 hover:border-amber-300 transition-colors"
+                  >
+                    <span className="text-slate-700">
+                      Continuité d'exploitation ({normeLabel('570')}) — conclusion non signée
+                    </span>
+                    <span className="text-amber-700 font-medium flex items-center gap-1">
+                      Compléter <ArrowRight className="w-3 h-3" />
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
           )}
 
           {/* Filtre */}

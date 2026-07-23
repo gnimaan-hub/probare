@@ -7,11 +7,15 @@ import {
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { StepFooter } from '../components/mission/StepFooter'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
+import { useMissionProgress } from '../hooks/useMissionProgress'
 import { useProjetStore } from '../stores/projetStore'
 import { useSyncProjet } from '../hooks/useProjet'
 import { formatDate, normeLabel } from '../lib/utils'
+import { stepParRoute } from '../lib/mission'
 
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -36,6 +40,10 @@ export function DossierTravail() {
   const [generatingFeuille, setGeneratingFeuille] = useState(false)
   const [exportingDocx, setExportingDocx] = useState(false)
   const [exportingXlsx, setExportingXlsx] = useState(false)
+  const [confirmOpinion, setConfirmOpinion] = useState(false)
+  const [passingOpinion, setPassingOpinion] = useState(false)
+  const { progression } = useMissionProgress(projetId)
+  const step = stepParRoute('dossier-travail')!
 
   const loadData = async () => {
     if (!projetId) return null
@@ -74,6 +82,8 @@ export function DossierTravail() {
     }
   }
 
+  // Téléchargement SEUL — n'altère jamais l'état du pipeline (le passage à
+  // l'opinion est une action explicite et distincte, via le guidage en bas de page).
   const handleExporterDossier = async () => {
     if (!projetId) return
     setExportingDocx(true)
@@ -81,18 +91,27 @@ export function DossierTravail() {
       const { blob, filename } = await downloadBlob(`/projets/${projetId}/exporter-dossier`)
       saveBlob(blob, filename)
       toast.success('Dossier de travail exporté.')
-
-      // Passer en phase Rapport d'audit si pas encore fait, puis y naviguer
-      if (projetActif?.etat_courant === 'generation') {
-        const updated = await post(`/projets/${projetId}/transition`, { vers: 'opinion', acteur: 'utilisateur' })
-        setProjetActif(updated)
-        toast.success("Passage à la phase Rapport d'audit.")
-        navigate(`/projet/${projetId}/rapport-audit`)
-      }
     } catch (e: any) {
       toast.error(e.message)
     } finally {
       setExportingDocx(false)
+    }
+  }
+
+  // Action explicite et confirmée : clôturer le dossier et passer au rapport d'audit.
+  const handlePasserOpinion = async () => {
+    if (!projetId) return
+    setPassingOpinion(true)
+    try {
+      const updated = await post(`/projets/${projetId}/transition`, { vers: 'opinion', acteur: 'utilisateur' })
+      setProjetActif(updated)
+      setConfirmOpinion(false)
+      toast.success("Passage à la phase Rapport d'audit.")
+      navigate(`/projet/${projetId}/rapport-audit`)
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setPassingOpinion(false)
     }
   }
 
@@ -282,8 +301,34 @@ export function DossierTravail() {
               </motion.div>
             )}
           </motion.div>
+
+          {/* Guidage : clôturer le dossier et passer au rapport d'audit (action explicite) */}
+          {etatCourant === 'generation' && (
+            <StepFooter
+              projetId={projetId!}
+              step={step}
+              progression={progression}
+              onAdvance={() => setConfirmOpinion(true)}
+              advancing={passingOpinion}
+              blockedReason={nbOuvertes > 0 ? 'Tranchez toutes les exceptions avant de clôturer le dossier.' : undefined}
+            />
+          )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmOpinion}
+        title="Passer au rapport d'audit ?"
+        message={
+          "Vous clôturez le dossier de travail et passez à la phase finale d'opinion. " +
+          "Vous pourrez toujours revenir consulter le dossier, mais l'assemblage est considéré terminé.\n\n" +
+          "Pensez à avoir téléchargé le dossier (.docx) si nécessaire."
+        }
+        confirmLabel="Passer au rapport d'audit"
+        loading={passingOpinion}
+        onConfirm={handlePasserOpinion}
+        onCancel={() => setConfirmOpinion(false)}
+      />
     </div>
   )
 }

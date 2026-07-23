@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Save, ArrowRight, Info, CheckCircle, Shield, ShoppingCart, TrendingUp, FolderOpen, Landmark, Package, Users, Receipt, PieChart } from 'lucide-react'
+import { Save, Info, CheckCircle, Shield, ShoppingCart, TrendingUp, FolderOpen, Landmark, Package, Users, Receipt, PieChart, Building2 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
+import { FicheEntite } from '../components/mission/FicheEntite'
+import { StepFooter } from '../components/mission/StepFooter'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
+import { useMissionProgress } from '../hooks/useMissionProgress'
 import { useProjetStore } from '../stores/projetStore'
 import { formatDate } from '../lib/utils'
+import { estVerrouille, stepParRoute } from '../lib/mission'
 
 // ─── Cycles disponibles ───────────────────────────────────────────────────────
 
@@ -100,8 +104,6 @@ export function Cadrage() {
     client: '',
     nif: '',
     exercice: '',
-    seuil_signification: '',
-    seuil_planification: '',
     consentement_client: false,
     cycles_couverts: [] as string[],
     nature_mission: 'contractuelle' as string,
@@ -111,6 +113,8 @@ export function Cadrage() {
   const [referentiels, setReferentiels] = useState<{ id: string; libelle: string }[]>([])
   const [saving, setSaving] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
+  const { progression } = useMissionProgress(projetId)
+  const step = stepParRoute('cadrage')!
 
   useEffect(() => {
     if (!projetId) return
@@ -121,8 +125,6 @@ export function Cadrage() {
         client: p.client || '',
         nif: p.nif || '',
         exercice: p.exercice || '',
-        seuil_signification: p.seuil_signification?.toString() || '',
-        seuil_planification: p.seuil_planification?.toString() || '',
         consentement_client: Boolean(p.consentement_client),
         cycles_couverts: Array.isArray(p.cycles_couverts) ? p.cycles_couverts : [],
         nature_mission: p.nature_mission || 'contractuelle',
@@ -152,11 +154,7 @@ export function Cadrage() {
     }
     setSaving(true)
     try {
-      const updated = await patch(`/projets/${projetId}`, {
-        ...form,
-        seuil_signification: form.seuil_signification ? Number(form.seuil_signification) : null,
-        seuil_planification: form.seuil_planification ? Number(form.seuil_planification) : null,
-      })
+      const updated = await patch(`/projets/${projetId}`, { ...form })
       setProjetActif(updated)
       toast.success('Paramètres enregistrés.')
     } catch (e: any) {
@@ -189,8 +187,9 @@ export function Cadrage() {
   }
 
   const etatCourant = projetActif?.etat_courant || 'cadrage'
-  // Verrouillé uniquement à partir des contrôles (irréversible dès qu'on calcule)
-  const locked = ['controles', 'revue', 'generation', 'opinion'].includes(etatCourant)
+  // Verrouillé dès le lancement des travaux substantifs (périmètre figé) —
+  // logique centralisée et cohérente avec toutes les autres étapes.
+  const locked = estVerrouille(etatCourant)
 
   return (
     <div className="flex flex-col h-full">
@@ -198,18 +197,10 @@ export function Cadrage() {
         title="Cadrage de la mission"
         subtitle={projetActif?.nom}
         actions={
-          <div className="flex gap-2">
-            <button onClick={handleSave} disabled={saving || locked} className="btn-secondary">
-              {saving ? <Spinner size="sm" /> : <Save className="w-4 h-4" />}
-              Enregistrer
-            </button>
-            {!locked && (
-              <button onClick={handlePasserIngestion} disabled={transitioning} className="btn-primary">
-                {transitioning ? <Spinner size="sm" /> : <ArrowRight className="w-4 h-4" />}
-                Passer au contrôle interne
-              </button>
-            )}
-          </div>
+          <button onClick={handleSave} disabled={saving || locked} className="btn-secondary">
+            {saving ? <Spinner size="sm" /> : <Save className="w-4 h-4" />}
+            Enregistrer
+          </button>
         }
       />
 
@@ -331,6 +322,22 @@ export function Cadrage() {
             </div>
           </motion.div>
 
+          {/* Connaissance de l'entité (ISA 315) — rattachée au cadrage */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.03 }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Building2 className="w-4 h-4 text-primary-600" />
+              <h2 className="font-semibold text-slate-900">Connaissance de l'entité</h2>
+            </div>
+            <p className="text-sm text-slate-500 mb-3">
+              Prise de connaissance de l'entité auditée et de son environnement — la base de
+              l'évaluation des risques. Ces informations alimentent la planification.
+            </p>
+            <FicheEntite projetId={projetId!} locked={locked} />
+          </motion.div>
+
           {/* Périmètre */}
           <motion.div
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
@@ -422,6 +429,16 @@ export function Cadrage() {
               </InfoBanner>
             </div>
           </motion.div>
+
+          {!locked && (
+            <StepFooter
+              projetId={projetId!}
+              step={step}
+              progression={progression}
+              onAdvance={handlePasserIngestion}
+              advancing={transitioning}
+            />
+          )}
         </div>
       </div>
     </div>

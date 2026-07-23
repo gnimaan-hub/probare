@@ -105,7 +105,7 @@ function ProjetCard({ projet, onClick, onDelete, onSave }: {
         <span>
           Seuil : {projet.seuil_signification
             ? formatMontant(projet.seuil_signification)
-            : 'Non défini'}
+            : 'à définir en planification'}
         </span>
         <span>{formatDate(projet.cree_le)}</span>
       </div>
@@ -582,12 +582,13 @@ export function Dashboard() {
 
   const handleOpenProjet = (projet: Projet) => {
     setProjetActif(projet)
-    navigate(`/projet/${projet.id}/cadrage`)
+    navigate(`/projet/${projet.id}`)
   }
 
   const handleCreated = (projet: Projet) => {
     setProjets([projet, ...projets])
     setProjetActif(projet)
+    // Nouveau projet : on démarre directement au cadrage (première étape).
     navigate(`/projet/${projet.id}/cadrage`)
   }
 

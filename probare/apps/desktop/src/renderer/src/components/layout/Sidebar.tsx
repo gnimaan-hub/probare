@@ -1,81 +1,66 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  LayoutDashboard, Settings, FolderOpen, Upload,
-  ShieldCheck, AlertTriangle, FileText, ChevronLeft,
-  Activity, ArrowLeft, ClipboardList, BarChart2, Building2, Stamp, ListChecks, Scale, ScanSearch
+  LayoutDashboard, ShieldCheck, ArrowLeft, Building2, Lock, LayoutGrid, CheckCircle,
 } from 'lucide-react'
 import { useProjetStore } from '../../stores/projetStore'
-import { ETATS_PIPELINE, getEtatIndex } from '../../lib/utils'
+import {
+  LINEAR_STEPS, TRANSVERSAL_ITEMS, accesEtape, accesTransversal, statutEtape,
+} from '../../lib/mission'
 import { cn } from '../../lib/utils'
 
-interface NavItemDef {
+function NavRow({
+  to, icon: Icon, label, num, accessible, raison, statut,
+}: {
   to: string
   icon: React.ElementType
   label: string
-  requiresProjet?: boolean
-  minEtat?: string
+  num?: number
+  accessible: boolean
+  raison?: string
+  statut?: 'fait' | 'en_cours' | 'a_venir'
+}) {
+  if (!accessible) {
+    return (
+      <div
+        title={raison}
+        className="nav-item opacity-40 cursor-not-allowed flex items-center gap-2"
+      >
+        {num != null ? <StepBullet num={num} statut={statut} /> : <Icon className="w-4 h-4 flex-shrink-0" />}
+        <span className="flex-1 truncate">{label}</span>
+        <Lock className="w-3 h-3 flex-shrink-0 text-slate-300" />
+      </div>
+    )
+  }
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) => cn('nav-item flex items-center gap-2', isActive && 'nav-item-active')}
+    >
+      {num != null ? <StepBullet num={num} statut={statut} /> : <Icon className="w-4 h-4 flex-shrink-0" />}
+      <span className="flex-1 truncate">{label}</span>
+      {statut === 'fait' && <CheckCircle className="w-3.5 h-3.5 flex-shrink-0 text-emerald-500" />}
+    </NavLink>
+  )
 }
 
-const navItems: NavItemDef[] = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Tableau de bord' },
-]
-
-const projetNavItems: NavItemDef[] = [
-  { to: 'cadrage',          icon: Settings,      label: 'Cadrage',              minEtat: 'cadrage' },
-  { to: 'evaluation-ci',    icon: ShieldCheck,   label: 'Contrôle interne',     minEtat: 'cadrage' },
-  { to: 'ingestion',        icon: Upload,        label: 'Ingestion',            minEtat: 'evaluation_ci' },
-  { to: 'planification',    icon: ClipboardList, label: 'Planification',        minEtat: 'ingestion' },
-  { to: 'controles',        icon: BarChart2,     label: 'Travaux substantifs',  minEtat: 'planification' },
-  { to: 'journal-entries',  icon: ScanSearch,    label: 'Écritures de journal', minEtat: 'planification' },
-  { to: 'exceptions',       icon: AlertTriangle, label: 'Exceptions',           minEtat: 'travaux_substantifs' },
-  { to: 'ajustements',      icon: Scale,         label: 'Ajustements',          minEtat: 'travaux_substantifs' },
-  { to: 'diligences',       icon: ListChecks,    label: 'Diligences',           minEtat: 'cadrage' },
-  { to: 'dossier-travail',  icon: FileText,      label: 'Dossier de travail',   minEtat: 'revue' },
-  { to: 'rapport-audit',    icon: Stamp,         label: "Rapport d'audit",      minEtat: 'generation' },
-  { to: 'journal',          icon: Activity,      label: 'Historique',           minEtat: 'cadrage' },
-]
-
-function PipelineProgress({ etatCourant }: { etatCourant: string }) {
-  const currentIdx = getEtatIndex(etatCourant)
+function StepBullet({ num, statut }: { num: number; statut?: 'fait' | 'en_cours' | 'a_venir' }) {
   return (
-    <div className="px-3 pb-2">
-      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-        Progression
-      </div>
-      <div className="space-y-0.5">
-        {ETATS_PIPELINE.map((step, idx) => {
-          const isDone = idx < currentIdx
-          const isActive = idx === currentIdx
-          return (
-            <div
-              key={step.id}
-              className={cn(
-                'flex items-center gap-2 px-2 py-1 rounded text-xs',
-                isDone && 'text-emerald-600',
-                isActive && 'text-primary-700 font-semibold',
-                !isDone && !isActive && 'text-slate-400'
-              )}
-            >
-              <div className={cn(
-                'w-1.5 h-1.5 rounded-full flex-shrink-0',
-                isDone && 'bg-emerald-500',
-                isActive && 'bg-primary-500 animate-pulse-soft',
-                !isDone && !isActive && 'bg-slate-300'
-              )} />
-              {step.label}
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    <span className={cn(
+      'w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center flex-shrink-0',
+      statut === 'fait' ? 'bg-emerald-100 text-emerald-600'
+      : statut === 'en_cours' ? 'bg-primary-600 text-white'
+      : 'bg-slate-100 text-slate-400',
+    )}>
+      {num}
+    </span>
   )
 }
 
 export function Sidebar() {
   const navigate = useNavigate()
   const { projetActif, setProjetActif } = useProjetStore()
-  const currentEtatIdx = projetActif ? getEtatIndex(projetActif.etat_courant) : -1
+  const etatCourant = projetActif?.etat_courant ?? 'cadrage'
 
   return (
     <aside className="w-56 flex-shrink-0 h-screen bg-white border-r border-border flex flex-col select-none">
@@ -89,9 +74,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation principale */}
       <nav className="flex-1 overflow-y-auto py-3 space-y-1 px-2">
-        {/* Projets */}
         <NavLink
           to="/dashboard"
           className={({ isActive }) => cn('nav-item', isActive && 'nav-item-active')}
@@ -100,7 +83,6 @@ export function Sidebar() {
           Tableau de bord
         </NavLink>
 
-        {/* Projet actif */}
         <AnimatePresence>
           {projetActif && (
             <motion.div
@@ -118,34 +100,55 @@ export function Sidebar() {
                   <ArrowLeft className="w-3 h-3" />
                   Tous les projets
                 </button>
-                <div className="px-3 py-2 mb-2 bg-slate-50 rounded-lg">
+                <div className="px-3 py-2 mb-1 bg-slate-50 rounded-lg">
                   <div className="text-xs font-semibold text-slate-700 truncate">{projetActif.nom}</div>
                   <div className="text-xs text-slate-500">{projetActif.exercice || 'Exercice N/A'}</div>
                 </div>
               </div>
 
-              <div className="section-title">Mission</div>
-              {projetNavItems.map((item) => {
-                const minIdx = getEtatIndex(item.minEtat || 'cadrage')
-                const isAccessible = currentEtatIdx >= minIdx - 1
+              {/* Plan de mission (cockpit) */}
+              <NavLink
+                to={`/projet/${projetActif.id}`}
+                end
+                className={({ isActive }) => cn('nav-item', isActive && 'nav-item-active')}
+              >
+                <LayoutGrid className="w-4 h-4 flex-shrink-0" />
+                Plan de mission
+              </NavLink>
+
+              {/* Parcours linéaire */}
+              <div className="section-title mt-2">Parcours de la mission</div>
+              {LINEAR_STEPS.map((step) => {
+                const { accessible, raison } = accesEtape(step.etat, etatCourant)
                 return (
-                  <NavLink
-                    key={item.to}
-                    to={`/projet/${projetActif.id}/${item.to}`}
-                    className={({ isActive }) =>
-                      cn('nav-item', isActive && 'nav-item-active',
-                        !isAccessible && 'opacity-40 pointer-events-none')
-                    }
-                  >
-                    <item.icon className="w-4 h-4 flex-shrink-0" />
-                    {item.label}
-                  </NavLink>
+                  <NavRow
+                    key={step.etat}
+                    to={`/projet/${projetActif.id}/${step.route}`}
+                    icon={step.icon}
+                    label={step.short}
+                    num={step.num}
+                    statut={statutEtape(step.etat, etatCourant)}
+                    accessible={accessible}
+                    raison={raison}
+                  />
                 )
               })}
 
-              <div className="pt-3">
-                <PipelineProgress etatCourant={projetActif.etat_courant} />
-              </div>
+              {/* Travaux transversaux */}
+              <div className="section-title mt-3">Travaux transversaux</div>
+              {TRANSVERSAL_ITEMS.map((item) => {
+                const { accessible, raison } = accesTransversal(item, etatCourant)
+                return (
+                  <NavRow
+                    key={item.id}
+                    to={`/projet/${projetActif.id}/${item.route}`}
+                    icon={item.icon}
+                    label={item.short}
+                    accessible={accessible}
+                    raison={raison}
+                  />
+                )
+              })}
             </motion.div>
           )}
         </AnimatePresence>
