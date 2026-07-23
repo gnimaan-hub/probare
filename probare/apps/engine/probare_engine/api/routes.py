@@ -14,7 +14,9 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ..storage.db import ProjectDB
-from ..statemachine.pipeline import transition, peut_transitionner, PipelineError
+from ..statemachine.pipeline import (
+    transition, peut_transitionner, PipelineError, ORDRE_ETATS,
+)
 from ..ingestion.excel_csv import lire_fichier, hash_file
 from ..controls.engine import (
     # Trésorerie (existants)
@@ -539,6 +541,70 @@ def get_etat(projet_id: str):
     if not projet:
         raise HTTPException(404, "Projet introuvable.")
     return {"etat_courant": projet["etat_courant"]}
+
+
+@router.get("/projets/{projet_id}/progression")
+def get_progression(projet_id: str):
+    """Vue d'ensemble de l'avancement de la mission — source de vérité pour le
+    cockpit et le guidage « prochaine étape ». Combine :
+    - le statut de chaque étape linéaire (fait / en cours / à venir) ;
+    - la disponibilité de la transition suivante (garde backend + sa raison) ;
+    - l'état des diligences transversales obligatoires (ISA 240 & 570).
+    Aucun calcul n'est refait côté frontend : tout vient d'ici."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+
+    # Résout les anciens états vers l'ordre nominal.
+    _alias = {"controles": "travaux_substantifs", "extraction": "ingestion"}
+    etat = _alias.get(projet["etat_courant"], projet["etat_courant"])
+    idx = ORDRE_ETATS.index(etat) if etat in ORDRE_ETATS else 0
+
+    etapes = []
+    for i, e in enumerate(ORDRE_ETATS):
+        statut = "fait" if i < idx else ("en_cours" if i == idx else "a_venir")
+        etapes.append({"id": e, "statut": statut})
+
+    # Transition suivante et sa disponibilité (garde déterministe backend).
+    prochaine = None
+    if idx < len(ORDRE_ETATS) - 1:
+        vers = ORDRE_ETATS[idx + 1]
+        peut, raison = peut_transitionner(db, projet_id, vers)
+        prochaine = {"vers": vers, "peut": peut, "raison": raison}
+
+    # Diligences transversales obligatoires (surfacées tôt, pas seulement au bout).
+    from ..controls.registry import JET_SIGNAL_REF
+    refs_jet = set(JET_SIGNAL_REF.values())
+    resultats = db.list_resultats(projet_id)
+    jet_fait = any(r.get("controle_ref") in refs_jet for r in resultats)
+    jet_ecritures = db.list_jet_ecritures(projet_id) if hasattr(db, "list_jet_ecritures") else []
+    eval_cont = db.get_peripherie_evaluation(projet_id, "continuite")
+    continuite_conclue = bool(eval_cont and eval_cont.get("conclusion"))
+
+    transversal = {
+        "journal_entries": {
+            "obligatoire": True,
+            "fait": jet_fait,
+            "nb_signalees": len(jet_ecritures),
+            "disponible_des": "travaux_substantifs",
+        },
+        "continuite": {
+            "obligatoire": True,
+            "conclue": continuite_conclue,
+            "disponible_des": "cadrage",
+        },
+    }
+
+    return {
+        "etat_courant": projet["etat_courant"],
+        "etape_courante": etat,
+        "index": idx,
+        "total": len(ORDRE_ETATS),
+        "etapes": etapes,
+        "prochaine": prochaine,
+        "transversal": transversal,
+    }
 
 
 class TransitionBody(BaseModel):

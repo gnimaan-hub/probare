@@ -90,6 +90,18 @@ def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
                 "ou confirmez explicitement le passage en génération en acceptant "
                 "l'incidence sur l'opinion (confirmer_depassement_seuil=true)."
             )
+        # ISA 240 : les tests des écritures de journal (Journal Entry Testing) sont
+        # une diligence obligatoire et transversale. Ils doivent avoir été exécutés
+        # (au moins un résultat porté par une référence de signal JET) avant le dossier.
+        from ..controls.registry import JET_SIGNAL_REF
+        refs_jet = set(JET_SIGNAL_REF.values())
+        if not any(r.get("controle_ref") in refs_jet for r in db.list_resultats(projet_id)):
+            raise PipelineError(
+                f"Les tests des écritures de journal ({norme(240)}) n'ont pas été exécutés. "
+                "Lancez l'analyse dans l'écran « Écritures de journal » avant de passer "
+                "en génération : c'est une diligence obligatoire (détection du contournement "
+                "des contrôles)."
+            )
         # M3 (ISA 570) : la conclusion sur la continuité d'exploitation doit être
         # documentée et signée avant d'assembler le dossier.
         eval_continuite = db.get_peripherie_evaluation(projet_id, "continuite")
