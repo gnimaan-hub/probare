@@ -1,16 +1,18 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, ShieldCheck, ArrowLeft, Building2, Lock, LayoutGrid, CheckCircle,
 } from 'lucide-react'
 import { useProjetStore } from '../../stores/projetStore'
+import { useMissionProgress } from '../../hooks/useMissionProgress'
 import {
   LINEAR_STEPS, TRANSVERSAL_ITEMS, accesEtape, accesTransversal, statutEtape,
 } from '../../lib/mission'
 import { cn } from '../../lib/utils'
 
 function NavRow({
-  to, icon: Icon, label, num, accessible, raison, statut,
+  to, icon: Icon, label, num, accessible, raison, statut, badge,
 }: {
   to: string
   icon: React.ElementType
@@ -19,6 +21,8 @@ function NavRow({
   accessible: boolean
   raison?: string
   statut?: 'fait' | 'en_cours' | 'a_venir'
+  /** Pastille de notification (nb d'actions dues) sur cet item. */
+  badge?: number
 }) {
   if (!accessible) {
     return (
@@ -39,6 +43,14 @@ function NavRow({
     >
       {num != null ? <StepBullet num={num} statut={statut} /> : <Icon className="w-4 h-4 flex-shrink-0" />}
       <span className="flex-1 truncate">{label}</span>
+      {badge != null && badge > 0 && (
+        <span
+          title={`${badge} diligence(s) à réaliser à cette étape`}
+          className="min-w-4 h-4 px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0"
+        >
+          {badge}
+        </span>
+      )}
       {statut === 'fait' && <CheckCircle className="w-3.5 h-3.5 flex-shrink-0 text-emerald-500" />}
     </NavLink>
   )
@@ -59,8 +71,13 @@ function StepBullet({ num, statut }: { num: number; statut?: 'fait' | 'en_cours'
 
 export function Sidebar() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { projetActif, setProjetActif } = useProjetStore()
   const etatCourant = projetActif?.etat_courant ?? 'cadrage'
+  const { progression, recharger } = useMissionProgress(projetActif?.id)
+  // Rafraîchit les badges (diligences dues) à chaque navigation interne au projet.
+  useEffect(() => { if (projetActif) recharger() }, [location.pathname, projetActif?.id])
+  const diligencesDues = progression?.transversal?.diligences?.nb_dues ?? 0
 
   return (
     <aside className="w-56 flex-shrink-0 h-screen bg-white border-r border-border flex flex-col select-none">
@@ -146,6 +163,7 @@ export function Sidebar() {
                     label={item.short}
                     accessible={accessible}
                     raison={raison}
+                    badge={item.id === 'diligences' ? diligencesDues : undefined}
                   />
                 )
               })}

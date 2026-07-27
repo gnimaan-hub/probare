@@ -12,9 +12,22 @@ export interface ProchaineTransition {
   raison: string
 }
 
+export interface DiligenceGroupeProgression {
+  id: string
+  titre: string
+  codes: string[]
+  disponible_des: string
+  echeance_etat: string
+  conclues: number
+  total: number
+  disponible: boolean
+  due: boolean
+}
+
 export interface TransversalProgression {
   journal_entries: { obligatoire: boolean; fait: boolean; nb_signalees: number; disponible_des: string }
   continuite: { obligatoire: boolean; conclue: boolean; disponible_des: string }
+  diligences: { groupes: DiligenceGroupeProgression[]; nb_dues: number }
 }
 
 export interface Progression {

@@ -46,15 +46,58 @@ def _est_retour_arriere(etat_courant: str, vers: str) -> bool:
     return ORDRE_ETATS.index(vers) < ORDRE_ETATS.index(etat_courant)
 
 
+# Diligences de périphérie obligatoires, réparties en 3 groupes temporels dont
+# la conclusion signée conditionne une transition (cf. controls/peripherie.py) :
+#   - début de mission  → avant l'ingestion
+#   - travaux & clôture → avant le dossier de travail (génération)
+#   - conclusion        → avant le rapport d'audit (opinion)
+_DILIGENCES_PAR_TRANSITION: dict[str, list[str]] = {
+    "ingestion":  ["acceptation", "fraude", "parties_liees"],
+    "generation": ["continuite", "evenements_posterieurs"],
+    "opinion":    ["declarations_ecrites", "gouvernance"],
+}
+_DILIGENCE_LIBELLES: dict[str, str] = {
+    "acceptation": "Acceptation et maintien de la mission",
+    "fraude": "Risque de fraude",
+    "parties_liees": "Parties liées",
+    "evenements_posterieurs": "Événements postérieurs à la clôture",
+    "continuite": "Continuité d'exploitation",
+    "declarations_ecrites": "Déclarations écrites de la direction",
+    "gouvernance": "Communication avec la gouvernance",
+}
+
+
+def _diligences_non_conclues(db: ProjectDB, projet_id: str, codes: list[str]) -> list[str]:
+    """Libellés des diligences dont la conclusion signée manque encore."""
+    manquantes = []
+    for c in codes:
+        ev = db.get_peripherie_evaluation(projet_id, c)
+        if not ev or not ev.get("conclusion"):
+            manquantes.append(_DILIGENCE_LIBELLES.get(c, c))
+    return manquantes
+
+
 def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
                      confirmer_depassement_seuil: bool = False) -> None:
     """
     Gardes déterministes par transition (progression uniquement) :
+    - ingestion           : diligences de début de mission conclues (210/240/550).
     - travaux_substantifs : seuil de signification défini (ISA/NEP 320).
     - revue               : au moins un contrôle exécuté (ISA/NEP 330).
-    - generation          : exceptions tranchées + verrou ISA/NEP 450 sur le
-                            cumul des anomalies non corrigées.
+    - generation          : exceptions tranchées + verrou ISA/NEP 450 + tests des
+                            écritures (240) + diligences de clôture (560/570).
+    - opinion             : diligences de conclusion conclues (580/260-265).
     """
+    if vers == "ingestion":
+        manquantes = _diligences_non_conclues(
+            db, projet_id, _DILIGENCES_PAR_TRANSITION["ingestion"])
+        if manquantes:
+            raise PipelineError(
+                f"Diligences de début de mission à conclure avant l'ingestion "
+                f"({norme(210)}, {norme(240)}, {norme(550)}) : {', '.join(manquantes)}. "
+                "Complétez-les (questionnaire, évaluation, conclusion signée) dans l'écran Diligences."
+            )
+
     if vers == "travaux_substantifs":
         seuil = projet.get("seuil_signification")
         if not seuil or float(seuil) <= 0:
@@ -102,15 +145,25 @@ def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
                 "en génération : c'est une diligence obligatoire (détection du contournement "
                 "des contrôles)."
             )
-        # M3 (ISA 570) : la conclusion sur la continuité d'exploitation doit être
-        # documentée et signée avant d'assembler le dossier.
-        eval_continuite = db.get_peripherie_evaluation(projet_id, "continuite")
-        if not eval_continuite or not eval_continuite.get("conclusion"):
+        # Diligences de clôture (ISA 560 événements postérieurs + ISA 570 continuité) :
+        # conclusions signées obligatoires avant d'assembler le dossier de travail.
+        manquantes = _diligences_non_conclues(
+            db, projet_id, _DILIGENCES_PAR_TRANSITION["generation"])
+        if manquantes:
             raise PipelineError(
-                f"La conclusion sur la continuité d'exploitation ({norme(570)}) n'est pas "
-                "documentée. Complétez la diligence « Continuité d'exploitation » "
-                "(questionnaire, évaluation, conclusion signée) dans l'écran Diligences "
-                "avant de passer en génération."
+                f"Diligences de clôture à conclure avant le dossier de travail "
+                f"({norme(560)}, {norme(570)}) : {', '.join(manquantes)}. "
+                "Complétez-les (questionnaire, évaluation, conclusion signée) dans l'écran Diligences."
+            )
+
+    if vers == "opinion":
+        manquantes = _diligences_non_conclues(
+            db, projet_id, _DILIGENCES_PAR_TRANSITION["opinion"])
+        if manquantes:
+            raise PipelineError(
+                f"Diligences de conclusion à finaliser avant le rapport d'audit "
+                f"({norme(580)}, {norme(260)}) : {', '.join(manquantes)}. "
+                "Complétez-les (questionnaire, évaluation, conclusion signée) dans l'écran Diligences."
             )
 
 

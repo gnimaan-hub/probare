@@ -753,7 +753,19 @@ export function Exceptions() {
 
   const ouvertes = exceptions.filter((e) => e.statut === 'ouverte')
   const tranchees = exceptions.filter((e) => e.statut === 'tranchee')
-  const filtrees = filtre === 'toutes' ? exceptions : exceptions.filter((e) => e.statut === filtre)
+  // Hiérarchisation : les ouvertes d'abord, puis par sévérité décroissante
+  // (critique → significative → mineure) — l'auditeur traite le plus grave en tête.
+  const RANG_SEVERITE: Record<string, number> = { critique: 0, significative: 1, mineure: 2 }
+  const trierParGravite = (liste: Exception[]) =>
+    [...liste].sort((a, b) => {
+      // Ouvertes avant tranchées
+      if (a.statut !== b.statut) return a.statut === 'ouverte' ? -1 : 1
+      const ra = RANG_SEVERITE[a.severite || 'mineure'] ?? 3
+      const rb = RANG_SEVERITE[b.severite || 'mineure'] ?? 3
+      return ra - rb
+    })
+  const base = filtre === 'toutes' ? exceptions : exceptions.filter((e) => e.statut === filtre)
+  const filtrees = trierParGravite(base)
   const toutesTranschees = ouvertes.length === 0 && exceptions.length > 0
 
   return (

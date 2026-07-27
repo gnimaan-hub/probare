@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ShieldAlert, Users, CalendarClock, HeartPulse, FileSignature, Landmark,
   Handshake, CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronRight,
-  Sparkles, Loader2, Info, PenLine, Mail, Copy, Wand2,
+  Sparkles, Loader2, Info, PenLine, Mail, Copy, Wand2, Lock,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
@@ -12,7 +12,73 @@ import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore } from '../stores/projetStore'
 import { useSyncProjet } from '../hooks/useProjet'
-import { formatMontant, formatDate } from '../lib/utils'
+import { formatMontant, formatDate, getEtatIndex } from '../lib/utils'
+
+// ─── Groupes temporels de diligences ─────────────────────────────────────────
+// Chaque groupe est réalisable/obligatoire à un moment précis du parcours.
+interface GroupeDiligence {
+  id: string
+  titre: string
+  sous_titre: string
+  codes: string[]
+  disponibleDes: string   // état du pipeline à partir duquel le groupe est actionnable
+  echeance: string        // libellé de l'échéance (avant quelle étape)
+}
+
+const GROUPES_DILIGENCES: GroupeDiligence[] = [
+  {
+    id: 'debut', titre: 'Début de mission',
+    sous_titre: 'Acceptation, fraude et parties liées — à mener dès l\'ouverture du dossier.',
+    codes: ['acceptation', 'fraude', 'parties_liees'],
+    disponibleDes: 'cadrage', echeance: 'À conclure avant l\'ingestion',
+  },
+  {
+    id: 'cloture', titre: 'Travaux & clôture',
+    sous_titre: 'Événements postérieurs et continuité d\'exploitation — après la planification.',
+    codes: ['evenements_posterieurs', 'continuite'],
+    disponibleDes: 'travaux_substantifs', echeance: 'À conclure avant le dossier de travail',
+  },
+  {
+    id: 'conclusion', titre: 'Conclusion de mission',
+    sous_titre: 'Déclarations écrites de la direction et communication à la gouvernance.',
+    codes: ['declarations_ecrites', 'gouvernance'],
+    disponibleDes: 'generation', echeance: 'À conclure avant le rapport d\'audit',
+  },
+]
+
+// Guidage statique affiché DÈS L'OUVERTURE de chaque diligence : ce qu'il faut
+// surveiller et les documents/éléments à réunir pour répondre au questionnaire.
+// L'IA affinera ensuite ces points en fonction des réponses (post-évaluation).
+const GUIDE_STATIQUE: Record<string, { vigilance: string[]; a_reunir: string[] }> = {
+  acceptation: {
+    vigilance: ['Indépendance et absence de conflit d\'intérêts', 'Intégrité de la direction', 'Compétences et ressources disponibles pour la mission'],
+    a_reunir: ['Lettre de mission signée', 'Procès-verbal de nomination', 'Éventuel contact avec le prédécesseur'],
+  },
+  fraude: {
+    vigilance: ['Triangle de la fraude (pression, opportunité, rationalisation)', 'Contrôles susceptibles d\'être contournés par la direction', 'Écritures inhabituelles ou de dernière minute'],
+    a_reunir: ['Compte rendu d\'entretiens direction/gouvernance sur la fraude', 'Cartographie des processus sensibles', 'Grand livre pour le test des écritures (ISA 240)'],
+  },
+  parties_liees: {
+    vigilance: ['Exhaustivité de la liste des parties liées', 'Conditions des transactions (hors marché ?)', 'Comptes courants d\'associés'],
+    a_reunir: ['Liste des parties liées de la direction', 'Conventions réglementées', 'Détail des comptes courants d\'associés'],
+  },
+  evenements_posterieurs: {
+    vigilance: ['Événements entre la clôture et la date du rapport', 'Distinction ajustement / mention en annexe', 'Litiges, sinistres, décisions postérieures'],
+    a_reunir: ['PV d\'assemblées et de conseils postérieurs', 'Situation intermédiaire récente', 'Courriers d\'avocats à jour'],
+  },
+  continuite: {
+    vigilance: ['Capitaux propres et fonds de roulement', 'Trésorerie et échéances de dettes', 'Dépendance à un client/fournisseur/financement clé'],
+    a_reunir: ['Prévisionnel de trésorerie', 'Tableau des échéances des emprunts', 'Engagements de soutien éventuels'],
+  },
+  declarations_ecrites: {
+    vigilance: ['Couverture des points sensibles (fraude, parties liées, continuité)', 'Cohérence avec les éléments probants collectés', 'Signataires habilités'],
+    a_reunir: ['Projet de lettre d\'affirmation', 'Liste des points à faire confirmer par la direction'],
+  },
+  gouvernance: {
+    vigilance: ['Faiblesses significatives du contrôle interne à communiquer', 'Anomalies non corrigées', 'Étendue et calendrier des travaux'],
+    a_reunir: ['Synthèse des faiblesses du contrôle interne', 'Tableau des exceptions non corrigées'],
+  },
+}
 
 // ─── Types (miroir de GET /peripherie) ───────────────────────────────────────
 
@@ -80,11 +146,14 @@ const DILIGENCE_ICONS: Record<string, any> = {
 }
 
 const PHASES: Record<string, string> = {
-  cadrage: 'Dès le cadrage',
+  cadrage: 'Cadrage',
+  evaluation_ci: 'Contrôle interne',
+  ingestion: 'Ingestion',
   planification: 'Planification',
   travaux: 'Travaux substantifs',
+  travaux_substantifs: 'Travaux substantifs',
   revue: 'Revue',
-  generation: 'Avant le rapport',
+  generation: 'Dossier de travail',
 }
 
 const STATUTS: Record<string, { label: string; cls: string }> = {
@@ -423,7 +492,7 @@ function ConclusionBlock({
 // ─── Carte diligence (accordéon) ──────────────────────────────────────────────
 
 function DiligenceCard({
-  d, projetId, expanded, onToggle, onReponse, onEvaluer, evaluating, onUpdated,
+  d, projetId, expanded, onToggle, onReponse, onEvaluer, evaluating, onUpdated, disabled = false,
 }: {
   d: Diligence
   projetId: string
@@ -433,7 +502,10 @@ function DiligenceCard({
   onEvaluer: (code: string) => Promise<void>
   evaluating: string | null
   onUpdated: () => void
+  /** Diligence pas encore disponible à la phase courante → lecture seule. */
+  disabled?: boolean
 }) {
+  const guide = GUIDE_STATIQUE[d.code]
   const Icon = DILIGENCE_ICONS[d.code] || ShieldAlert
   const statut = STATUTS[d.statut] || STATUTS.non_commencee
   const niveau = d.evaluation?.niveau || d.score_info?.niveau
@@ -495,6 +567,39 @@ function DiligenceCard({
             <div className="p-4 pt-3 space-y-4">
               <p className="text-xs text-slate-500 leading-relaxed">{d.description}</p>
 
+              {/* Guidage permanent (dès l'ouverture) : quoi surveiller et quels
+                  documents réunir pour répondre — sans attendre l'évaluation IA. */}
+              {guide && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Points de vigilance
+                    </p>
+                    <ul className="space-y-1">
+                      {guide.vigilance.map((p, i) => (
+                        <li key={i} className="text-xs text-amber-800 leading-relaxed flex gap-1.5">
+                          <span className="flex-shrink-0 mt-0.5">·</span>{p}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5" />
+                      Documents / éléments à réunir
+                    </p>
+                    <ul className="space-y-1">
+                      {guide.a_reunir.map((p, i) => (
+                        <li key={i} className="text-xs text-blue-800 leading-relaxed flex gap-1.5">
+                          <span className="flex-shrink-0 mt-0.5">·</span>{p}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
               {/* Questionnaire */}
               <div className="space-y-2">
                 {d.questions.map((q) => (
@@ -502,7 +607,7 @@ function DiligenceCard({
                     key={q.id}
                     question={q}
                     onChange={(id, rep, c) => onReponse(d.code, id, rep, c)}
-                    disabled={false}
+                    disabled={disabled}
                   />
                 ))}
               </div>
@@ -511,7 +616,7 @@ function DiligenceCard({
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => onEvaluer(d.code)}
-                  disabled={evaluating === d.code || d.nb_repondues < 3}
+                  disabled={evaluating === d.code || d.nb_repondues < 3 || disabled}
                   className="btn-secondary text-xs py-1.5"
                   title={d.nb_repondues < 3 ? 'Répondez à au moins 3 questions' : ''}
                 >
@@ -686,53 +791,90 @@ export function Diligences() {
   }
 
   const nbConclues = diligences.filter((d) => d.statut === 'conclue').length
-  const continuite = diligences.find((d) => d.code === 'continuite')
+  const etatCourant = projetActif?.etat_courant || 'cadrage'
+  const idxCourant = getEtatIndex(etatCourant)
+  const byCode = Object.fromEntries(diligences.map((d) => [d.code, d]))
 
   return (
     <div className="flex flex-col h-full">
       <Header
         title="Diligences de périphérie de mission"
-        subtitle={`Acceptation, fraude, parties liées, continuité… · ${nbConclues}/${diligences.length || 7} conclue${nbConclues !== 1 ? 's' : ''}`}
+        subtitle={`3 temps de la mission · ${nbConclues}/${diligences.length || 7} conclue${nbConclues !== 1 ? 's' : ''}`}
       />
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-4xl mx-auto space-y-4">
+        <div className="max-w-4xl mx-auto space-y-6">
           <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-50 border border-blue-200">
             <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-blue-800">
-              Ces diligences couvrent la <strong>périphérie de la mission</strong> : acceptation,
-              fraude, parties liées, événements postérieurs, continuité d'exploitation,
-              déclarations écrites et communication à la gouvernance. Pour chacune : répondez au
-              questionnaire, l'IA synthétise et propose un projet de conclusion, vous signez.
-              L'état de chaque diligence est versé au dossier de travail.
+              Ces diligences transversales sont regroupées en <strong>trois temps</strong> : chacune se
+              réalise à un moment précis du parcours et <strong>doit être conclue avant de franchir
+              l'étape correspondante</strong>. Pour chacune : réunissez les documents, répondez au
+              questionnaire, l'IA synthétise et propose une conclusion, vous signez.
             </p>
           </div>
-
-          {continuite && continuite.statut !== 'conclue' && (
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-200">
-              <HeartPulse className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-800">
-                La conclusion signée sur la <strong>continuité d'exploitation</strong> ({continuite.nep_ref})
-                est obligatoire avant le passage en génération du dossier.
-              </p>
-            </div>
-          )}
 
           {loading ? (
             <div className="flex justify-center py-16"><Spinner /></div>
           ) : (
-            diligences.map((d) => (
-              <DiligenceCard
-                key={d.code}
-                d={d}
-                projetId={projetId!}
-                expanded={expanded === d.code}
-                onToggle={() => setExpanded(expanded === d.code ? null : d.code)}
-                onReponse={handleReponse}
-                onEvaluer={handleEvaluer}
-                evaluating={evaluating}
-                onUpdated={load}
-              />
-            ))
+            GROUPES_DILIGENCES.map((groupe) => {
+              const items = groupe.codes.map((c) => byCode[c]).filter(Boolean) as Diligence[]
+              if (items.length === 0) return null
+              const disponible = idxCourant >= getEtatIndex(groupe.disponibleDes)
+              const conclues = items.filter((d) => d.statut === 'conclue').length
+              const complet = conclues === items.length
+              return (
+                <section key={groupe.id} className="space-y-3">
+                  <div className={`rounded-xl border p-4 ${
+                    complet ? 'bg-emerald-50/50 border-emerald-200'
+                      : disponible ? 'bg-amber-50/40 border-amber-200'
+                      : 'bg-slate-50 border-border'
+                  }`}>
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+                          {groupe.titre}
+                          {complet
+                            ? <CheckCircle className="w-4 h-4 text-emerald-500" />
+                            : !disponible && <Lock className="w-3.5 h-3.5 text-slate-400" />}
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">{groupe.sous_titre}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                          complet ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {conclues}/{items.length} conclue{items.length > 1 ? 's' : ''}
+                        </span>
+                        <p className="text-[11px] text-slate-500 mt-1">{groupe.echeance}</p>
+                      </div>
+                    </div>
+                    {!disponible && (
+                      <p className="text-xs text-slate-500 mt-2 flex items-center gap-1.5">
+                        <Lock className="w-3 h-3" />
+                        Disponible à partir de l'étape « {PHASES[groupe.disponibleDes] || groupe.disponibleDes} ».
+                        Vous pouvez déjà en prendre connaissance, mais y répondre est réservé à ce moment.
+                      </p>
+                    )}
+                  </div>
+
+                  {items.map((d) => (
+                    <DiligenceCard
+                      key={d.code}
+                      d={d}
+                      projetId={projetId!}
+                      expanded={expanded === d.code}
+                      onToggle={() => setExpanded(expanded === d.code ? null : d.code)}
+                      onReponse={handleReponse}
+                      onEvaluer={handleEvaluer}
+                      evaluating={evaluating}
+                      onUpdated={load}
+                      disabled={!disponible}
+                    />
+                  ))}
+                </section>
+              )
+            })
           )}
 
           {projetActif?.consentement_client === false && (

@@ -186,6 +186,20 @@ def _llm_guard(db: ProjectDB, projet_id: str) -> tuple[dict, "Anonymizer"]:
     return projet, Anonymizer()
 
 
+def _reidentifier(anon: "Anonymizer", obj):
+    """Réidentifie récursivement toutes les chaînes d'une structure LLM
+    (str / list / dict). Indispensable dès qu'un contexte pseudonymisé a été
+    envoyé au modèle : sans cela, la sortie garde les jetons « [ENTITE_xxx] »
+    au lieu de la raison sociale réelle."""
+    if isinstance(obj, str):
+        return anon.re_identifier(obj)
+    if isinstance(obj, list):
+        return [_reidentifier(anon, x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _reidentifier(anon, v) for k, v in obj.items()}
+    return obj
+
+
 def _auto_interpreter(db, projet_id: str, projet: dict, exceptions: list[dict]) -> None:
     """Lance l'interprétation IA automatique de toutes les exceptions."""
     if not exceptions or not os.environ.get("ANTHROPIC_API_KEY"):
@@ -582,6 +596,38 @@ def get_progression(projet_id: str):
     eval_cont = db.get_peripherie_evaluation(projet_id, "continuite")
     continuite_conclue = bool(eval_cont and eval_cont.get("conclusion"))
 
+    # Diligences de périphérie réparties en 3 groupes temporels, chacun conditionnant
+    # une transition. « due » = groupe disponible, échéance non franchie, non complet.
+    _GROUPES_DILIGENCES = [
+        {"id": "debut", "titre": "Début de mission",
+         "codes": ["acceptation", "fraude", "parties_liees"],
+         "disponible_des": "cadrage", "echeance_etat": "ingestion"},
+        {"id": "cloture", "titre": "Travaux & clôture",
+         "codes": ["evenements_posterieurs", "continuite"],
+         "disponible_des": "travaux_substantifs", "echeance_etat": "generation"},
+        {"id": "conclusion", "titre": "Conclusion de mission",
+         "codes": ["declarations_ecrites", "gouvernance"],
+         "disponible_des": "generation", "echeance_etat": "opinion"},
+    ]
+    groupes = []
+    nb_dues = 0
+    for g in _GROUPES_DILIGENCES:
+        conclues = sum(
+            1 for c in g["codes"]
+            if (ev := db.get_peripherie_evaluation(projet_id, c)) and ev.get("conclusion")
+        )
+        total = len(g["codes"])
+        idx_dispo = ORDRE_ETATS.index(g["disponible_des"])
+        idx_ech = ORDRE_ETATS.index(g["echeance_etat"])
+        disponible = idx >= idx_dispo
+        due = disponible and idx < idx_ech and conclues < total
+        if due:
+            nb_dues += total - conclues
+        groupes.append({
+            **{k: g[k] for k in ("id", "titre", "codes", "disponible_des", "echeance_etat")},
+            "conclues": conclues, "total": total, "disponible": disponible, "due": due,
+        })
+
     transversal = {
         "journal_entries": {
             "obligatoire": True,
@@ -593,6 +639,10 @@ def get_progression(projet_id: str):
             "obligatoire": True,
             "conclue": continuite_conclue,
             "disponible_des": "cadrage",
+        },
+        "diligences": {
+            "groupes": groupes,
+            "nb_dues": nb_dues,
         },
     }
 
@@ -1110,6 +1160,7 @@ def evaluer_qci(projet_id: str, cycle: str):
         ctx_qci["client"] = anon_qci.pseudonymiser(projet.get("client") or "", entites_qci) if entites_qci else projet.get("client")
         llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
         evaluation = llm.evaluer_controle_interne(cycle, reponses_enrichies, ctx_qci)
+        evaluation = _reidentifier(anon_qci, evaluation)
 
     evaluation["score"] = score_info["score"]
     evaluation["niveau_risque"] = score_info["niveau"]
@@ -1212,6 +1263,7 @@ def generer_synthese_globale_ci(projet_id: str):
         ctx["client"] = anon.pseudonymiser(projet.get("client") or "", entites) if entites else projet.get("client")
         note = llm.synthetiser_controle_interne_global(
             evaluations, determinantes, ctx, niveau_global, score_global)
+        note = _reidentifier(anon, note)
     except Exception as e:
         db.log(projet_id, "erreur", {"action": "synthese_globale_ci", "detail": str(e)})
         raise HTTPException(500, f"Erreur LLM : {e}")
@@ -4246,6 +4298,7 @@ def interpreter_variations(projet_id: str):
         result = llm.interpreter_variations_analytiques(
             significatives, fiche, projet.get("seuil_signification"), contexte
         )
+        result = _reidentifier(anon_var, result)
     except Exception as e:
         raise HTTPException(500, f"Erreur LLM : {e}")
 
@@ -5222,6 +5275,7 @@ def evaluer_peripherie(projet_id: str, diligence: str):
             llm = ClaudeClient(audit_logger=lambda t, p: db.log(projet_id, t, p))
             evaluation = llm.evaluer_diligence_peripherie(
                 defn, reponses_enrichies, score_info, ctx, indicateurs)
+            evaluation = _reidentifier(anon, evaluation)
         except RuntimeError as e:
             raise HTTPException(503, str(e))
 
