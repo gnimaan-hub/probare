@@ -241,9 +241,12 @@ function FichierCard({
   const Icon = getFileIcon(fichier.nom)
   const ext = fichier.nom.split('.').pop()?.toLowerCase()
   const isExcel = ext && ['xlsx', 'xls', 'xlsm', 'csv'].includes(ext)
+  // Un classeur Excel (hors CSV) peut contenir plusieurs feuilles : on propose
+  // toujours l'analyse des onglets à la demande (les feuilles sont recalculées
+  // côté serveur), sans dépendre d'un champ persisté.
+  const isWorkbook = ext && ['xlsx', 'xls', 'xlsm'].includes(ext)
   const isTextDoc = ext && ['pdf', 'doc', 'docx'].includes(ext)
   const isOngletFils = Boolean(fichier.onglet)
-  const hasOnglets = (fichier.onglets_disponibles?.length ?? 0) > 1
 
   return (
     <motion.div
@@ -299,13 +302,13 @@ function FichierCard({
 
         {/* Actions spécifiques */}
         <div className="mt-3 flex flex-wrap gap-2">
-          {isExcel && !isOngletFils && hasOnglets && (
+          {isWorkbook && !isOngletFils && (
             <button
               onClick={onOnglets}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
             >
               <Layers className="w-3.5 h-3.5" />
-              Onglets ({fichier.onglets_disponibles?.length})
+              Analyser les onglets
             </button>
           )}
           {isTextDoc && (

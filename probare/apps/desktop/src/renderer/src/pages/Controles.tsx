@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -14,6 +14,7 @@ import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useProjetStore, type ResultatControle } from '../stores/projetStore'
 import { useSyncProjet } from '../hooks/useProjet'
+import { useMissionProgress } from '../hooks/useMissionProgress'
 import { formatDate, normeLabel } from '../lib/utils'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -169,12 +170,14 @@ function CyclePanel({
   etatCourant,
   externallyLaunching,
   reloadToken,
+  onAfterRun,
 }: {
   cycle: typeof CYCLES[0]
   projetId: string
   etatCourant: string
   externallyLaunching?: boolean
   reloadToken?: number
+  onAfterRun?: () => void
 }) {
   const { post, get } = useApi()
   const toast = useToast()
@@ -217,6 +220,7 @@ function CyclePanel({
         ? `${result.nb_controles} contrôle(s). ${result.nb_exceptions} exception(s)${nbIA > 0 ? `, ${nbIA} analysée(s) par l'IA` : ''}.`
         : `${result.nb_controles} contrôle(s) — aucune exception.`
       toast.success(msg)
+      onAfterRun?.()
     } catch (e: any) {
       toast.error(e.message)
     } finally {
@@ -1263,10 +1267,11 @@ function SondagesPanel({
 export function Controles() {
   const { projetId } = useParams<{ projetId: string }>()
   const navigate = useNavigate()
-  const { post } = useApi()
+  const { post, get } = useApi()
   const toast = useToast()
-  const { projetActif, setProjetActif, resultats } = useProjetStore()
+  const { projetActif, setProjetActif, resultats, setResultats } = useProjetStore()
   useSyncProjet()
+  const { progression, recharger } = useMissionProgress(projetId)
 
   const [transitioning, setTransitioning] = useState(false)
   const [launchingAll, setLaunchingAll] = useState(false)
@@ -1274,6 +1279,19 @@ export function Controles() {
   const [reloadToken, setReloadToken] = useState(0)
 
   const etatCourant = projetActif?.etat_courant || ''
+
+  // Synchronise le store (résultats) et la progression backend — la disponibilité
+  // du passage à la revue vient de la garde backend, pas d'un compteur local.
+  const refetchEtat = useCallback(async () => {
+    if (!projetId) return
+    try {
+      const d = await get(`/projets/${projetId}/controles`)
+      setResultats(d.resultats || [])
+    } catch { /* non bloquant */ }
+    recharger()
+  }, [projetId])
+
+  useEffect(() => { refetchEtat() }, [refetchEtat])
 
   // Filtre les cycles selon la mission
   const cyclesMission = CYCLES.filter((c) =>
@@ -1318,8 +1336,10 @@ export function Controles() {
       const totalControles = result.nb_controles_total || 0
       const totalExceptions = result.nb_exceptions_total || 0
       toast.success(`${totalControles} contrôle(s) sur ${cyclesMission.length} cycle(s). ${totalExceptions} exception(s).`)
-      // Rafraîchit automatiquement chaque panneau de cycle (refetch via reloadToken).
+      // Rafraîchit automatiquement chaque panneau de cycle (refetch via reloadToken)
+      // + le store et la progression (débloque « Passer à la revue »).
       setReloadToken((t) => t + 1)
+      await refetchEtat()
     } catch (e: any) {
       toast.error(e.message)
     } finally {
@@ -1328,7 +1348,12 @@ export function Controles() {
   }
 
   const canRun = ['travaux_substantifs', 'controles', 'extraction', 'revue'].includes(etatCourant)
-  const canPasser = resultats.length > 0 && ['travaux_substantifs', 'controles'].includes(etatCourant)
+  // Le passage à la revue est autorisé par la garde backend (≥ 1 contrôle exécuté).
+  // On s'appuie sur la progression ; à défaut, on retombe sur le compteur local.
+  const canPasser = ['travaux_substantifs', 'controles'].includes(etatCourant) &&
+    (progression?.prochaine?.vers === 'revue'
+      ? progression.prochaine.peut
+      : resultats.length > 0)
   const nbCycles = cyclesMission.length
 
   // Sous-onglet principal : analytiques vs contrôles de détail
@@ -1424,6 +1449,7 @@ export function Controles() {
                     etatCourant={etatCourant}
                     externallyLaunching={launchingAll}
                     reloadToken={reloadToken}
+                    onAfterRun={refetchEtat}
                   />
                 </div>
               ))}

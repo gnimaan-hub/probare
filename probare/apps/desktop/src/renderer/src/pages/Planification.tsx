@@ -269,12 +269,16 @@ export function Planification() {
   // Considéré fait si : des items sont inclus OU la note de synthèse existe (générée après le programme)
   const doneProgramme = noteSynthese !== null || programme.some((p) => p.statut === 'inclus' || (p as any).statut === 1)
 
+  // Ordre doctrinal : après avoir cartographié les risques, on vérifie leur
+  // COUVERTURE par assertion (repérage des trous) AVANT de figer le programme
+  // de travail et sa note de synthèse — les procédures complémentaires comblant
+  // les trous doivent entrer dans le programme, pas après.
   const sections = [
     { id: 'analytique',    label: 'Procédures analytiques', icon: TrendingUp,    done: doneAnalytics },
     { id: 'seuils',        label: 'Calcul des seuils',      icon: Target,        done: doneSeuils },
     { id: 'risques',       label: 'Cartographie des risques',icon: ShieldAlert,   done: doneRisques },
-    { id: 'programme',     label: 'Programme de travail',   icon: ClipboardList, done: doneProgramme },
     { id: 'couverture',    label: 'Couverture des risques', icon: Grid3x3,       done: doneRisques },
+    { id: 'programme',     label: 'Programme de travail',   icon: ClipboardList, done: doneProgramme },
   ]
 
   const scrollTo = (id: string) => {
@@ -428,6 +432,23 @@ export function Planification() {
           </section>
 
           {/* ════════════════════════════════════════════════════════════════ */}
+          {/* SECTION 4 — COUVERTURE DES RISQUES (M4)                        */}
+          {/* Placée AVANT le programme : les trous de couverture doivent être */}
+          {/* comblés (procédures complémentaires) avant de figer le programme. */}
+          {/* ════════════════════════════════════════════════════════════════ */}
+          <section
+            ref={(el) => { sectionRefs.current['couverture'] = el }}
+            id="couverture"
+          >
+            <SectionHeader icon={Grid3x3} title="Couverture des risques par assertion" done={doneRisques}
+              subtitle={`Chaque assertion à risque est-elle couverte par une procédure ? (${normeLabel('315')})`} />
+            <CouvertureSection projetId={projetId!} locked={locked}
+              doneRisques={doneRisques}
+              refreshKey={risques.filter((r) => r.valide_auditeur).length}
+              onProgrammeChanged={setProgramme} />
+          </section>
+
+          {/* ════════════════════════════════════════════════════════════════ */}
           {/* SECTION 5 — PROGRAMME DE TRAVAIL                               */}
           {/* ════════════════════════════════════════════════════════════════ */}
           <section
@@ -447,19 +468,6 @@ export function Planification() {
               onSyntheseGenerated={setNoteSynthese}
               onDocxPret={setNotePrete}
             />
-          </section>
-
-          {/* ════════════════════════════════════════════════════════════════ */}
-          {/* SECTION 6 — COUVERTURE DES RISQUES (M4)                        */}
-          {/* ════════════════════════════════════════════════════════════════ */}
-          <section
-            ref={(el) => { sectionRefs.current['couverture'] = el }}
-            id="couverture"
-          >
-            <SectionHeader icon={Grid3x3} title="Couverture des risques par assertion" done={doneRisques}
-              subtitle={`Chaque assertion à risque est-elle couverte par une procédure ? (${normeLabel('315')})`} />
-            <CouvertureSection projetId={projetId!} locked={locked}
-              doneRisques={doneRisques} onProgrammeChanged={setProgramme} />
           </section>
 
           {/* ── Guidage prochaine étape ── */}
@@ -1032,9 +1040,11 @@ function SeuilsSpecifiquesBlock({
       return { ...v, [cycle]: { ...courant, ...patch } }
     })
 
-  const handleSave = async () => {
+  // Construit le dictionnaire à envoyer (le backend REMPLACE l'ensemble : un
+  // cycle absent est donc supprimé) et persiste.
+  const persister = async (source: Record<string, { seuil: string; justification: string }>, msg: string) => {
     const seuils: Record<string, { seuil: number; justification: string }> = {}
-    for (const [cycle, v] of Object.entries(valeurs)) {
+    for (const [cycle, v] of Object.entries(source)) {
       const num = parseFloat((v.seuil || '').replace(',', '.'))
       if (!num || num <= 0) continue
       seuils[cycle] = { seuil: num, justification: v.justification || '' }
@@ -1043,14 +1053,25 @@ function SeuilsSpecifiquesBlock({
     try {
       const res = await put(`/projets/${projetId}/planification/seuils-specifiques`, { seuils })
       onApplied(res.planification, null)
-      toast.success(Object.keys(seuils).length
-        ? `Seuils spécifiques enregistrés pour ${Object.keys(seuils).length} cycle(s).`
-        : 'Seuils spécifiques effacés — le seuil global s\'applique à tous les cycles.')
+      toast.success(msg)
     } catch (e: any) {
       toast.error(e.message)
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleSave = () =>
+    persister(valeurs, Object.values(valeurs).some((v) => parseFloat((v.seuil || '').replace(',', '.')) > 0)
+      ? 'Seuils spécifiques enregistrés.'
+      : 'Seuils spécifiques effacés — le seuil global s\'applique à tous les cycles.')
+
+  // Retire explicitement le seuil spécifique d'un cycle : vide le champ ET persiste
+  // le retrait immédiatement (le seuil global redevient applicable au cycle).
+  const handleRemove = (cycle: string) => {
+    const next = { ...valeurs, [cycle]: { seuil: '', justification: '' } }
+    setValeurs(next)
+    persister(next, `Seuil spécifique du cycle « ${CYCLES.find((c) => c.id === cycle)?.label || cycle} » retiré.`)
   }
 
   if (!seuilGlobal) return null
@@ -1105,13 +1126,26 @@ function SeuilsSpecifiquesBlock({
                       <p className="text-xs text-red-600 mt-0.5">Doit être positif et inférieur au seuil global.</p>
                     )}
                   </div>
-                  <input
-                    className="input-field"
-                    placeholder="Justification (obligatoire, figure au dossier)"
-                    value={v.justification}
-                    onChange={(e) => setValeur(cycle, { justification: e.target.value })}
-                    disabled={locked || !v.seuil}
-                  />
+                  <div className="flex items-start gap-1.5">
+                    <input
+                      className="input-field flex-1"
+                      placeholder="Justification (obligatoire, figure au dossier)"
+                      value={v.justification}
+                      onChange={(e) => setValeur(cycle, { justification: e.target.value })}
+                      disabled={locked || !v.seuil}
+                    />
+                    {!locked && (existants[cycle] || v.seuil) && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(cycle)}
+                        disabled={saving}
+                        title="Retirer le seuil spécifique de ce cycle (le seuil global s'applique)"
+                        className="p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               )
             })}
@@ -1797,11 +1831,13 @@ const TYPE_PROC_LABEL: Record<string, string> = {
 }
 
 function CouvertureSection({
-  projetId, locked, doneRisques, onProgrammeChanged,
+  projetId, locked, doneRisques, refreshKey, onProgrammeChanged,
 }: {
   projetId: string
   locked: boolean
   doneRisques: boolean
+  /** Change quand les risques validés changent → force le rechargement de la matrice. */
+  refreshKey: number
   onProgrammeChanged: (p: ProgrammeItem[]) => void
 }) {
   const { get, post } = useApi()
@@ -1822,7 +1858,9 @@ function CouvertureSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projetId])
 
-  useEffect(() => { if (doneRisques) load() }, [doneRisques, load])
+  // Recharge dès qu'un risque est validé (refreshKey) ou au montage — plus besoin
+  // de quitter la page et d'y revenir pour voir la matrice se mettre à jour.
+  useEffect(() => { if (doneRisques) load() }, [doneRisques, refreshKey, load])
 
   const handleProposer = async () => {
     setProposing(true)
