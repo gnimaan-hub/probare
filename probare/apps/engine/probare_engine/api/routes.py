@@ -3343,6 +3343,38 @@ def exporter_memorandum(projet_id: str, body: ExportSigneBody | None = None):
     cabinet = (body.cabinet if body else None) or {}
     # Agrégat déterministe complet (toutes phases, anomalies, CI, fichiers) pour un mémo exhaustif (#5).
     synthese = _synthese_mission(db, projet_id, projet)
+
+    # ── Données complémentaires pour un mémo qui retrace TOUT le cheminement ──
+    from ..controls.peripherie import get_diligence
+    from ..planning.couverture import matrice_couverture
+
+    circularisations = db.list_circularisations(projet_id)
+    sondages = db.list_sondages(projet_id)
+    risques_valides = [r for r in db.list_risques(projet_id) if r.get("valide_auditeur")]
+    couverture = matrice_couverture(risques_valides, sondages, circularisations)
+    programme = db.list_programme_items(projet_id)
+
+    # Synthèse narrative de l'évaluation du contrôle interne (sections rédigées par l'IA).
+    qci_synthese_raw = db.get_qci_synthese_globale(projet_id)
+    qci_synthese = None
+    if qci_synthese_raw:
+        s = qci_synthese_raw.get("synthese") if isinstance(qci_synthese_raw, dict) else None
+        qci_synthese = s if isinstance(s, dict) else qci_synthese_raw
+
+    # Diligences de périphérie évaluées (synthèse IA, indicateurs, conclusion signée).
+    diligences_eval = []
+    for ev in db.list_peripherie_evaluations(projet_id):
+        code = ev.get("diligence") or ev.get("code")
+        defn = get_diligence(code) if code else None
+        if not defn:
+            continue
+        statut = "conclue" if ev.get("conclusion") else ("evaluee" if ev.get("evalue_le") or ev.get("synthese_ia") else "en_cours")
+        diligences_eval.append({
+            "code": code, "libelle": defn.get("libelle"), "nep_ref": defn.get("nep_ref"),
+            "ordre": defn.get("ordre", 99), "statut": statut, "evaluation": ev,
+        })
+    diligences_eval.sort(key=lambda d: d["ordre"])
+
     output_dir = DATA_DIR / projet_id / "exports"
     output_path = output_dir / f"memorandum_controle_comptes_{projet_id[:8]}.docx"
     generer_memorandum_controle_comptes(
@@ -3352,11 +3384,16 @@ def exporter_memorandum(projet_id: str, body: ExportSigneBody | None = None):
         db.list_feuilles(projet_id),
         output_path,
         plan=plan,
-        circularisations=db.list_circularisations(projet_id),
-        sondages=db.list_sondages(projet_id),
+        circularisations=circularisations,
+        sondages=sondages,
         controles_ignores=db.list_controles_ignores(projet_id),
         cabinet=cabinet,
         synthese=synthese,
+        qci_synthese=qci_synthese,
+        risques=risques_valides,
+        couverture=couverture,
+        programme=programme,
+        diligences_eval=diligences_eval,
     )
     db.log(projet_id, "action_humaine", {"action": "exporter_memorandum"})
     client_slug = (projet.get("client") or "client").replace(" ", "_")[:20]

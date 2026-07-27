@@ -1599,6 +1599,11 @@ def generer_memorandum_controle_comptes(
     controles_ignores: list[dict] | None = None,
     cabinet: dict | None = None,
     synthese: dict | None = None,
+    qci_synthese: dict | None = None,
+    risques: list[dict] | None = None,
+    couverture: dict | None = None,
+    programme: list[dict] | None = None,
+    diligences_eval: list[dict] | None = None,
 ) -> Path:
     """Génère le MÉMORANDUM SUR LE CONTRÔLE DES COMPTES en .docx.
 
@@ -1622,6 +1627,10 @@ def generer_memorandum_controle_comptes(
     circularisations = circularisations or []
     sondages = sondages or []
     controles_ignores = controles_ignores or []
+    risques = risques or []
+    programme = programme or []
+    diligences_eval = diligences_eval or []
+    couverture = couverture or {}
 
     client = projet.get("client") or projet.get("nom") or "l'entité"
     exercice = projet.get("exercice") or "N"
@@ -1658,9 +1667,15 @@ def generer_memorandum_controle_comptes(
     entrees = [
         ("Présentation de la mission et de l'entité", "Identité du client, périmètre et nature de la mission."),
         ("Déroulé de la mission", "Chaque phase de travail, de la prise de connaissance à la revue."),
-        ("Contrôle des comptes par cycle", "Objectifs, travaux réalisés et commentaires, cycle par cycle."),
-        ("Synthèse des anomalies", f"Cumul des anomalies non corrigées au regard du seuil ({norme(450)})."),
     ]
+    if risques or couverture.get("lignes") or programme:
+        entrees.append(("Approche par les risques",
+                        "Cartographie des risques validés, couverture par assertion et programme de travail."))
+    entrees.append(("Contrôle des comptes par cycle", "Objectifs, travaux réalisés et commentaires, cycle par cycle."))
+    if diligences_eval:
+        entrees.append(("Diligences de périphérie de la mission",
+                        "Fraude, parties liées, continuité, événements postérieurs, déclarations écrites…"))
+    entrees.append(("Synthèse des anomalies", f"Cumul des anomalies non corrigées au regard du seuil ({norme(450)})."))
     if opinion.get("texte_opinion"):
         entrees.append(("Opinion de l'auditeur", "Conclusion proposée sur les comptes annuels."))
     entrees.append(("Livrables et pièces du dossier", "Documents produits et supports de travail exploités."))
@@ -1688,7 +1703,7 @@ def generer_memorandum_controle_comptes(
     identite.append(("Nature de la mission", projet.get("nature_mission") or "contractuelle"))
     identite.append(("Cycles audités", ", ".join(_MEMO_CYCLE_LABELS.get(c, c) for c in cycles)))
     identite.append(("Référentiel comptable", ref_compta))
-    T.info_table(doc, identite)
+    T.info_table(doc, identite, bleed=False)
     if plan.get("activites_principales"):
         T.para(doc, f"Activité de l'entité. {plan['activites_principales']}")
     if plan.get("marches_principaux"):
@@ -1735,6 +1750,17 @@ def generer_memorandum_controle_comptes(
                   "contrôle interne est fiable, plus nous pouvons alléger les tests de détail, et "
                   "inversement.")
     T.para(doc, phrase_ci)
+    # Synthèse narrative rédigée (IA) de l'évaluation du contrôle interne.
+    if qci_synthese:
+        if qci_synthese.get("titre"):
+            T.para(doc, qci_synthese["titre"], bold=True, color=T.NAVY)
+        for sec in (qci_synthese.get("sections") or []):
+            if sec.get("titre"):
+                T.para(doc, sec["titre"], bold=True)
+            if sec.get("contenu"):
+                T.para(doc, sec["contenu"])
+        if qci_synthese.get("conclusion"):
+            T.para(doc, qci_synthese["conclusion"], italic=True)
 
     T.sous_titre(doc, "Planification et seuil de signification")
     seuil = anomalies.get("seuil_signification") or projet.get("seuil_signification")
@@ -1761,6 +1787,72 @@ def generer_memorandum_controle_comptes(
         f"par cycle, confirmations externes ({norme(505)}) et sondages sur pièces ({norme(530)}) — "
         "dont le détail figure au chapitre suivant."
     )
+
+    # ── Approche par les risques (cartographie, couverture, programme) ───────
+    if risques or couverture.get("lignes") or programme:
+        T.section_header(doc, "Approche par les risques", str(num)); num += 1
+        T.para(doc,
+            "Nos travaux ont été orientés par une cartographie des risques d'anomalies "
+            "significatives, dont nous vérifions ensuite qu'ils sont tous couverts par une "
+            "procédure d'audit, avant d'arrêter le programme de travail.")
+
+        # Cartographie des risques validés
+        T.sous_titre(doc, "Cartographie des risques validés")
+        if risques:
+            T.para(doc,
+                f"Nous avons identifié et validé {len(risques)} risque(s) significatif(s). "
+                "Ils se répartissent comme suit :")
+            for r in risques:
+                cyc = _MEMO_CYCLE_LABELS.get(r.get("cycle"), r.get("cycle") or "transversal")
+                niv = (r.get("niveau") or "moyen").capitalize()
+                asserts = ", ".join(r.get("assertions") or []) or "toutes assertions"
+                T.para(doc,
+                    f"• [{cyc} · risque {niv}] {r.get('libelle', '')} — assertions visées : {asserts}."
+                    + (f" {r.get('description')}" if r.get("description") else ""),
+                    justify=False, size=9.5)
+        else:
+            T.para(doc, "Aucun risque n'a été formellement validé dans le dossier.")
+
+        # Couverture des risques par assertion
+        lignes_couv = couverture.get("lignes") or []
+        if lignes_couv:
+            T.sous_titre(doc, "Couverture des risques par assertion")
+            nb_couv = couverture.get("nb_couvertes", 0)
+            nb_cell = couverture.get("nb_cellules", 0)
+            nb_trous = couverture.get("nb_trous", 0)
+            taux = couverture.get("taux_couverture")
+            phrase = (f"Sur {nb_cell} couple(s) (cycle × assertion) porteur(s) de risque, "
+                      f"{nb_couv} sont couverts par au moins une procédure")
+            if taux is not None:
+                phrase += f" (taux de couverture {round(taux * 100)}%)"
+            phrase += "."
+            T.para(doc, phrase)
+            if nb_trous > 0:
+                T.para(doc,
+                    f"{nb_trous} assertion(s) à risque demeure(nt) sans procédure dédiée. "
+                    "Ces trous de couverture ont été traités par des procédures complémentaires ou "
+                    "documentés comme relevant d'une appréciation manuelle :", bold=True)
+                for l in lignes_couv:
+                    if not l.get("couvert"):
+                        cyc = _MEMO_CYCLE_LABELS.get(l.get("cycle"), l.get("cycle"))
+                        T.para(doc,
+                            f"• {cyc} — {l.get('assertion_libelle', l.get('assertion'))} : aucune procédure automatique.",
+                            justify=False, size=9.5)
+            else:
+                T.para(doc, "Toutes les assertions à risque sont couvertes par au moins une procédure.")
+
+        # Programme de travail
+        inclus = [p for p in programme if p.get("statut") == "inclus" or p.get("statut") == 1]
+        if inclus:
+            T.sous_titre(doc, "Programme de travail")
+            par_cycle_prog: dict[str, int] = {}
+            for p in inclus:
+                par_cycle_prog[p.get("cycle") or "transversal"] = par_cycle_prog.get(p.get("cycle") or "transversal", 0) + 1
+            detail = ", ".join(
+                f"{_MEMO_CYCLE_LABELS.get(c, c)} : {n}" for c, n in par_cycle_prog.items())
+            T.para(doc,
+                f"Le programme de travail retenu comporte {len(inclus)} contrôle(s) planifié(s), "
+                f"répartis par cycle — {detail}.")
 
     # ── 3. Contrôle des comptes par cycle ────────────────────────────────────
     T.section_header(doc, "Contrôle des comptes par cycle", str(num)); num += 1
@@ -1831,6 +1923,46 @@ def generer_memorandum_controle_comptes(
             T.para(doc,
                 "Les travaux réalisés sur ce cycle n'appellent pas d'observation particulière à la "
                 "date du présent mémorandum.")
+
+    # ── Diligences de périphérie de la mission ───────────────────────────────
+    if diligences_eval:
+        T.section_header(doc, "Diligences de périphérie de la mission", str(num)); num += 1
+        T.para(doc,
+            "Au-delà du contrôle des comptes par cycle, nous avons conduit les diligences "
+            "transversales requises par les normes d'audit. Nous en restituons ci-après la synthèse "
+            "et, le cas échéant, la conclusion signée versée au dossier.")
+        _STATUT_DIL = {"conclue": "Conclue", "evaluee": "Évaluée", "en_cours": "En cours"}
+        for d in diligences_eval:
+            ev = d.get("evaluation") or {}
+            T.sous_titre(doc, f"{d.get('libelle')} ({d.get('nep_ref')})")
+            T.para(doc, f"Statut : {_STATUT_DIL.get(d.get('statut'), d.get('statut'))}.",
+                   justify=False, size=9.5, italic=True)
+            if ev.get("synthese_ia"):
+                T.para(doc, ev["synthese_ia"])
+            # Indicateurs financiers (continuité — ISA 570)
+            ind = ev.get("indicateurs_json")
+            if isinstance(ind, dict):
+                lignes_ind = [
+                    ("Capitaux propres", _fmt_fdj(ind.get("capitaux_propres"))),
+                    ("Fonds de roulement", _fmt_fdj(ind.get("fonds_roulement"))),
+                    ("Trésorerie nette", _fmt_fdj(ind.get("tresorerie_nette"))),
+                    ("Résultat de l'exercice", _fmt_fdj(ind.get("resultat_exercice"))),
+                ]
+                T.info_table(doc, lignes_ind, bleed=False)
+                for alerte in (ind.get("alertes") or []):
+                    T.para(doc, f"⚠ {alerte}", justify=False, size=9.5, color=T.RED)
+            for p in (ev.get("points_attention") or []):
+                T.para(doc, f"• Point d'attention : {p}", justify=False, size=9.5)
+            if ev.get("conclusion"):
+                T.para(doc, f"Conclusion signée — {ev['conclusion']}", bold=True)
+                if ev.get("conclu_par"):
+                    T.para(doc, f"Par {ev['conclu_par']}"
+                                + (f" le {ev['conclu_le']}" if ev.get("conclu_le") else ""),
+                           justify=False, size=9, italic=True)
+            elif d.get("statut") != "conclue":
+                T.para(doc,
+                    "Cette diligence n'a pas encore fait l'objet d'une conclusion signée à la date du "
+                    "présent mémorandum.", justify=False, size=9.5, color=T.NAVY)
 
     # ── 4. Synthèse des anomalies ────────────────────────────────────────────
     T.section_header(doc, "Synthèse des anomalies et incidence sur l'opinion", str(num)); num += 1

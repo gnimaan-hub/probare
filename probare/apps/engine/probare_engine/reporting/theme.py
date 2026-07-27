@@ -461,19 +461,26 @@ def sommaire(doc, entrees: list[tuple[str, str]]) -> None:
     doc.add_page_break()
 
 
-def info_table(doc, lignes: list[tuple[str, str]]) -> None:
-    """Petit tableau clé/valeur discret (identité, chiffres-clés)."""
+def info_table(doc, lignes: list[tuple[str, str]], bleed: bool = True) -> None:
+    """Petit tableau clé/valeur discret (identité, chiffres-clés).
+
+    bleed=True : le tableau déborde dans la marge gauche (effet pleine largeur,
+    aligné sur les bandeaux). bleed=False : le tableau est calé sur la colonne
+    de texte (évite l'impression de « tableau décalé » à côté des paragraphes).
+    """
     if not lignes:
         return
+    largeur = CONTENT_WIDTH_CM + (BANDEAU_PAD_CM if bleed else 0)
     table = doc.add_table(rows=len(lignes), cols=2)
     table.alignment = WD_TABLE_ALIGNMENT.LEFT
     _no_table_borders(table)
-    _set_table_width(table, CONTENT_WIDTH_CM + BANDEAU_PAD_CM)
-    _bleed_left(table)
+    _set_table_width(table, largeur)
+    if bleed:
+        _bleed_left(table)
     for i, (cle, val) in enumerate(lignes):
         c0, c1 = table.rows[i].cells
         c0.width = Cm(5.5)
-        c1.width = Cm(CONTENT_WIDTH_CM + BANDEAU_PAD_CM - 5.5)
+        c1.width = Cm(largeur - 5.5)
         _cell_shade(c0, LIGHT_HEX)
         _cell_margins(c0, top=60, bottom=60, left=BANDEAU_TEXT_PAD_TW, right=160)
         _cell_margins(c1, top=60, bottom=60, left=160, right=160)
