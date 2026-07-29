@@ -17,16 +17,13 @@ from ..normes import reformater_refs
 def _somme_soldes(rows: list, prefixes: tuple[str, ...], sens: int = 1) -> tuple[float, list[str]]:
     """Somme des soldes nets (débit − crédit) des comptes commençant par `prefixes`.
     sens=-1 pour retourner le solde créditeur en positif (passif, produits)."""
-    from .engine import _filter_accounts, _get_amount
+    from .engine import _filter_accounts, _solde_net
     total, sources = 0.0, []
     for row in _filter_accounts(rows, prefixes):
         c = row.get("compte")
         if not c:
             continue
-        s = _get_amount(row, "solde")
-        if s == 0:
-            s = _get_amount(row, "debit") - _get_amount(row, "credit")
-        total += s * sens
+        total += _solde_net(row) * sens
         sources.append(c.id)
     return round(total, 2), sources
 

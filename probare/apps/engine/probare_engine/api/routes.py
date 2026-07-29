@@ -48,7 +48,11 @@ from ..controls.engine import (
     _filter_accounts,
     _get_amount,
     _get_str,
+    _a_solde,
+    _solde_net,
+    _solde_net_source,
 )
+from ..colonnes import classer_colonne_montant
 from ..provenance.models import DonneeSourcee
 from ..reporting.export import (
     generer_dossier_travail, generer_tableau_exceptions,
@@ -1462,10 +1466,16 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
     if _check("TRESOR-BAL-EQUIL"):
         donnees_balance_ds = [d for d in donnees_all if d.fichier_source_id in ids_balance] \
             if ids_balance else donnees_all
-        debits = [d for d in donnees_balance_ds
-                  if d.type == "montant" and "debit" in d.localisation.lower()]
-        credits_ds = [d for d in donnees_balance_ds
-                      if d.type == "montant" and "credit" in d.localisation.lower()]
+        # Une balance à quatre colonnes porte mouvements ET soldes : on teste
+        # l'équilibre des SOLDES s'ils sont présents, sinon celui des mouvements.
+        # Mélanger les deux familles gonflerait les totaux sans les rendre faux.
+        def _colonnes(champ: str) -> list:
+            return [d for d in donnees_balance_ds
+                    if d.type == "montant"
+                    and classer_colonne_montant(d.localisation.rsplit(":", 1)[-1]) == champ]
+
+        debits = _colonnes("solde_debit") or _colonnes("debit")
+        credits_ds = _colonnes("solde_credit") or _colonnes("credit")
         res, exc = controle_equilibre_balance(projet_id, debits, credits_ds)
         resultats_total.append(res)
         if exc:
@@ -1547,30 +1557,23 @@ def run_controles_tresorerie(projet_id: str, body: dict = {}):
         solde_compta_val = 0.0
         solde_compta_src = None
         for row in rows_balance_5xx:
-            s = _get_amount(row, "solde")
-            if s == 0:
-                s = _get_amount(row, "debit") - _get_amount(row, "credit")
+            s = _solde_net(row)
             if abs(s) > abs(solde_compta_val):
                 solde_compta_val = s
                 # Source = la donnée MONTANT (le numéro de compte n'est pas un solde)
-                if row.get("solde"):
-                    solde_compta_src = row["solde"]
-                elif _get_amount(row, "debit") >= _get_amount(row, "credit"):
-                    solde_compta_src = row.get("debit")
-                else:
-                    solde_compta_src = row.get("credit")
+                solde_compta_src = _solde_net_source(row)
 
         # Extraire le solde du relevé : solde de la DERNIÈRE ligne datée
         # (le solde de clôture), et non « le plus grand montant du fichier ».
         solde_releve_val = 0.0
         solde_releve_src = None
         rows_releve = _group_rows(rows_releve_ds) if rows_releve_ds else []
-        lignes_soldees = [(r, _get_str(r, "date")) for r in rows_releve if r.get("solde")]
+        lignes_soldees = [(r, _get_str(r, "date")) for r in rows_releve if _a_solde(r)]
         if lignes_soldees:
             lignes_soldees.sort(key=lambda x: x[1])  # dates ISO : tri lexical = tri chronologique
             derniere = lignes_soldees[-1][0]
-            solde_releve_src = derniere["solde"]
-            solde_releve_val = float(solde_releve_src.valeur or 0)
+            solde_releve_src = _solde_net_source(derniere)
+            solde_releve_val = float(solde_releve_src.valeur or 0) if solde_releve_src else 0.0
         else:
             # Repli : ancien comportement (relevé sans colonne solde)
             montants_releve = [d for d in rows_releve_ds if d.type == "montant"]
@@ -2617,9 +2620,7 @@ def _aggreger_soldes_nets(
         if not c:
             continue
         num = str(c.valeur or "")
-        s = _get_amount(row, "solde")
-        if s == 0:
-            s = _get_amount(row, "debit") - _get_amount(row, "credit")
+        s = _solde_net(row)
         prev, srcs = result.get(num, (0.0, []))
         result[num] = (prev + s, srcs + [c.id])
     return result
@@ -5057,10 +5058,7 @@ def create_sondage(projet_id: str, body: SondageCreateBody):
     rows = rows_gl if rows_gl else rows_balance
     population_rows = _filter_accounts(rows, tuple(prefixes)) if prefixes else rows
     population = len(population_rows)
-    montant_population = sum(
-        abs(_get_amount(r, "solde") or (_get_amount(r, "debit") - _get_amount(r, "credit")))
-        for r in population_rows
-    )
+    montant_population = sum(abs(_solde_net(r)) for r in population_rows)
     calcul = calculer_taille_echantillon(population, taux, niveau)
     import time
     seed = int(time.time()) % 1000000

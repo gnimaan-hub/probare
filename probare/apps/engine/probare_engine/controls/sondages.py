@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ..provenance.models import DonneeSourcee
+from .engine import _solde_net
 
 
 RowDict = dict[str, DonneeSourcee]
@@ -96,11 +97,10 @@ def selectionner_echantillon(
         compte = _get_str(row, "compte")
         if prefixes and not any(compte.startswith(p) for p in prefixes):
             continue
-        montant = _get_amount(row, "solde") or (
-            _get_amount(row, "debit") - _get_amount(row, "credit")
-        )
+        montant = _solde_net(row)
         sources = []
-        for field in ("compte", "libelle", "debit", "credit", "solde", "numero_piece", "date"):
+        for field in ("compte", "libelle", "debit", "credit", "solde",
+                      "solde_debit", "solde_credit", "numero_piece", "date"):
             d = row.get(field)
             if d and d.id:
                 sources.append(d.id)

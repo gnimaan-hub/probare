@@ -69,10 +69,14 @@ Exemples de valeurs par colonne :
 {json.dumps(exemples, ensure_ascii=False, indent=2)}
 
 Propose un mapping entre chaque nom de colonne et l'un des champs suivants :
-compte, libelle, debit, credit, date, numero_piece, solde, exercice, autre
+compte, libelle, debit, credit, date, numero_piece, solde, solde_debit, solde_credit, exercice, autre
 
 Règles :
 - Chaque champ audit ne peut être assigné qu'une seule fois (sauf "autre").
+- Distingue les MOUVEMENTS de la période (« mvt débit », « total débit » → debit)
+  des SOLDES (« solde débit », « solde débiteur » → solde_debit). Une balance peut
+  porter les deux familles : ne les confonds jamais.
+- "solde" est réservé à une colonne de solde unique et signée.
 - Si une colonne ne correspond à aucun champ, utilise "autre".
 - Ne produis aucun calcul, aucun montant.
 

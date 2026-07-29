@@ -5,6 +5,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from ..colonnes import classer_colonne_montant
 from ..provenance.models import DonneeSourcee
 from .registry import REGISTRE
 
@@ -12,7 +13,10 @@ from .registry import REGISTRE
 # ─── Types ────────────────────────────────────────────────────────────────────
 
 # Un RowDict regroupe les DonneeSourcees d'une même ligne comptable.
-# Clés possibles : 'compte', 'libelle', 'date', 'debit', 'credit', 'solde', 'numero_piece'
+# Clés possibles : 'compte', 'libelle', 'date', 'numero_piece', et les champs
+# montants : 'debit'/'credit' (MOUVEMENTS de la période) et
+# 'solde_debit'/'solde_credit'/'solde' (SOLDES). Ne jamais mélanger les deux
+# familles dans un calcul : passer par `_solde_net()`.
 RowDict = dict[str, DonneeSourcee]
 
 
@@ -91,6 +95,64 @@ def _get_amount(row: RowDict, field: str) -> float:
         return 0.0
 
 
+def _a_solde(row: RowDict) -> bool:
+    """La ligne porte-t-elle une information de SOLDE exploitable ?"""
+    return any(_get_amount(row, f) != 0
+               for f in ("solde_debit", "solde_credit", "solde"))
+
+
+def _solde_net(row: RowDict) -> float:
+    """Solde net signé d'une ligne (positif = débiteur, négatif = créditeur).
+
+    Priorité, du plus fiable au moins fiable :
+    1. colonnes de solde ventilées : ``solde_debit − solde_credit`` ;
+    2. colonne de solde unique signée : ``solde`` ;
+    3. à défaut seulement, les MOUVEMENTS de la période : ``debit − credit``
+       (cas d'un grand livre, ou d'une balance sans colonne de solde).
+
+    Ne jamais retrancher un mouvement d'un solde : sur une balance à quatre
+    colonnes, `débit − crédit` ne vaut le solde que si aucune colonne de
+    solde n'est présente.
+    """
+    sd = _get_amount(row, "solde_debit")
+    sc = _get_amount(row, "solde_credit")
+    if sd or sc:
+        return sd - sc
+    s = _get_amount(row, "solde")
+    if s:
+        return s
+    return _get_amount(row, "debit") - _get_amount(row, "credit")
+
+
+def _solde_net_source(row: RowDict) -> DonneeSourcee | None:
+    """DonneeSourcee du montant qui porte le solde net (pour la provenance)."""
+    sd, sc = _get_amount(row, "solde_debit"), _get_amount(row, "solde_credit")
+    if sd or sc:
+        return row.get("solde_debit") if abs(sd) >= abs(sc) else row.get("solde_credit")
+    if _get_amount(row, "solde"):
+        return row.get("solde")
+    if _get_amount(row, "debit") >= _get_amount(row, "credit"):
+        return row.get("debit")
+    return row.get("credit")
+
+
+def _cumuler_sens(acc: dict, row: RowDict) -> None:
+    """Cumule la ligne dans les seaux 'debit'/'credit' de l'accumulateur.
+
+    Une ligne porteuse d'un solde est ventilée selon le SENS de ce solde ;
+    sinon on cumule les mouvements bruts (grand livre).
+    """
+    if _a_solde(row):
+        net = _solde_net(row)
+        if net >= 0:
+            acc["debit"] += net
+        else:
+            acc["credit"] += abs(net)
+    else:
+        acc["debit"] += _get_amount(row, "debit")
+        acc["credit"] += _get_amount(row, "credit")
+
+
 def _get_str(row: RowDict, field: str) -> str:
     d = row.get(field)
     return str(d.valeur or "").strip() if d else ""
@@ -160,14 +222,9 @@ def _group_rows(donnees: list[DonneeSourcee]) -> list[RowDict]:
         elif d.type == "date":
             row["date"] = d
         elif d.type == "montant":
-            if any(k in col for k in ("debit", "débit", ":db", "db:")):
-                row["debit"] = d
-            elif any(k in col for k in ("credit", "crédit", ":cr", "cr:")):
-                row["credit"] = d
-            elif any(k in col for k in ("solde", "balance", "sold")):
-                # Avoid capturing debit/credit as solde
-                if not any(k in col for k in ("debit", "crédit", "credit", "débit")):
-                    row["solde"] = d
+            champ = classer_colonne_montant(col)
+            if champ:
+                row[champ] = d
         elif d.type == "texte":
             if any(k in col for k in ("libelle", "libellé", "label", "désig", "intitul")):
                 row["libelle"] = d
@@ -436,8 +493,7 @@ def controle_soldes_anormaux_tresorerie(
         num = str(c.valeur or "")
         if num not in par_compte:
             par_compte[num] = {"debit": 0.0, "credit": 0.0, "sources": []}
-        par_compte[num]["debit"] += _get_amount(row, "debit") + max(_get_amount(row, "solde"), 0)
-        par_compte[num]["credit"] += _get_amount(row, "credit") + abs(min(_get_amount(row, "solde"), 0))
+        _cumuler_sens(par_compte[num], row)
         par_compte[num]["sources"].append(c.id)
 
     resultats, exceptions = [], []
@@ -508,11 +564,7 @@ def controle_coherence_cycle(
             continue
         num = str(c.valeur or "")
         prev_net, prev_srcs = bal_par_compte.get(num, (0.0, []))
-        s = _get_amount(row, "solde")
-        if s != 0:
-            net = s
-        else:
-            net = _get_amount(row, "debit") - _get_amount(row, "credit")
+        net = _solde_net(row)
         bal_par_compte[num] = (prev_net + net, prev_srcs + [c.id])
 
     tous_comptes = set(gl_par_compte) | set(bal_par_compte)
@@ -569,15 +621,7 @@ def controle_soldes_anormaux(
         num = str(c.valeur or "")
         if num not in par_compte:
             par_compte[num] = {"debit": 0.0, "credit": 0.0, "sources": []}
-        s = _get_amount(row, "solde")
-        if s != 0:
-            if s > 0:
-                par_compte[num]["debit"] += s
-            else:
-                par_compte[num]["credit"] += abs(s)
-        else:
-            par_compte[num]["debit"] += _get_amount(row, "debit")
-            par_compte[num]["credit"] += _get_amount(row, "credit")
+        _cumuler_sens(par_compte[num], row)
         par_compte[num]["sources"].append(c.id)
 
     resultats, exceptions = [], []
@@ -759,7 +803,7 @@ def controle_doublons_factures(
         piece_val = _get_str(row, "numero_piece")
         debit = _get_amount(row, "debit")
         credit = _get_amount(row, "credit")
-        montant = max(debit, credit, abs(_get_amount(row, "solde")))
+        montant = max(debit, credit, abs(_solde_net(row)))
         if montant <= 0:
             continue
         sens = "debit" if debit >= credit else "credit"
@@ -986,9 +1030,7 @@ def controle_amortissement_manquant(
         if not c:
             continue
         num = str(c.valeur or "")
-        s = _get_amount(row, "solde")
-        if s == 0:
-            s = _get_amount(row, "debit") - _get_amount(row, "credit")
+        s = _solde_net(row)
         bloc = bruts.setdefault(num, {"solde": 0.0, "sources": []})
         bloc["solde"] += s
         bloc["sources"].append(c.id)
@@ -1006,9 +1048,7 @@ def controle_amortissement_manquant(
     total_amort = 0.0
     for row in rows_amort:
         c = row.get("compte")
-        s = _get_amount(row, "solde")
-        if s == 0:
-            s = _get_amount(row, "debit") - _get_amount(row, "credit")
+        s = _solde_net(row)
         total_amort += abs(s)
         if c and abs(s) > tolerance:
             racines_amort.add(_racine(str(c.valeur or "")))
@@ -1064,9 +1104,7 @@ def controle_amort_excedent(
     sources_brut = []
     for row in rows_brut:
         c = row.get("compte")
-        s = _get_amount(row, "solde")
-        if s == 0:
-            s = _get_amount(row, "debit") - _get_amount(row, "credit")
+        s = _solde_net(row)
         if s > 0:
             total_brut += s
             if c:
@@ -1080,9 +1118,7 @@ def controle_amort_excedent(
     sources_amort = []
     for row in rows_amort:
         c = row.get("compte")
-        s = _get_amount(row, "solde")
-        if s == 0:
-            s = _get_amount(row, "debit") - _get_amount(row, "credit")
+        s = _solde_net(row)
         total_amort += abs(s)
         if c:
             sources_amort.append(c.id)
@@ -1128,9 +1164,7 @@ def controle_ratio_charges_sociales(
     sources_sal = []
     for row in rows_salaires:
         c = row.get("compte")
-        s = _get_amount(row, "debit")
-        if s == 0:
-            s = abs(_get_amount(row, "solde"))
+        s = _get_amount(row, "debit") or abs(_solde_net(row))
         total_salaires += s
         if c:
             sources_sal.append(c.id)
@@ -1143,9 +1177,7 @@ def controle_ratio_charges_sociales(
     sources_ch = []
     for row in rows_charges:
         c = row.get("compte")
-        s = _get_amount(row, "debit")
-        if s == 0:
-            s = abs(_get_amount(row, "solde"))
+        s = _get_amount(row, "debit") or abs(_solde_net(row))
         total_charges += s
         if c:
             sources_ch.append(c.id)
@@ -1254,9 +1286,7 @@ def controle_tva_coherence(
     sources_ded = []
     for row in rows_deductible:
         c = row.get("compte")
-        s = _get_amount(row, "debit")
-        if s == 0:
-            s = abs(_get_amount(row, "solde"))
+        s = _get_amount(row, "debit") or abs(_solde_net(row))
         total_deductible += s
         if c:
             sources_ded.append(c.id)
@@ -1265,9 +1295,7 @@ def controle_tva_coherence(
     sources_col = []
     for row in rows_collectee:
         c = row.get("compte")
-        s = _get_amount(row, "credit")
-        if s == 0:
-            s = abs(_get_amount(row, "solde"))
+        s = _get_amount(row, "credit") or abs(_solde_net(row))
         total_collectee += s
         if c:
             sources_col.append(c.id)
@@ -1399,9 +1427,7 @@ def controle_coherence_resultat(
     sources_120 = []
     for row in rows_120:
         c = row.get("compte")
-        s = _get_amount(row, "solde")
-        if s == 0:
-            s = _get_amount(row, "credit") - _get_amount(row, "debit")
+        s = -_solde_net(row)  # sens créditeur compté positivement
         solde_120 += s
         if c:
             sources_120.append(c.id)
@@ -1410,9 +1436,7 @@ def controle_coherence_resultat(
     sources_129 = []
     for row in rows_129:
         c = row.get("compte")
-        s = _get_amount(row, "solde")
-        if s == 0:
-            s = _get_amount(row, "debit") - _get_amount(row, "credit")
+        s = _solde_net(row)
         solde_129 += s
         if c:
             sources_129.append(c.id)

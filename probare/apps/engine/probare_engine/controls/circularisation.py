@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ..provenance.models import DonneeSourcee
+from .engine import _solde_net
 
 
 RowDict = dict[str, DonneeSourcee]
@@ -54,15 +55,13 @@ def proposer_tiers(
         if not any(compte.startswith(p) for p in prefixes):
             continue
         libelle = _get_str(row, "libelle") or compte
-        solde = _get_amount(row, "solde") or (
-            _get_amount(row, "debit") - _get_amount(row, "credit")
-        )
+        solde = _solde_net(row)
         # Regroupe par couple (compte, libelle court)
         cle = compte
         aggregats[cle]["solde"] += solde
         if not aggregats[cle]["libelle"]:
             aggregats[cle]["libelle"] = libelle
-        for field in ("compte", "solde", "debit", "credit"):
+        for field in ("compte", "solde", "solde_debit", "solde_credit", "debit", "credit"):
             d = row.get(field)
             if d and d.id:
                 aggregats[cle]["sources"].append(d.id)

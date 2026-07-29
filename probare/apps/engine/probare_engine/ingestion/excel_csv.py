@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import pandas as pd
+from ..colonnes import classer_colonne_montant
 from ..provenance.models import DonneeSourcee
 
 
@@ -25,12 +26,18 @@ def _detect_column_mapping(df: pd.DataFrame) -> dict[str, str | None]:
     """
     Mappe les colonnes connues avec correspondance exacte puis par sous-chaîne.
     Gère les balances (Solde Débiteur / Solde Créditeur) et les grands livres.
+
+    Les colonnes de montant sont classées une par une (`classer_colonne_montant`)
+    afin de distinguer les SOLDES des MOUVEMENTS : une balance à quatre colonnes
+    (« mvt débit », « mvt crédit », « solde débit », « solde crédit ») produit
+    quatre champs distincts, aucune colonne n'en écrase une autre.
     """
     col_keys = {c.lower().strip(): c for c in df.columns}
     mapping: dict[str, str | None] = {
         "compte": None, "libelle": None, "debit": None,
         "credit": None, "date": None, "numero_piece": None,
-        "solde": None, "exercice": None,
+        "solde": None, "solde_debit": None, "solde_credit": None,
+        "exercice": None,
     }
 
     # Synonymes exacts (sous-chaîne dans le nom de colonne en minuscules)
@@ -42,16 +49,8 @@ def _detect_column_mapping(df: pd.DataFrame) -> dict[str, str | None]:
         "libelle":      ["intitulé du compte", "intitule du compte", "libellé du compte",
                          "libellé", "libelle", "intitulé", "intitule",
                          "designation", "désignation", "label"],
-        # Débit total / mouvements : priorité sur "solde débiteur"
-        "debit":        ["mouvement débit", "mouvement debit", "total débit", "total debit",
-                         "montant débit", "montant debit", "montant_débit", "montant_debit",
-                         "débit", "debit", " db"],
-        # Crédit total / mouvements
-        "credit":       ["mouvement crédit", "mouvement credit", "total crédit", "total credit",
-                         "montant crédit", "montant credit", "montant_crédit", "montant_credit",
-                         "crédit", "credit", " cr"],
-        # Solde débiteur et créditeur — traités séparément ci-dessous
-        "solde":        ["solde net", "solde final", "solde", "balance", "sold"],
+        # debit / credit / solde / solde_debit / solde_credit : voir plus bas
+        # (classification colonne par colonne, mouvements vs soldes).
         "date":         ["date opération", "date operation", "date écriture", "date ecriture",
                          "date_ecriture", "date_piece", "date_op", "date"],
         "numero_piece": ["n° pièce", "n°pièce", "ref piece", "ref_piece", "num_piece",
@@ -74,21 +73,17 @@ def _detect_column_mapping(df: pd.DataFrame) -> dict[str, str | None]:
     for field, syns in synonymes.items():
         mapping[field] = _find(syns)
 
-    # Cas spécial balance : "Solde Débiteur" → debit, "Solde Créditeur" → credit
-    if mapping["debit"] is None:
-        for key, orig in col_keys.items():
-            if "solde" in key and ("débit" in key or "debit" in key):
-                mapping["debit"] = orig
-                break
-    if mapping["credit"] is None:
-        for key, orig in col_keys.items():
-            if "solde" in key and ("crédit" in key or "credit" in key):
-                mapping["credit"] = orig
-                break
-
-    # Éviter que "solde" soit mappé sur une colonne déjà prise par debit/credit
-    if mapping["solde"] and mapping["solde"] in (mapping["debit"], mapping["credit"]):
-        mapping["solde"] = None
+    # Montants : une colonne ne peut alimenter qu'un seul champ, et les
+    # colonnes de solde ne sont jamais confondues avec les mouvements.
+    # En cas de doublon (deux colonnes classées pareil), la première gagne.
+    deja_prises = {v for v in mapping.values() if v is not None}
+    for key, orig in col_keys.items():
+        if orig in deja_prises:
+            continue
+        champ = classer_colonne_montant(key)
+        if champ and mapping[champ] is None:
+            mapping[champ] = orig
+            deja_prises.add(orig)
 
     return mapping
 
@@ -210,6 +205,8 @@ def _type_for_field(field_name: str) -> str:
         "date": "date",
         "numero_piece": "numero_piece",
         "solde": "montant",
+        "solde_debit": "montant",
+        "solde_credit": "montant",
         "exercice": "texte",
     }
     return type_map.get(field_name, "texte")
