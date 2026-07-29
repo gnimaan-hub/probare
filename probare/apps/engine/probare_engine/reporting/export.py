@@ -18,6 +18,15 @@ class ProvenanceError(Exception):
     """Levée si un chiffre sans source est détecté dans un livrable."""
 
 
+class BouclageError(Exception):
+    """Levée si les feuilles maîtresses ne bouclent pas avec la balance (M5).
+
+    Une feuille maîtresse qui ne se raccorde pas à la balance n'est pas une
+    feuille de travail : un compte a été perdu ou compté deux fois. Le livrable
+    n'est pas produit tant que l'écart n'est pas résorbé.
+    """
+
+
 def _verifier_sources(valeur: Any, sources: list[str], libelle: str) -> None:
     """Échoue si une valeur numérique n'a pas de source."""
     if isinstance(valeur, (int, float)) and valeur != 0 and not sources:
@@ -66,9 +75,11 @@ def generer_dossier_travail(
     synthese_anomalies: dict | None = None,
     diligences_peripherie: list[dict] | None = None,
     ajustements: dict | None = None,
+    feuilles_maitresses: dict | None = None,
 ) -> Path:
     """Génère le dossier de travail en .docx.
-    Lève ProvenanceError si un chiffre non sourcé est détecté.
+    Lève ProvenanceError si un chiffre non sourcé est détecté, BouclageError si
+    les feuilles maîtresses ne se raccordent pas à la balance ajustée (M5).
     """
     try:
         from docx import Document
@@ -304,6 +315,13 @@ def generer_dossier_travail(
                 f"écritures passées — total des ajustements nets : {ba.get('total_ajustements', 0.0):+,.2f} "
                 f"(total brut {ba.get('total_brut', 0.0):,.2f} → total ajusté {ba.get('total_ajuste', 0.0):,.2f})."
             )
+
+    # Feuilles maîtresses par rubrique d'états financiers (M5) — placées avant les
+    # feuilles de travail par cycle : c'est la vue par laquelle un relecteur entre.
+    if feuilles_maitresses:
+        section_feuilles_maitresses_simple(
+            doc, feuilles_maitresses,
+            _titre_section("Feuilles maîtresses par rubrique d'états financiers"))
 
     # Section diligences ISA de périphérie (M3)
     if diligences_peripherie:
@@ -1587,6 +1605,309 @@ def _fmt_fdj(v: Any) -> str:
     return "—"
 
 
+# ─── Feuilles maîtresses par rubrique d'états financiers (M5) ──────────────────
+
+def _fmt_montant(v: Any) -> str:
+    """Montant de tableau : sans devise, tiret si nul (colonne lisible d'un coup d'œil)."""
+    if not isinstance(v, (int, float)):
+        return "—"
+    if abs(v) < 0.01:
+        return "—"
+    return f"{v:,.0f}".replace(",", " ")
+
+
+def _fmt_pct(v: Any) -> str:
+    if not isinstance(v, (int, float)):
+        return "—"
+    return f"{v * 100:+,.1f} %".replace(",", " ")
+
+
+_ENTETES_SYNTHESE = ["Rubrique d'états financiers", "Solde importé", "Ajustements",
+                     "Solde audité", "Exercice N-1", "Variation", "%"]
+_LARGEURS_SYNTHESE = [5.6, 1.9, 1.7, 1.9, 1.9, 1.7, 1.3]
+
+_ENTETES_DETAIL = ["Compte", "Libellé", "Solde importé", "Ajustements",
+                   "Solde audité", "N-1", "Variation"]
+_LARGEURS_DETAIL = [1.8, 4.6, 2.0, 1.8, 2.0, 1.9, 1.9]
+
+# Sans balance N-1 renseignée, les colonnes comparatives sont RETIRÉES et non
+# laissées à zéro : une variation égale au solde N ferait lire « tout le poste a
+# varié » alors qu'il n'y a simplement rien à comparer.
+_ENTETES_SYNTHESE_SANS_N1 = _ENTETES_SYNTHESE[:4]
+_LARGEURS_SYNTHESE_SANS_N1 = [8.2, 2.6, 2.6, 2.6]
+
+_ENTETES_DETAIL_SANS_N1 = _ENTETES_DETAIL[:5]
+_LARGEURS_DETAIL_SANS_N1 = [2.0, 6.4, 2.6, 2.4, 2.6]
+
+
+def _format_tableaux(matrice: dict) -> dict:
+    """En-têtes et largeurs des tableaux, selon qu'un comparatif N-1 existe."""
+    if matrice.get("avec_comparatif"):
+        return {"synthese": (_ENTETES_SYNTHESE, _LARGEURS_SYNTHESE),
+                "detail": (_ENTETES_DETAIL, _LARGEURS_DETAIL)}
+    return {"synthese": (_ENTETES_SYNTHESE_SANS_N1, _LARGEURS_SYNTHESE_SANS_N1),
+            "detail": (_ENTETES_DETAIL_SANS_N1, _LARGEURS_DETAIL_SANS_N1)}
+
+
+def _libelle_equilibre_bilan(matrice: dict) -> str:
+    """Résume en une ligne le contrôle « actif − passif = résultat ».
+
+    Contrôle de SUBSTANCE, complémentaire du bouclage : ce dernier ne prouve que
+    la cohérence de l'affectation des comptes et tient même sur des soldes faux.
+    """
+    eq = matrice.get("equilibre_bilan") or {}
+    if eq.get("equilibre"):
+        return "Vérifiée"
+    ecart = _fmt_fdj(eq.get("ecart"))
+    if eq.get("resultat_deja_comptabilise"):
+        return f"Écart de {ecart} — résultat déjà comptabilisé au bilan"
+    return f"Écart de {ecart} — à investiguer"
+
+
+def verifier_bouclage(matrice: dict) -> None:
+    """Bloque la génération si les feuilles maîtresses ne bouclent pas."""
+    b = matrice.get("bouclage") or {}
+    if not b.get("boucle", True):
+        raise BouclageError(
+            f"Feuilles maîtresses non bouclées : total des rubriques "
+            f"{b.get('total_rubriques', 0):,.2f} ≠ total de la balance ajustée "
+            f"{b.get('total_balance', 0):,.2f} (écart {b.get('ecart', 0):,.2f}). "
+            "Un compte est perdu ou compté deux fois — corrigez l'affectation des "
+            "comptes avant de produire le livrable."
+        )
+
+
+def _colonnes_presentees(rubrique: dict) -> tuple[float, float, float, float, float]:
+    """(brut, ajustements, audité, N-1, variation) dans le sens des états financiers.
+
+    TOUTES les colonnes d'une même ligne portent le même signe de présentation :
+    sans cela, « importé 260 000 · ajustements −5 000 · audité 265 000 » se
+    lirait comme une erreur d'arithmétique sur un poste de passif.
+    """
+    s = rubrique["signe_presentation"]
+    audite = rubrique["montant_presente"]
+    n1 = rubrique["montant_n1_presente"]
+    return (round(rubrique["montant_brut"] * s, 2),
+            round(rubrique["montant_ajustements"] * s, 2),
+            audite, n1, round(audite - n1, 2))
+
+
+def _lignes_synthese_feuilles(matrice: dict) -> tuple[list[list], list[str]]:
+    """Tableau de synthèse : une ligne par rubrique servie, sous-totaux par grand poste."""
+    from .leadsheets import rubriques_non_vides
+    par_ref = {r["ref"]: r for r in rubriques_non_vides(matrice)}
+
+    # Sans comparatif, on s'arrête au solde audité (colonnes N-1/variation/% retirées).
+    avec_n1 = bool(matrice.get("avec_comparatif"))
+    nb_cols = 5 if avec_n1 else 3
+
+    lignes: list[list] = []
+    styles: list[str] = []
+    for g in matrice.get("groupes") or []:
+        servies = [par_ref[ref] for ref in g["refs"] if ref in par_ref]
+        if not servies:
+            continue
+        cumuls = [0.0] * nb_cols
+        for r in servies:
+            valeurs = _colonnes_presentees(r)[:nb_cols]
+            cumuls = [round(a + b, 2) for a, b in zip(cumuls, valeurs)]
+            ligne = [r["libelle"], *[_fmt_montant(v) for v in valeurs]]
+            if avec_n1:
+                ligne.append(_fmt_pct(r["variation_pct"]))
+            lignes.append(ligne)
+            styles.append("alerte" if r["sens_anormal"] else "normal")
+        total = [f"Total — {g['libelle']}", *[_fmt_montant(v) for v in cumuls]]
+        if avec_n1:
+            total.append("")
+        lignes.append(total)
+        styles.append("sous_total")
+    return lignes, styles
+
+
+def _lignes_detail_rubrique(rubrique: dict, avec_n1: bool = True) -> tuple[list[list], list[str]]:
+    """Détail par compte d'une rubrique, clos par le total de la rubrique."""
+    signe = rubrique["signe_presentation"]
+    nb_cols = 5 if avec_n1 else 3
+    lignes: list[list] = []
+    styles: list[str] = []
+    for c in rubrique["comptes"]:
+        montants = [c["solde_brut"] * signe, c["ajustement"] * signe,
+                    c["solde_ajuste"] * signe, c["solde_n1"] * signe,
+                    c["variation_abs"] * signe][:nb_cols]
+        lignes.append([
+            c["compte"],
+            (c["libelle"] or "")[:52] + (" ⟳" if c["reaffecte"] else ""),
+            *[_fmt_montant(v) for v in montants],
+        ])
+        alerte = c["absent_n"] or (avec_n1 and c["variation_notable"])
+        styles.append("alerte" if alerte else "normal")
+    lignes.append(["", f"Total — {rubrique['libelle']}",
+                   *[_fmt_montant(v) for v in _colonnes_presentees(rubrique)[:nb_cols]]])
+    styles.append("total")
+    return lignes, styles
+
+
+def _phrase_travaux(rubrique: dict) -> str:
+    """Résume en une phrase les travaux d'audit rattachés à la rubrique."""
+    t = rubrique.get("travaux") or {}
+    morceaux = []
+    if t.get("controles"):
+        nb_exc = sum(1 for c in t["controles"] if c.get("statut") == "exception")
+        morceaux.append(f"{len(t['controles'])} contrôle(s) exécuté(s)"
+                        + (f", dont {nb_exc} ayant levé une exception" if nb_exc else ""))
+    if t.get("circularisations"):
+        recues = sum(1 for c in t["circularisations"]
+                     if c.get("statut") in ("reponse_recue", "clos"))
+        morceaux.append(f"{len(t['circularisations'])} confirmation(s) externe(s) "
+                        f"({recues} réponse(s) reçue(s))")
+    if t.get("sondages"):
+        morceaux.append(f"{len(t['sondages'])} sondage(s) sur pièces")
+    if t.get("ajustements"):
+        morceaux.append(f"{len(t['ajustements'])} écriture(s) d'ajustement")
+    ouvertes = len(t.get("exceptions_ouvertes") or [])
+    tranchees = len(t.get("exceptions_tranchees") or [])
+    if tranchees:
+        morceaux.append(f"{tranchees} anomalie(s) tranchée(s)")
+    if ouvertes:
+        morceaux.append(f"{ouvertes} anomalie(s) encore ouverte(s)")
+    if not morceaux:
+        return "Aucun travail spécifique n'est rattaché à cette rubrique."
+    return "Travaux rattachés : " + ", ".join(morceaux) + "."
+
+
+def section_feuilles_maitresses_theme(doc, matrice: dict, numero: str,
+                                      detail: bool = True) -> None:
+    """Chapitre « Feuilles maîtresses » mis en forme selon la charte Probare."""
+    from . import theme as T
+    from .leadsheets import rubriques_non_vides
+
+    verifier_bouclage(matrice)
+    avec_n1 = bool(matrice.get("avec_comparatif"))
+    formats = _format_tableaux(matrice)
+    T.section_header(doc, "Feuilles maîtresses par rubrique d'états financiers", numero)
+    T.para(doc,
+        "La feuille maîtresse relie chaque poste des états financiers aux comptes qui le "
+        "composent. Pour chaque rubrique figurent le solde issu de la balance importée, "
+        "l'incidence des écritures d'ajustement passées et le solde audité qui en résulte"
+        + (", le comparatif de l'exercice précédent et la variation" if avec_n1 else "")
+        + ". C'est le point d'entrée du dossier : de la rubrique on descend au compte, et "
+        "du compte on remonte aux travaux."
+    )
+    if not avec_n1:
+        T.para(doc,
+            "Aucune balance de l'exercice précédent n'a été rattachée à la mission : les "
+            "colonnes comparatives et les variations ne figurent pas dans les tableaux "
+            "ci-après, faute de terme de comparaison.", italic=True, size=9.5)
+    if matrice.get("plan_approxime"):
+        T.para(doc,
+            "Le plan de rubriques appliqué est celui du Plan Comptable Général de Djibouti, "
+            "faute de plan propre au référentiel déclaré par l'entité. L'affectation des "
+            "comptes a été relue et, le cas échéant, corrigée compte par compte.",
+            italic=True, size=9.5)
+
+    bouclage = matrice.get("bouclage") or {}
+    T.info_table(doc, [
+        ("Comptes repris", str(matrice.get("nb_comptes", 0))),
+        ("Rubriques servies", str(matrice.get("nb_rubriques_servies", 0))),
+        ("Total actif", _fmt_fdj((matrice.get("totaux") or {}).get("actif"))),
+        ("Total passif", _fmt_fdj((matrice.get("totaux") or {}).get("passif"))),
+        ("Résultat (produits − charges)", _fmt_fdj((matrice.get("totaux") or {}).get("resultat"))),
+        ("Bouclage avec la balance ajustée",
+         f"Vérifié — écart {bouclage.get('ecart', 0):,.2f}"),
+        ("Actif − passif = résultat", _libelle_equilibre_bilan(matrice)),
+    ], bleed=False)
+    eq = matrice.get("equilibre_bilan") or {}
+    if not eq.get("equilibre", True) and not eq.get("resultat_deja_comptabilise"):
+        T.para(doc,
+            f"L'identité comptable actif − passif = résultat n'est pas vérifiée "
+            f"(écart de {_fmt_fdj(eq.get('ecart'))}), alors que le résultat n'est pas "
+            "encore comptabilisé au bilan. Cet écart signale une balance incomplète ou "
+            "mal interprétée à l'import : les soldes doivent être fiabilisés avant de "
+            "s'appuyer sur les feuilles maîtresses.", color=T.RED)
+
+    # ── Synthèse : une ligne par rubrique, sous-total par grand poste ────────
+    T.sous_titre(doc, "Synthèse par rubrique")
+    lignes, styles = _lignes_synthese_feuilles(matrice)
+    T.data_table(doc, formats["synthese"][0], lignes,
+                 largeurs=formats["synthese"][1], styles_lignes=styles)
+    T.para(doc,
+        "Les montants sont présentés dans le sens de lecture des états financiers : les postes "
+        "de passif et de produits figurent en valeur positive. Une rubrique en rouge présente "
+        "un solde de sens contraire à celui attendu.", italic=True, size=9)
+
+    if not detail:
+        return
+
+    # ── Détail par rubrique ─────────────────────────────────────────────────
+    for r in rubriques_non_vides(matrice):
+        T.sous_titre(doc, f"{r['libelle']} ({r['groupe']})")
+        lignes_d, styles_d = _lignes_detail_rubrique(r, avec_n1)
+        T.data_table(doc, formats["detail"][0], lignes_d,
+                     largeurs=formats["detail"][1], styles_lignes=styles_d)
+        T.para(doc, _phrase_travaux(r), size=9.5)
+        if r["sens_anormal"]:
+            T.para(doc,
+                "Le solde de cette rubrique est de sens contraire à celui attendu : "
+                "sa présentation aux états financiers doit être vérifiée.",
+                size=9.5, color=T.RED)
+        for e in (r["travaux"].get("exceptions_ouvertes") or [])[:5]:
+            T.para(doc, f"• Anomalie ouverte {e.get('controle_ref')} — {e.get('description', '')}",
+                   justify=False, size=9, color=T.NAVY)
+
+    non_affectees = matrice.get("rubriques_non_affectees") or []
+    hors_plan = matrice.get("comptes_non_affectes") or []
+    if non_affectees or hors_plan:
+        T.sous_titre(doc, "Comptes non rattachés à une rubrique")
+        T.para(doc,
+            "Les comptes suivants n'ont pas trouvé de rubrique dans le plan appliqué. Ils sont "
+            "repris au bouclage mais doivent être affectés avant la présentation des comptes.")
+        for na in non_affectees:
+            T.para(doc, f"• {na['libelle']} : {', '.join(na['comptes'][:15])} "
+                        f"({_fmt_fdj(na['montant_ajuste'])})", justify=False, size=9.5)
+        for hp in hors_plan:
+            T.para(doc, f"• {hp['compte']} — {hp['motif']} ({_fmt_fdj(hp['solde_ajuste'])})",
+                   justify=False, size=9.5, color=T.RED)
+
+
+def section_feuilles_maitresses_simple(doc, matrice: dict, titre: str) -> None:
+    """Même contenu, rendu sobre (dossier de travail : styles Word par défaut)."""
+    from .leadsheets import rubriques_non_vides
+    from docx.shared import Pt
+
+    verifier_bouclage(matrice)
+    doc.add_heading(titre, level=1)
+    bouclage = matrice.get("bouclage") or {}
+    doc.add_paragraph(
+        f"Balance auditée regroupée par rubrique d'états financiers : "
+        f"{matrice.get('nb_comptes', 0)} compte(s) répartis sur "
+        f"{matrice.get('nb_rubriques_servies', 0)} rubrique(s). Bouclage avec la balance "
+        f"ajustée vérifié (écart {bouclage.get('ecart', 0):,.2f})."
+    )
+    avec_n1 = bool(matrice.get("avec_comparatif"))
+    if not avec_n1:
+        doc.add_paragraph(
+            "Aucune balance de l'exercice précédent n'étant rattachée à la mission, les "
+            "comparatifs et variations ne sont pas restitués."
+        )
+    for r in rubriques_non_vides(matrice):
+        doc.add_heading(f"{r['libelle']} — {r['groupe']}", level=2)
+        doc.add_paragraph(
+            f"Solde importé {r['montant_brut']:,.2f} · ajustements {r['montant_ajustements']:+,.2f} "
+            f"· solde audité {r['montant_ajuste']:,.2f}"
+            + (f" · N-1 {r['montant_n1']:,.2f} · variation {r['variation_abs']:+,.2f}"
+               if avec_n1 else "")
+        )
+        for c in r["comptes"]:
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(
+                f"{c['compte']} {c['libelle'] or ''} — importé {c['solde_brut']:,.2f} · "
+                f"ajusté {c['solde_ajuste']:,.2f}"
+                + (f" · N-1 {c['solde_n1']:,.2f} · variation {c['variation_abs']:+,.2f}"
+                   if avec_n1 else "")
+            ).font.size = Pt(9)
+        doc.add_paragraph(_phrase_travaux(r))
+
+
 def generer_memorandum_controle_comptes(
     projet: dict,
     resultats: list[dict],
@@ -1604,6 +1925,7 @@ def generer_memorandum_controle_comptes(
     couverture: dict | None = None,
     programme: list[dict] | None = None,
     diligences_eval: list[dict] | None = None,
+    feuilles_maitresses: dict | None = None,
 ) -> Path:
     """Génère le MÉMORANDUM SUR LE CONTRÔLE DES COMPTES en .docx.
 
@@ -1671,7 +1993,12 @@ def generer_memorandum_controle_comptes(
     if risques or couverture.get("lignes") or programme:
         entrees.append(("Approche par les risques",
                         "Cartographie des risques validés, couverture par assertion et programme de travail."))
-    entrees.append(("Contrôle des comptes par cycle", "Objectifs, travaux réalisés et commentaires, cycle par cycle."))
+    if feuilles_maitresses:
+        entrees.append(("Feuilles maîtresses par rubrique d'états financiers",
+                        "Soldes audités poste par poste : balance importée, ajustements, "
+                        "comparatif N-1 et travaux rattachés."))
+    entrees.append(("Contrôle des comptes par cycle d'audit",
+                    "Objectifs, travaux réalisés et commentaires, cycle par cycle."))
     if diligences_eval:
         entrees.append(("Diligences de périphérie de la mission",
                         "Fraude, parties liées, continuité, événements postérieurs, déclarations écrites…"))
@@ -1854,8 +2181,20 @@ def generer_memorandum_controle_comptes(
                 f"Le programme de travail retenu comporte {len(inclus)} contrôle(s) planifié(s), "
                 f"répartis par cycle — {detail}.")
 
-    # ── 3. Contrôle des comptes par cycle ────────────────────────────────────
-    T.section_header(doc, "Contrôle des comptes par cycle", str(num)); num += 1
+    # ── Feuilles maîtresses (M5) : la vue par états financiers ──────────────
+    # Placée AVANT le détail par cycle : le lecteur entre par le poste publié,
+    # puis descend au travail d'audit qui le sous-tend.
+    if feuilles_maitresses:
+        section_feuilles_maitresses_theme(doc, feuilles_maitresses, str(num)); num += 1
+
+    # ── 3. Contrôle des comptes par cycle d'audit ────────────────────────────
+    T.section_header(doc, "Contrôle des comptes par cycle d'audit", str(num)); num += 1
+    if feuilles_maitresses:
+        T.para(doc,
+            "Nos travaux sont organisés par cycle d'audit — regroupement de processus et de "
+            "comptes homogènes. Les constats qui suivent alimentent les rubriques d'états "
+            "financiers présentées au chapitre précédent, auquel ils se rattachent compte "
+            "par compte.")
     for cycle in cycles:
         libelle_cycle = _MEMO_CYCLE_LABELS.get(cycle, cycle.capitalize())
         refs = refs_par_cycle.get(cycle, set())

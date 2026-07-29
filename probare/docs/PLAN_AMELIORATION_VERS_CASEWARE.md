@@ -50,33 +50,44 @@ Chaque chantier est présenté sous forme de **fiche** avec :
 
 ## 2. Vue d'ensemble des chantiers
 
-| Réf | Chantier | Axe | Priorité | Difficulté | Charge | Dépend de |
-|---|---|---|---|---|---|---|
-| M1 | Écritures d'ajustement et état récapitulatif ISA 450 | Méthodologie | **P0** | 3 | M | — |
-| M2 | Seuils complémentaires (anomalies insignifiantes, seuils spécifiques) | Méthodologie | **P0** | 1 | S | — |
-| M3 | Couverture des ISA de périphérie de mission (210, 220, 240, 550, 560, 570, 580, 260/265) | Méthodologie | **P0** | 2 | L | — |
-| M4 | Cartographie contrôles ↔ assertions (ISA 315 révisée) | Méthodologie | **P0** | 2 | M | — |
-| D1 | Tests des écritures de journal — Journal Entry Testing (ISA 240) | Analyse de données | **P0** | 3 | M | M3 (volet fraude) |
-| D2 | Loi de Benford | Analyse de données | **P1** | 2 | S | — |
-| D3 | Échantillonnage statistique complet (MUS, stratifié, attributs) | Analyse de données | **P1** | 3 | M | — |
-| D4 | Balance âgée automatique (clients / fournisseurs) | Analyse de données | **P1** | 2 | S | — |
-| D5 | Import élargi (FEC, formats logiciels comptables, auto-détection renforcée) | Analyse de données | **P1** | 2 | M | — |
-| M5 | Feuilles maîtresses (leadsheets) par cycle | Dossier de travail | **P1** | 3 | M | M1 |
-| M6 | Roll-forward de mission N → N+1 | Méthodologie | **P1** | 2 | M | — |
-| C1 | Verrouillage du dossier conforme ISA 230 (gel, hash, délai d'assemblage) | Dossier & revue | **P1** | 2 | S | — |
-| C2 | Dossier de travail interactif (indexation, références croisées, tickmarks) | Dossier & revue | **P2** | 4 | L | M5 |
-| C3 | Workflow de revue et sign-off (rôles préparateur / réviseur / signataire) | Dossier & revue | **P2** | 3 | M | C2 souhaitable |
-| D6 | Rapprochements génériques de fichiers (jointures type IDEA) | Analyse de données | **P2** | 3 | M | D5 |
-| D7 | Passage aux gros volumes (DuckDB / Polars) | Analyse de données | **P2** | 3 | M | — |
-| P1 | Circularisation : envoi et suivi intégrés | Production | **P2** | 3 | M | — |
-| C4 | Multi-utilisateurs et synchronisation de dossier | Dossier & revue | **P3** | 5 | XL | C3 |
-| P2 | États financiers liés à la balance (bilan, compte de résultat, annexes) | Production | **P3** | 4 | XL | M1 |
-| P3 | Consolidation et multi-devises | Production | **P3** | 5 | XL | P2 |
-| P4 | Portail client PBC (demandes de documents) | Production | **P3** | 4 | L | — |
+| Réf | Chantier | Axe | Priorité | Difficulté | Charge | Dépend de | Statut |
+|---|---|---|---|---|---|---|---|
+| M1 | Écritures d'ajustement et état récapitulatif ISA 450 | Méthodologie | **P0** | 3 | M | — | ✅ Réalisé |
+| M2 | Seuils complémentaires (anomalies insignifiantes, seuils spécifiques) | Méthodologie | **P0** | 1 | S | — | ✅ Réalisé |
+| M3 | Couverture des ISA de périphérie de mission (210, 220, 240, 550, 560, 570, 580, 260/265) | Méthodologie | **P0** | 2 | L | — | ✅ Réalisé |
+| M4 | Cartographie contrôles ↔ assertions (ISA 315 révisée) | Méthodologie | **P0** | 2 | M | — | ✅ Réalisé |
+| D1 | Tests des écritures de journal — Journal Entry Testing (ISA 240) | Analyse de données | **P0** | 3 | M | M3 (volet fraude) | ✅ Réalisé (calibrage seuil à revoir → D1b) |
+| G1 | Générateurs livrables : rapport d'audit, mémorandum, opinion IA | Production | **P0** | 3 | L | M1–M4 | ✅ Réalisé (hors plan initial) |
+| M5 | Feuilles maîtresses (leadsheets) **par rubrique d'états financiers** | Dossier de travail | **P0** ⬆ | 3 | M | M1 | ✅ Réalisé |
+| P2 | États financiers liés à la balance (cadrage, bilan/CR, notes) + **bloc signature** | Production | **P1** ⬆ | 4 | L | M5 ✅ | ⬜ À faire — **débloqué** (P2-c bloc signature = quick win) |
+| R3 | Réserve qualitative (limitation/incertitude) ↔ opinion | Méthodologie | **P0** | 2 | S | G1 | ⬜ À faire (incohérence relevée au test E2E) |
+| R1 | Fondement d'opinion : conserver le paragraphe standard ISA | Production | **P0** | 1 | S | G1 | ⬜ À faire (quick win) |
+| D2 | Loi de Benford | Analyse de données | **P1** | 2 | S | — | ⬜ À faire |
+| D3 | Échantillonnage statistique complet (MUS, stratifié, attributs) | Analyse de données | **P1** | 3 | M | — | ⬜ À faire |
+| D4 | Balance âgée automatique (clients / fournisseurs) | Analyse de données | **P1** | 2 | S | — | ⬜ À faire |
+| D5 | Import élargi (FEC, sans en-tête, auto-détection renforcée, mapping manuel) | Analyse de données | **P1** ⬆ | 2 | M | — | ⬜ À faire (bloquant constaté au test E2E) |
+| D8 | Interprétation IA **asynchrone / par lots** des exceptions | Analyse de données | **P1** | 3 | M | — | ⬜ À faire (perf. constatée : >20 min) |
+| M6 | Roll-forward de mission N → N+1 | Méthodologie | **P1** | 2 | M | — | ⬜ À faire |
+| C1 | Verrouillage du dossier conforme ISA 230 (gel, hash, délai d'assemblage) | Dossier & revue | **P1** | 2 | S | — | ⬜ À faire |
+| C2 | Dossier de travail interactif (indexation, références croisées, tickmarks) | Dossier & revue | **P2** | 4 | L | M5 ✅ | ⬜ À faire — **débloqué** |
+| C3 | Workflow de revue et sign-off (rôles préparateur / réviseur / signataire) | Dossier & revue | **P2** | 3 | M | C2 souhaitable | ⬜ À faire |
+| D6 | Rapprochements génériques de fichiers (jointures type IDEA) | Analyse de données | **P2** | 3 | M | D5 | ⬜ À faire |
+| D7 | Passage aux gros volumes (DuckDB / Polars) | Analyse de données | **P2** | 3 | M | — | ⬜ À faire |
+| P1 | Circularisation : envoi et suivi intégrés | Production | **P2** | 3 | M | — | ⬜ À faire (génération des lettres déjà OK) |
+| C4 | Multi-utilisateurs et synchronisation de dossier | Dossier & revue | **P3** | 5 | XL | C3 | ⬜ À faire |
+| P3 | Consolidation et multi-devises | Production | **P3** | 5 | XL | P2 | ⬜ À faire |
+| P4 | Portail client PBC (demandes de documents) | Production | **P3** | 4 | L | — | ⬜ À faire |
 
 Lecture rapide : **les P0 rendent le dossier normativement complet ; les P1 comblent les écarts
 les plus visibles face à IDEA et Working Papers ; les P2 apportent la productivité de revue ;
 les P3 relèvent de la parité plateforme.**
+
+> **Mise à jour (test E2E ARULOS 2024, juillet 2026).** M1–M4 et D1 sont **réalisés**, ainsi que
+> les générateurs de rapport d'audit, de mémorandum et d'opinion (ligne G1, non prévue au plan initial).
+> Le test de bout en bout sur un vrai dossier a **reclassé M5 en priorité n°1**, promu D5/D8 et P2, et
+> fait émerger trois chantiers nouveaux : **R1** (fondement d'opinion complet), **R3** (réserve
+> qualitative ↔ opinion) et **D8** (interprétation IA asynchrone). Détails en fin de document,
+> section « Journal des réalisations et chantiers issus du test E2E ».
 
 ---
 
@@ -183,21 +194,83 @@ est couvert.
 
 ---
 
-#### M5 — Feuilles maîtresses (leadsheets) par cycle · **P1 · difficulté 3 · charge M**
+#### M5 — Feuilles maîtresses par rubrique d'états financiers · **✅ RÉALISÉ** · difficulté 3 · charge M
 
-**Ce que fait Caseware :** pour chaque cycle, une feuille maîtresse agrège les comptes,
+**Ce que fait Caseware :** pour chaque rubrique, une feuille maîtresse agrège les comptes,
 affiche N / ajustements / N ajusté / N-1 / variation %, sert de pivot de navigation vers les travaux.
 
-**Écart Probare :** les données existent (balance, variations, contrôles par cycle) mais il n'y a
-pas de vue « feuille maîtresse » ; le dossier Word est généré sans ce pivot standard.
+**Écart Probare (confirmé au test E2E ARULOS) :** les données existent (balance, balance ajustée,
+variations, contrôles par cycle) mais il n'y a **pas de vue « feuille maîtresse »**. Surtout, le mémo
+Probare est organisé **par cycle**, alors que le livrable du cabinet est organisé **par rubrique d'états
+financiers** (18 postes), chacune avec son tableau de détail N/N-1/variation. C'est **l'écart de
+présentation n°1** identifié au test de bout en bout.
+
+**Modèle de données :**
+1. Plan de **rubriques par référentiel comptable** livré en données (`reporting/rubriques/pcgd.py`,
+   comme les normes) : `rubrique_ref`, `libelle`, `ordre`, `type` (bilan_actif|bilan_passif|resultat),
+   `prefixes_comptes`, `signe`.
+2. Table `rubrique_override` (`projet_id, compte, rubrique_ref`) : l'auditeur peut réaffecter un compte.
 
 **Travaux :**
-1. Vue UI par cycle : tableau des comptes du cycle (préfixes déjà définis par cycle), colonnes
-   N brut / ajustements (M1) / N ajusté / N-1 / variation, total du cycle.
-2. Rattacher visuellement à chaque ligne : exceptions ouvertes, contrôles exécutés, sondages,
-   circularisations du compte.
-3. Export de chaque feuille maîtresse dans le dossier Word (une section par cycle, avant la
-   feuille de travail rédigée par l'IA).
+1. Module `reporting/leadsheets.py` : `construire_feuilles_maitresses(balance_N, balance_ajustee,
+   balance_N1, mapping)` → par rubrique `{comptes, montant_brut, montant_ajustements, montant_ajuste,
+   montant_n1, variation_abs, variation_pct}`, **chaque montant restant un agrégat de `DonneeSourcee`**.
+2. Rattachement croisé : par rubrique, exceptions ouvertes, contrôles exécutés, sondages,
+   circularisations dont les comptes tombent dans `prefixes_comptes`.
+3. API `GET /projets/{id}/feuilles-maitresses` ; intégration à `exporter-dossier` et
+   `exporter-memorandum`.
+4. Rendu Word : une section par rubrique (tableau 6 colonnes), sous-total par grand poste, **contrôle
+   de bouclage** total rubriques = total balance (bloque l'export si écart ≠ 0). **Réorganiser le mémo
+   par rubrique d'EF** ; conserver la vue par cycle en annexe méthodologique.
+5. Vue UI « Feuilles maîtresses » (compte → rubrique) avec navigation vers les travaux rattachés.
+
+**Tests :** bouclage Σ rubriques = total balance ; réaffectation de compte ; rubrique sans mouvement N
+mais présente N-1. **Prérequis de M5 pour C2 (dossier interactif) et P2 (états financiers).**
+
+**✅ Livré — ce qui a été implémenté :**
+- `probare_engine/rubriques.py` : plan PCGD en données (48 rubriques, 12 grands postes), résolution par
+  **préfixe le plus long**, `PLANS_RUBRIQUES` par référentiel comptable avec signalement des plans
+  d'emprunt (`plan_est_approxime`). Table `rubrique_override` (compte, rubrique, motif, auteur, horodatage).
+- `probare_engine/reporting/leadsheets.py` : `construire_feuilles_maitresses()` — par rubrique et par
+  compte (solde importé / ajustements / solde audité / N-1 / variation abs et %), provenance conservée,
+  sous-totaux par grand poste, totaux actif/passif/charges/produits/résultat, détection des **soldes de
+  sens anormal**, univers de comptes = balance N ∪ N-1 (un compte soldé en N reste visible).
+- Rattachement croisé : par **compte** (circularisations, lignes d'ajustement), par **préfixe**
+  (sondages), par **cycle** (contrôles et exceptions, qui ne portent que `controle_ref`).
+- API : `GET /projets/{id}/feuilles-maitresses`, `GET /rubriques`,
+  `PUT|DELETE /projets/{id}/feuilles-maitresses/affectations/{compte}` (réaffectation journalisée).
+- Rendu Word : chapitre « Feuilles maîtresses » dans le **mémorandum** (charte Probare, tableau de
+  synthèse + détail par rubrique + travaux rattachés) et dans le **dossier de travail**, placé AVANT le
+  détail par cycle ; helper `theme.data_table`. Le **bouclage bloque** la génération
+  (`BouclageError` → HTTP 422).
+- UI : écran transversal « Feuilles maîtresses » (grands postes → rubriques dépliables → comptes →
+  travaux rattachés), réaffectation d'un compte avec motif, retour au plan par défaut.
+- Tests : `tests/test_m5_feuilles_maitresses.py` — 33 tests (plan, bouclage, agrégation/présentation,
+  réaffectation, comparatif N-1, rattachement des travaux).
+- Vérifié sur le dossier réel ARULOS 2024 : 357 comptes, 34 rubriques servies, **bouclage à 0,00**,
+  aucun compte hors plan. Mémorandum régénéré de bout en bout (tableaux, sous-totaux et signe de
+  présentation contrôlés sur le .docx produit).
+- **Sans balance N-1, les colonnes comparatives sont retirées** des tableaux Word et de l'écran (au
+  lieu d'afficher une variation égale au solde N, qui se lisait « tout le poste a varié »). Une mention
+  explicite renvoie à la Planification pour rattacher la balance N-1. Couvert par 7 tests dédiés
+  (`TestRenduSansComparatif`), qui vérifient aussi la cohérence en-têtes/largeurs des tableaux.
+- **Second contrôle ajouté après intégration : identité actif − passif = résultat**
+  (`equilibre_bilan`), non bloquante. Le bouclage ne teste que l'affectation des comptes et tient
+  même sur des soldes faux ; cette identité teste la substance des montants. Sur ARULOS elle valait
+  −4 014 325 703 avant la correction du mapping de colonnes de balance, et 0,00 après : **elle aurait
+  détecté le bug d'ingestion depuis M5**. Signalée à l'écran et au mémorandum, avec distinction du cas
+  légitime « résultat déjà comptabilisé au bilan ».
+- Tests : **46 tests M5** au vert ; suite complète du moteur à **396 tests, zéro échec** après
+  intégration des chantiers « gardes pipeline » et « colonnes de balance ».
+- **Revérification ARULOS après correction du mapping de balance** : Clients passe de −1 872 852 043
+  à +1 126 220 511 ; net de classe 41 (déduction faite des clients créditeurs) = 151 031 519, chiffre
+  identique à celui obtenu indépendamment sur le fichier source. Bouclage 0,00, identité bilan 0,00.
+  Les rubriques « Disponibilités » et « VMP » restent créditrices : ce sont de vrais concours
+  bancaires logés en classe 5 — le drapeau « sens inhabituel » est ici un constat d'audit fondé.
+
+**Écart restant (à traiter ailleurs) :** la vue par cycle du mémorandum est conservée en chapitre plein
+(et non reléguée en annexe méthodologique) — elle porte les commentaires rédigés, cœur du mémo ; elle est
+désormais explicitement rattachée au chapitre des rubriques qui la précède.
 
 ---
 
@@ -431,31 +504,52 @@ réponse mais reclasse Probare en client-serveur (authentification, droits, migr
 **Ce que fait Caseware (Validate) :** envoi électronique réel des demandes de confirmation,
 réponses collectées sur plateforme, traçabilité complète.
 
-**Écart Probare :** génération des lettres + suivi manuel (envoyé/relancé/reçu saisi à la main).
+**Écart Probare (état au test E2E) :** la **génération des lettres fonctionne** (testé : 4 lettres
+clients/fournisseurs produites par l'IA à partir des plus gros soldes) ; seuls **l'envoi et le suivi
+restent manuels** (envoyé/relancé/reçu saisis à la main).
+
+**Modèle :** étendre la table `circularisation` (`date_envoi, date_relance, canal, solde_confirme,
+ecart, statut_email`).
 
 **Travaux (sans plateforme tierce — irréaliste à l'échelle de Probare) :**
 1. **Envoi email intégré** (SMTP du cabinet paramétré dans la fiche Cabinet) : lettre PDF jointe,
    copie archivée au dossier, date d'envoi automatique — supprime la saisie manuelle « envoyé ».
+   API `POST …/{circ_id}/envoyer`.
 2. Relances programmées (proposées à J+15, envoyées après confirmation de l'auditeur).
 3. Adresse de réponse dédiée par mission en objet normalisé pour rattacher les réponses ; à
-   réception (import manuel du PDF/email), extraction IA du solde confirmé via le module Dossier
-   brut existant, écart calculé comme aujourd'hui.
+   réception (`POST …/{circ_id}/importer-reponse`), extraction IA du solde confirmé via le module
+   Dossier brut existant, écart calculé comme aujourd'hui.
+4. Garde déjà en place : une circularisation sans réponse exige la documentation des procédures
+   alternatives avant clôture (ISA 505).
 
 ---
 
-#### P2 — États financiers liés à la balance · **P3 · difficulté 4 · charge XL**
+#### P2 — États financiers liés à la balance (+ bloc signature) · **P1 (reclassé) · difficulté 4 · charge L**
 
 **Ce que fait Caseware (CaseView/Financials) :** états financiers complets et annexes générés
 depuis la balance mappée, recalculés à chaque ajustement.
 
-**Pourquoi P3 :** Probare audite des comptes établis par ailleurs ; produire les états financiers
-est le métier de l'expert-comptable, pas de l'auditeur. La valeur pour la mission d'audit est
-la **comparaison** états présentés / balance auditée, pas la production.
+**Constat E2E :** le rapport ET le mémo du cabinet **reproduisent le bilan, le compte de résultat et
+20 notes annexes** ; le rapport Probare ne les porte pas et sort avec une fiche cabinet *placeholder*
+(pas de bloc signature engageant, destinataire générique). Trois volets, du moins coûteux au plus lourd :
 
-**Alternative recommandée (difficulté 2, charge M — à faire en P1 si M1 est livré) :**
-un contrôle « cadrage états financiers » : l'auditeur importe le bilan/compte de résultat présentés
-(ou les saisit par rubrique), Probare mappe la balance ajustée sur les rubriques et signale tout
-écart — c'est la diligence d'audit réelle, à 10 % du coût de CaseView.
+**P2-c — Bloc signature & en-tête · quick win · difficulté 1 · charge S — À LIVRER EN PREMIER**
+Fiche Cabinet complète (raison sociale, signataire, n° OECD, inscription cour d'appel, adresse,
+contacts, logo) **rendue en bloc de signature** daté et localisé ; en-tête entité (adresse, BP, tél.) ;
+destinataire nominatif (organe de gouvernance). Indépendant des autres volets.
+
+**P2-a — Cadrage états financiers présentés ↔ balance auditée · difficulté 2 · charge M**
+Import (ou saisie) du bilan/CR **présentés par le client** ; rapprochement automatique avec la
+**feuille maîtresse (M5)** ; tout écart > seuil = exception standard (interprétation IA). *C'est la
+diligence d'audit réelle sur les EF, à 10 % du coût de CaseView.*
+
+**P2-b — Restitution bilan/CR + notes dérivés de la balance · difficulté 3 · charge M**
+Génération d'un bilan + compte de résultat depuis la balance ajustée et le mapping M5, insérés dans
+le rapport et le mémo ; gabarits de **notes annexes** par rubrique alimentés par les feuilles maîtresses.
+
+**Pourquoi ce n'est plus P3 :** produire les EF reste le métier de l'expert-comptable, mais le test a
+montré que **sans au moins P2-c (signature) et P2-a (cadrage), le rapport Probare n'a pas la valeur
+d'un livrable client**. **Dépend de M5** pour a et b.
 
 ---
 
@@ -484,19 +578,26 @@ jour la plateforme devient client-serveur.
 
 ## 4. Feuille de route proposée
 
-**Phase 1 — « Dossier normativement complet » (≈ 1 trimestre)**
-M2 (quick win) → M1 → M4 → D1 → M3 (livré par norme : 240, 570, 580 d'abord).
-*Sortie de phase : un dossier Probare tient face à un contrôle qualité sur les exigences ISA
-centrales, y compris fraude, continuité et déclarations écrites.*
+**Phase 1 — « Dossier normativement complet » ✅ RÉALISÉE**
+M2 → M1 → M4 → D1 → M3, plus les générateurs de livrables (G1 : rapport d'audit, mémorandum, opinion).
+*Atteint : un dossier Probare tient face à un contrôle qualité sur les exigences ISA centrales, et les
+deux livrables clients (rapport, mémo) sont générés.*
 
-**Phase 2 — « Parité data & travail annuel » (≈ 1 trimestre)**
-D2 → D4 → D3 → D5 → M6 → C1 → M5 → fin de M3 (210/220, 550, 560, 260/265) → alternative P2
-(cadrage états financiers).
-*Sortie de phase : l'essentiel de ce qu'un utilisateur IDEA attend au quotidien, plus le
-roll-forward et le verrouillage conformes.*
+**Phase 1 bis — « Livrable présentable » (NOUVELLE, prioritaire — issue du test E2E)**
+**M5 (feuilles maîtresses par rubrique) ✅ réalisé** → reste : R1 (fondement complet) → P2-c (bloc
+signature) → R3 (réserve qualitative ↔ opinion) → P2-a (cadrage EF, désormais débloqué par M5) →
+D1b (calibrage JET).
+*Sortie de phase : le rapport et le mémo Probare ont la forme et la cohérence d'un livrable client
+(présentation par rubrique, signature engageante, opinion cohérente avec les réserves).*
 
-**Phase 3 — « Productivité de revue » (≈ 1 trimestre)**
-C3 → C2 → D6 → P1 → D7 → version intermédiaire P4.
+**Phase 2 — « Parité data & travail annuel »**
+D5 (FEC / sans en-tête — promu, bloquant) → D8 (interprétation IA asynchrone) → D2 → D4 → D3 → M6 →
+C1 → P2-b (bilan/CR + notes dérivés).
+*Sortie de phase : l'essentiel de ce qu'un utilisateur IDEA attend, ingestion robuste et performance
+tenable sur gros grand livre.*
+
+**Phase 3 — « Productivité de revue »**
+C3 → C2 → D6 → P1 (envoi/suivi circularisation) → D7 → version intermédiaire P4.
 *Sortie de phase : le dossier se navigue, se revoit et se signe comme dans Working Papers.*
 
 **Phase 4 — « Parité plateforme » (non planifiée — décision produit préalable)**
@@ -506,11 +607,64 @@ C4, P2 complet, P3, P4 complet. À n'ouvrir que si la cible commerciale dépasse
 
 | Réf | Quick win | Difficulté |
 |---|---|---|
-| M2 | Seuil des anomalies manifestement insignifiantes | 1 |
+| R1 | Fondement d'opinion : paragraphe standard ISA toujours présent | 1 |
+| P2-c | Bloc signature nominatif + en-tête entité au rapport | 1 |
+| D1b | Calibrage du seuil de signalement JET | 1 |
 | D2 | Loi de Benford | 2 |
 | D4 | Balance âgée | 2 |
 | C1 | Hash d'intégrité + délai d'assemblage 60 jours | 2 |
 | P4bis | Email de demande de pièces généré depuis la checklist | 2 |
+
+---
+
+## 4 bis. Journal des réalisations et chantiers issus du test E2E (ARULOS 2024)
+
+Un audit complet a été déroulé de bout en bout sur un vrai dossier (cabinet ABA — ARULOS,
+exercice 2024) : cadrage → QCI 8 cycles → ingestion (balance 357 comptes, grand livre 41 506
+écritures) → diligences de début → planification (seuil 231 M, 12 risques IA, 52 procédures,
+couverture assertions 76 %) → travaux (510 contrôles, 139 exceptions, JET 7 438 écritures signalées)
+→ tranchement → diligences de clôture → génération. **Six livrables produits** : note de planification,
+rapport d'audit, dossier de travail, mémorandum, tableau des exceptions, diligences.
+
+### Réalisé (confirmé par le code et le test)
+
+- **M1, M2, M3, M4, D1** : opérationnels.
+- **G1 — Générateurs de livrables** (hors plan initial) : `generer_rapport_audit`,
+  `generer_memorandum_controle_comptes`, `proposer_opinion` (opinion IA avec réserve/défavorable/…),
+  export dossier + tableau exceptions + diligences. Le rapport et le mémo sortent réellement.
+
+### Nouveaux chantiers issus du test
+
+#### R1 — Fondement de l'opinion : paragraphe standard ISA · **P0 · difficulté 1 · charge S**
+Le fondement doit **toujours** contenir le paragraphe normatif (audit conduit selon les ISA,
+**indépendance**, caractère suffisant et approprié des éléments probants) **en plus** de la base de la
+réserve. Le générateur ne doit pas pouvoir le perdre lors d'une édition auditeur (constaté au test).
+Préserver aussi accents et typographie. **Quick win.**
+
+#### R3 — Réserve qualitative (limitation / incertitude) ↔ opinion · **P0 · difficulté 2 · charge S**
+Les réserves ARULOS sont des **limitations d'étendue / incertitudes** (absence d'éléments probants sur
+les provisions et les dettes foncières), **non des anomalies chiffrées**. Or le cumul ISA 450 modélise
+uniquement le quantitatif : au test, cumul = 0 alors que l'opinion est « avec réserve » — incohérence
+qu'un réviseur relèverait. Travaux : introduire un registre de **points de réserve qualitatifs**
+(type : limitation | incertitude | désaccord ; rubrique ; montant potentiellement concerné ; impact
+opinion), les relier à l'opinion et au fondement, et les afficher dans la synthèse à côté du cumul 450.
+
+#### D8 — Interprétation IA asynchrone / par lots · **P1 · difficulté 3 · charge M**
+Le tranchement auto **synchrone** de chaque exception (`_auto_interpreter` en boucle) a fait dépasser
+20 min sur 8 cycles et déconnecter le client (uvicorn annule la requête). Travaux : file d'attente
+d'interprétation non bloquante (statut `en_attente → interpretee`), progression visible, reprise après
+erreur LLM transitoire (503 / connection error fréquentes au test), et lot regroupant plusieurs
+exceptions par appel.
+
+#### D1b — Calibrage du seuil de signalement JET · **P1 · difficulté 1 · charge S**
+Le JET a signalé **7 438 / 41 506 écritures (18 %)** — trop pour une revue ciblée. Affiner la
+pondération quand le fichier a beaucoup de libellés génériques ou de montants ronds (étendre le
+garde-fou « sans pièce » déjà présent), et plafonner la sélection ciblée (top N par score).
+
+#### D5 (promu) — Ingestion FEC / fichiers sans en-tête · **P1 · difficulté 2 · charge M**
+Le grand livre réel (sans ligne d'en-tête, dates `ddmmyy`, encodage Latin-1) a exigé une
+**normalisation manuelle** avant import — un cabinet réel bloquerait là. Prioriser le parseur FEC natif
+et un **mapping de colonnes manuel** de repli quand l'auto-détection échoue.
 
 ---
 

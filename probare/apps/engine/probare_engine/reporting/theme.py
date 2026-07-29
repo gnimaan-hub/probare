@@ -492,3 +492,71 @@ def info_table(doc, lignes: list[tuple[str, str]], bleed: bool = True) -> None:
         r1.font.size = Pt(9.5)
         r1.font.color.rgb = INK
     doc.add_paragraph().paragraph_format.space_after = Pt(2)
+
+
+def data_table(doc, entetes: list[str], lignes: list[list], *,
+               largeurs: list[float] | None = None,
+               alignements: list[str] | None = None,
+               styles_lignes: list[str] | None = None,
+               taille: float = 8.5) -> None:
+    """Tableau de données multi-colonnes (feuilles maîtresses, cadrages chiffrés).
+
+    - `largeurs` : répartition en cm ; à défaut, première colonne large et
+      colonnes chiffrées égales (les montants se lisent alignés à droite).
+    - `alignements` : 'l' | 'r' | 'c' par colonne (défaut : première à gauche,
+      les suivantes à droite — convention des tableaux comptables).
+    - `styles_lignes` : par ligne, 'normal' | 'total' (gras, fond clair) |
+      'sous_total' (gras) | 'alerte' (rouge). Permet de porter les sous-totaux
+      de grand poste et le total général dans le même tableau.
+    """
+    if not lignes:
+        return
+    n = len(entetes)
+    if largeurs is None:
+        reste = CONTENT_WIDTH_CM - 4.6
+        largeurs = [4.6] + [reste / max(n - 1, 1)] * (n - 1)
+    if alignements is None:
+        alignements = ["l"] + ["r"] * (n - 1)
+
+    table = doc.add_table(rows=len(lignes) + 1, cols=n)
+    table.alignment = WD_TABLE_ALIGNMENT.LEFT
+    _no_table_borders(table)
+    _set_table_width(table, CONTENT_WIDTH_CM)
+
+    _MAP_ALIGN = {"l": WD_ALIGN_PARAGRAPH.LEFT, "r": WD_ALIGN_PARAGRAPH.RIGHT,
+                  "c": WD_ALIGN_PARAGRAPH.CENTER}
+
+    # En-tête : bandeau marine, texte blanc.
+    for j, titre in enumerate(entetes):
+        cell = table.rows[0].cells[j]
+        cell.width = Cm(largeurs[j])
+        _cell_shade(cell, NAVY_HEX)
+        _cell_margins(cell, top=70, bottom=70, left=120, right=120)
+        p = cell.paragraphs[0]
+        p.alignment = _MAP_ALIGN.get(alignements[j], WD_ALIGN_PARAGRAPH.LEFT)
+        r = p.add_run(str(titre))
+        r.bold = True
+        r.font.size = Pt(taille)
+        r.font.name = HEADING_FONT
+        r.font.color.rgb = WHITE
+
+    for i, ligne in enumerate(lignes, start=1):
+        style = (styles_lignes[i - 1] if styles_lignes and i - 1 < len(styles_lignes)
+                 else "normal")
+        for j in range(n):
+            cell = table.rows[i].cells[j]
+            cell.width = Cm(largeurs[j])
+            _cell_margins(cell, top=50, bottom=50, left=120, right=120)
+            if style in ("total", "sous_total"):
+                _cell_shade(cell, LIGHT_HEX)
+            p = cell.paragraphs[0]
+            p.paragraph_format.space_after = Pt(0)
+            p.alignment = _MAP_ALIGN.get(alignements[j], WD_ALIGN_PARAGRAPH.LEFT)
+            valeur = ligne[j] if j < len(ligne) else ""
+            r = p.add_run("" if valeur is None else str(valeur))
+            r.font.size = Pt(taille)
+            r.bold = style in ("total", "sous_total")
+            r.font.color.rgb = (RED if style == "alerte"
+                                else NAVY if style in ("total", "sous_total")
+                                else INK)
+    doc.add_paragraph().paragraph_format.space_after = Pt(2)

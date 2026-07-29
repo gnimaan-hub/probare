@@ -157,6 +157,51 @@ Les écritures **passées** construisent la **balance ajustée**
 (`GET /balance-ajustee`) ; les non passées chiffrent l'état récapitulatif
 ISA 450 (effets résultat / capitaux propres), versé au dossier exporté.
 
+## Feuilles maîtresses par rubrique d'états financiers (M5)
+
+Le plan de rubriques est en **données** (`probare_engine/rubriques.py`), comme les
+normes : une `Rubrique` déclare `prefixes`, `type` (bilan_actif / bilan_passif /
+bilan_mixte / resultat_charges / resultat_produits / non_affecte), `groupe`
+(grand poste), `sens` attendu et `cycles` d'audit. Un plan par référentiel
+comptable (`PLANS_RUBRIQUES`) ; PCGD est la référence, les référentiels sans plan
+propre s'y rattachent et sont signalés (`plan_est_approxime`).
+
+Règles du module :
+- Résolution compte → rubrique par **préfixe le plus long** (`409` avances à
+  l'actif l'emporte sur `40` fournisseurs au passif).
+- **Aucun compte n'est perdu** : ce qui ne tombe dans aucun préfixe atterrit dans
+  une rubrique « non affectée » de sa classe. Le **bouclage** Σ rubriques =
+  Σ balance ajustée est calculé et **bloque la génération** du dossier et du
+  mémorandum en cas d'écart (`BouclageError` → HTTP 422).
+- Second contrôle, **indépendant et non bloquant** : l'identité
+  **actif − passif = résultat** (`equilibre_bilan`). Le bouclage ne teste que la
+  cohérence de l'AFFECTATION et tient même sur des soldes faux ; cette identité
+  teste la SUBSTANCE des montants — c'est elle qui a révélé la confusion
+  mouvements/soldes à l'ingestion. Non bloquante car elle dépend des données du
+  client : une balance dont le résultat est déjà viré en compte 12 la rompt
+  légitimement (cas signalé par `resultat_deja_comptabilise`).
+- Convention interne : solde net **débiteur positif** (comme la balance ajustée).
+  Le signe de présentation ne dépend que du `type` ; toutes les colonnes d'une
+  même ligne le portent, sinon l'arithmétique de la ligne paraîtrait fausse.
+- **Sans balance N-1 (`avec_comparatif` faux), les colonnes comparatives sont
+  RETIRÉES** des tableaux Word et de l'écran — jamais laissées à zéro : une
+  variation égale au solde N se lirait « tout le poste a varié » alors qu'il n'y
+  a rien à comparer. `_format_tableaux()` sert les en-têtes et largeurs adaptés.
+- Le calcul est dans `reporting/leadsheets.py`
+  (`construire_feuilles_maitresses`) : par rubrique et par compte — solde importé,
+  ajustements passés, solde audité, N-1, variation absolue et relative, provenance
+  conservée. Rattachement croisé des travaux : par **compte** (circularisations,
+  lignes d'ajustement), par **préfixe** (sondages), par **cycle** (contrôles et
+  exceptions, qui ne portent que `controle_ref`).
+- L'auditeur peut **réaffecter** un compte (table `rubrique_override`, journalisée
+  avec motif et auteur) ; son jugement prime sur le plan par défaut.
+
+API : `GET /projets/{id}/feuilles-maitresses`, `GET /rubriques`,
+`PUT|DELETE /projets/{id}/feuilles-maitresses/affectations/{compte}`.
+Le chapitre est versé au dossier de travail et au mémorandum (placé AVANT le
+détail par cycle : le lecteur entre par le poste publié). Écran transversal
+« Feuilles maîtresses », disponible dès l'ingestion.
+
 ## Seuils (ISA 320/450)
 
 Trois seuils calculés en planification (`planning/thresholds.py`) :

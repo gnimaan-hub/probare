@@ -397,6 +397,19 @@ class ProjectDB:
             UNIQUE(projet_id, diligence)
         );
 
+        -- M5 : réaffectation d'un compte à une autre rubrique d'états financiers.
+        -- Le plan de rubriques est un défaut par référentiel comptable ; seules
+        -- les décisions de l'auditeur qui s'en écartent sont stockées ici.
+        CREATE TABLE IF NOT EXISTS rubrique_override (
+            projet_id TEXT NOT NULL REFERENCES projet(id),
+            compte TEXT NOT NULL,
+            rubrique_ref TEXT NOT NULL,
+            motif TEXT,
+            decide_par TEXT,
+            horodatage TEXT,
+            PRIMARY KEY (projet_id, compte)
+        );
+
         CREATE TABLE IF NOT EXISTS opinion (
             projet_id TEXT PRIMARY KEY REFERENCES projet(id),
             rigueur TEXT,
@@ -1437,6 +1450,39 @@ class ProjectDB:
             (projet_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # --- Réaffectations de comptes aux rubriques d'états financiers (M5) ---
+
+    def list_rubrique_overrides(self, projet_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM rubrique_override WHERE projet_id=? ORDER BY compte",
+            (projet_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_rubrique_overrides_map(self, projet_id: str) -> dict[str, str]:
+        """{compte: rubrique_ref} — forme attendue par `construire_feuilles_maitresses`."""
+        return {o["compte"]: o["rubrique_ref"] for o in self.list_rubrique_overrides(projet_id)}
+
+    def set_rubrique_override(self, projet_id: str, compte: str, rubrique_ref: str,
+                              motif: str | None = None, decide_par: str | None = None) -> dict:
+        self.conn.execute(
+            """INSERT OR REPLACE INTO rubrique_override
+               (projet_id, compte, rubrique_ref, motif, decide_par, horodatage)
+               VALUES (?,?,?,?,?,?)""",
+            (projet_id, compte, rubrique_ref, motif, decide_par, _now())
+        )
+        self.conn.commit()
+        return {"projet_id": projet_id, "compte": compte, "rubrique_ref": rubrique_ref,
+                "motif": motif, "decide_par": decide_par}
+
+    def delete_rubrique_override(self, projet_id: str, compte: str) -> bool:
+        cur = self.conn.execute(
+            "DELETE FROM rubrique_override WHERE projet_id=? AND compte=?",
+            (projet_id, compte)
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
 
     # --- Feuilles de travail ---
 

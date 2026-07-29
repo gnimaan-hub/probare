@@ -11,7 +11,7 @@
  */
 import {
   Settings, ShieldCheck, Upload, ClipboardList, BarChart2,
-  AlertTriangle, FileText, Stamp, ScanSearch, ListChecks, Scale, Activity,
+  AlertTriangle, FileText, Stamp, ScanSearch, ListChecks, Scale, Activity, Table2,
   type LucideIcon,
 } from 'lucide-react'
 import { getEtatIndex, ETATS_PIPELINE } from './utils'
@@ -83,6 +83,9 @@ export const TRANSVERSAL_ITEMS: TransversalItem[] = [
   { id: 'ajustements', route: 'ajustements', label: "Écritures d'ajustement", short: 'Ajustements',
     norme: '450', icon: Scale, disponibleDes: 'travaux_substantifs',
     but: "Matérialiser les anomalies en propositions d'écritures et bâtir la balance ajustée." },
+  { id: 'feuilles-maitresses', route: 'feuilles-maitresses', label: 'Feuilles maîtresses',
+    short: 'Feuilles maîtresses', norme: '230, 500', icon: Table2, disponibleDes: 'ingestion',
+    but: "Balance auditée par rubrique d'états financiers : soldes, ajustements, N-1, travaux rattachés." },
   { id: 'journal', route: 'journal', label: 'Historique', short: 'Historique',
     icon: Activity, disponibleDes: 'cadrage',
     but: "Piste d'audit : chaque action, appel IA et transition d'état est journalisé." },

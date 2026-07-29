@@ -57,7 +57,7 @@ from ..provenance.models import DonneeSourcee
 from ..reporting.export import (
     generer_dossier_travail, generer_tableau_exceptions,
     generer_note_planification, generer_rapport_audit,
-    generer_memorandum_controle_comptes, ProvenanceError,
+    generer_memorandum_controle_comptes, ProvenanceError, BouclageError,
 )
 from ..anonymization.anonymizer import Anonymizer
 from ..normes import norme, reformater_refs, lire_config, ecrire_config, \
@@ -2961,6 +2961,9 @@ def exporter_dossier(projet_id: str):
             "balance_ajustee": get_balance_ajustee(projet_id),
         }
 
+    # M5 : feuilles maîtresses par rubrique d'états financiers
+    feuilles_maitresses = _construire_matrice_feuilles(db, projet_id, projet)
+
     output_dir = DATA_DIR / projet_id / "exports"
     output_path = output_dir / f"dossier_travail_{projet_id[:8]}.docx"
 
@@ -2969,8 +2972,9 @@ def exporter_dossier(projet_id: str):
                                 controles_ignores=controles_ignores,
                                 synthese_anomalies=synthese,
                                 diligences_peripherie=diligences_dossier,
-                                ajustements=ajustements_dossier)
-    except ProvenanceError as e:
+                                ajustements=ajustements_dossier,
+                                feuilles_maitresses=feuilles_maitresses)
+    except (ProvenanceError, BouclageError) as e:
         raise HTTPException(422, str(e))
 
     db.log(projet_id, "action_humaine", {"action": "export_dossier", "fichier": str(output_path)})
@@ -3378,24 +3382,28 @@ def exporter_memorandum(projet_id: str, body: ExportSigneBody | None = None):
 
     output_dir = DATA_DIR / projet_id / "exports"
     output_path = output_dir / f"memorandum_controle_comptes_{projet_id[:8]}.docx"
-    generer_memorandum_controle_comptes(
-        projet,
-        db.list_resultats(projet_id),
-        db.list_exceptions(projet_id),
-        db.list_feuilles(projet_id),
-        output_path,
-        plan=plan,
-        circularisations=circularisations,
-        sondages=sondages,
-        controles_ignores=db.list_controles_ignores(projet_id),
-        cabinet=cabinet,
-        synthese=synthese,
-        qci_synthese=qci_synthese,
-        risques=risques_valides,
-        couverture=couverture,
-        programme=programme,
-        diligences_eval=diligences_eval,
-    )
+    try:
+        generer_memorandum_controle_comptes(
+            projet,
+            db.list_resultats(projet_id),
+            db.list_exceptions(projet_id),
+            db.list_feuilles(projet_id),
+            output_path,
+            plan=plan,
+            circularisations=circularisations,
+            sondages=sondages,
+            controles_ignores=db.list_controles_ignores(projet_id),
+            cabinet=cabinet,
+            synthese=synthese,
+            qci_synthese=qci_synthese,
+            risques=risques_valides,
+            couverture=couverture,
+            programme=programme,
+            diligences_eval=diligences_eval,
+            feuilles_maitresses=_construire_matrice_feuilles(db, projet_id, projet),
+        )
+    except BouclageError as e:
+        raise HTTPException(422, str(e))
     db.log(projet_id, "action_humaine", {"action": "exporter_memorandum"})
     client_slug = (projet.get("client") or "client").replace(" ", "_")[:20]
     return FileResponse(str(output_path), media_type=_MEDIA_DOCX,
@@ -5674,3 +5682,152 @@ def get_balance_ajustee(projet_id: str, seulement_ajustes: bool = False):
     if seulement_ajustes:
         result["lignes"] = [l for l in result["lignes"] if l["ajustement"] != 0]
     return result
+
+
+# ─── Feuilles maîtresses par rubrique d'états financiers (M5) ─────────────────
+
+def _libelles_comptes(rows: list) -> dict[str, str]:
+    """{compte: libellé} d'après la balance importée — premier libellé rencontré.
+
+    Uniquement la balance : ne PAS se rabattre sur le grand livre. Sa colonne
+    « libellé » porte l'intitulé de l'ÉCRITURE, pas celui du compte — le repli
+    étiquetterait le compte 203000 « A.N. au 010124 » (constaté sur ARULOS).
+    Une feuille maîtresse sans intitulé vaut mieux qu'une feuille mal étiquetée ;
+    les intitulés viendront d'une balance qui en porte, ou du plan de comptes.
+    """
+    out: dict[str, str] = {}
+    for row in rows:
+        c = row.get("compte")
+        if not c:
+            continue
+        num = str(c.valeur or "").strip()
+        if num and num not in out:
+            lib = _get_str(row, "libelle")
+            if lib:
+                out[num] = lib
+    return out
+
+
+def _soldes_n1(db, projet_id: str) -> dict[str, tuple[float, list[str]]]:
+    """Soldes nets par compte de l'exercice N-1 (balance référencée en planification)."""
+    n1_id = db.get_or_create_planification(projet_id).get("balance_n1_fichier_id")
+    if not n1_id:
+        return {}
+    donnees_n1 = [_to_donnee(d) for d in db.get_donnees_by_fichier(n1_id)]
+    if not donnees_n1:
+        return {}
+    return _aggreger_soldes_nets(_group_rows(donnees_n1), tuple("123456789"))
+
+
+def _construire_matrice_feuilles(db, projet_id: str, projet: dict,
+                                 avec_travaux: bool = True) -> dict:
+    """Matrice des feuilles maîtresses — source unique pour l'API et les exports."""
+    from ..ajustements import balance_ajustee
+    from ..reporting.leadsheets import construire_feuilles_maitresses
+
+    _, _, rows_balance, *_ = _get_donnees_segmentees(db, projet_id)
+    soldes_bruts = _aggreger_soldes_nets(rows_balance, tuple("123456789"))
+    ecritures = [_enrichir_ecriture(e) for e in db.list_ecritures_ajustement(projet_id)]
+    balance = balance_ajustee(soldes_bruts, ecritures)
+
+    travaux = None
+    if avec_travaux:
+        travaux = {
+            "resultats": db.list_resultats(projet_id),
+            "exceptions": db.list_exceptions(projet_id),
+            "sondages": db.list_sondages(projet_id),
+            "circularisations": db.list_circularisations(projet_id),
+            "ajustements": ecritures,
+        }
+
+    plan = db.get_or_create_planification(projet_id)
+    return construire_feuilles_maitresses(
+        balance,
+        soldes_n1=_soldes_n1(db, projet_id),
+        referentiel_comptable=projet.get("referentiel_comptable"),
+        overrides=db.get_rubrique_overrides_map(projet_id),
+        libelles_comptes=_libelles_comptes(rows_balance),
+        travaux=travaux,
+        seuil_variation=plan.get("seuil_planification") or projet.get("seuil_planification"),
+    )
+
+
+@router.get("/rubriques")
+def get_plan_rubriques(referentiel: str | None = None):
+    """Plan de rubriques d'états financiers applicable (référentiel comptable).
+
+    Sert le sélecteur de réaffectation d'un compte : l'auditeur choisit une
+    rubrique de cette liste."""
+    from ..rubriques import plan_rubriques, rubrique_as_dict, plan_est_approxime, TYPES_RUBRIQUE
+    plan = plan_rubriques(referentiel)
+    return {
+        "referentiel": (referentiel or "pcgd").lower(),
+        "plan_approxime": plan_est_approxime(referentiel),
+        "types": TYPES_RUBRIQUE,
+        "rubriques": [rubrique_as_dict(r) for r in plan],
+    }
+
+
+@router.get("/projets/{projet_id}/feuilles-maitresses")
+def get_feuilles_maitresses(projet_id: str, avec_travaux: bool = True):
+    """Feuilles maîtresses : balance auditée regroupée par rubrique d'états financiers.
+
+    Pour chaque rubrique : solde importé, ajustements passés, solde audité,
+    comparatif N-1, variation, et les travaux d'audit qui s'y rattachent.
+    Le bouclage (Σ rubriques = Σ balance) est calculé et retourné : un écart
+    signifie qu'un compte a été perdu ou compté deux fois."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    matrice = _construire_matrice_feuilles(db, projet_id, projet, avec_travaux=avec_travaux)
+    matrice["overrides"] = db.list_rubrique_overrides(projet_id)
+    return matrice
+
+
+class AffectationRubriqueBody(BaseModel):
+    rubrique_ref: str
+    motif: str | None = None
+    acteur: str | None = None
+
+
+@router.put("/projets/{projet_id}/feuilles-maitresses/affectations/{compte}")
+def set_affectation_rubrique(projet_id: str, compte: str, body: AffectationRubriqueBody):
+    """Réaffecte un compte à une autre rubrique d'états financiers.
+
+    Le plan par référentiel est un défaut ; le jugement de l'auditeur prime et
+    reste tracé (motif + auteur, journalisés)."""
+    from ..rubriques import plan_rubriques, index_par_ref, rubrique_du_compte
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    _exiger_projet_actif(db, projet_id)
+
+    plan = plan_rubriques(projet.get("referentiel_comptable"))
+    if body.rubrique_ref not in index_par_ref(plan):
+        raise HTTPException(400, f"Rubrique inconnue : {body.rubrique_ref}.")
+
+    defaut = rubrique_du_compte(compte, plan)
+    override = db.set_rubrique_override(projet_id, compte, body.rubrique_ref,
+                                        motif=body.motif, decide_par=body.acteur)
+    db.log(projet_id, "action_humaine", {
+        "action": "reaffecter_compte_rubrique", "compte": compte,
+        "rubrique_defaut": defaut.ref if defaut else None,
+        "rubrique_retenue": body.rubrique_ref, "motif": body.motif, "acteur": body.acteur,
+    })
+    return override
+
+
+@router.delete("/projets/{projet_id}/feuilles-maitresses/affectations/{compte}")
+def delete_affectation_rubrique(projet_id: str, compte: str):
+    """Rétablit l'affectation par défaut du plan pour ce compte."""
+    db = _get_db(projet_id)
+    if not db.get_projet(projet_id):
+        raise HTTPException(404, "Projet introuvable.")
+    _exiger_projet_actif(db, projet_id)
+    if not db.delete_rubrique_override(projet_id, compte):
+        raise HTTPException(404, "Aucune réaffectation sur ce compte.")
+    db.log(projet_id, "action_humaine",
+           {"action": "retablir_rubrique_defaut", "compte": compte})
+    return {"deleted": True, "compte": compte}
