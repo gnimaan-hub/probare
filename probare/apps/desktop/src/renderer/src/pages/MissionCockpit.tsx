@@ -208,7 +208,8 @@ export function MissionCockpit() {
             {progression?.prochaine && !progression.prochaine.peut && (
               <div className="mt-3 flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
                 <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                <span>{progression.prochaine.raison}</span>
+                {/* La garde backend peut remonter plusieurs blocages, un par ligne. */}
+                <span className="whitespace-pre-line">{progression.prochaine.raison}</span>
               </div>
             )}
           </motion.div>

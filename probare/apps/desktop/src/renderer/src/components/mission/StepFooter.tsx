@@ -107,7 +107,10 @@ export function StepFooter({
           ) : (
             <p className="text-sm text-amber-700 mt-0.5 flex items-start gap-1.5">
               <Lock className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-              <span>{raison || `Complétez cette étape avant de passer à ${nextStep.label}.`}</span>
+              {/* La garde backend peut remonter plusieurs blocages, un par ligne. */}
+              <span className="whitespace-pre-line">
+                {raison || `Complétez cette étape avant de passer à ${nextStep.label}.`}
+              </span>
             </p>
           )
         ) : (

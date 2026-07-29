@@ -36,6 +36,20 @@ def _projet(db, **kw):
     return pid
 
 
+def _jet_execute(db, pid):
+    """Satisfait la garde ISA 240 : un résultat porté par un signal JET."""
+    db.save_resultat({
+        "id": str(uuid.uuid4()), "projet_id": pid,
+        "controle_ref": "JET-DESEQUILIBRE", "statut": "ok",
+    })
+
+
+def _conclure(db, pid, diligence, conclusion, par="Auditeur Test"):
+    """Évalue puis conclut/signe une diligence de périphérie."""
+    db.save_peripherie_evaluation(pid, diligence, {"score": 1.0, "niveau": "favorable"})
+    db.conclure_peripherie(pid, diligence, conclusion, par)
+
+
 def _exception(db, pid, ref="TRESOR-BAL-EQUIL", desc="écart", severite="significative"):
     eid = str(uuid.uuid4())
     db.save_exception({
@@ -380,6 +394,10 @@ class TestGardeContinuite:
     def test_generation_bloquee_sans_conclusion_570(self, db):
         pid = _projet(db, seuil_signification=100_000)
         db.update_projet(pid, {"etat_courant": "revue"})
+        # Autres gardes de la transition satisfaites : seule la continuité manque.
+        _jet_execute(db, pid)
+        _conclure(db, pid, "evenements_posterieurs",
+                  "Aucun événement postérieur significatif.")
         with pytest.raises(PipelineError, match="570"):
             transition(db, pid, "generation")
         # Évaluée mais non conclue → toujours bloqué
@@ -392,3 +410,14 @@ class TestGardeContinuite:
                                "Auditeur Test")
         p = transition(db, pid, "generation")
         assert p["etat_courant"] == "generation"
+
+    def test_generation_remonte_tous_les_blocages(self, db):
+        """Un passage bloqué liste TOUT ce qui reste à faire, pas le premier obstacle."""
+        pid = _projet(db, seuil_signification=100_000)
+        db.update_projet(pid, {"etat_courant": "revue"})
+        with pytest.raises(PipelineError) as exc:
+            transition(db, pid, "generation")
+        message = str(exc.value)
+        assert "570" in message          # diligences de clôture (560/570)
+        assert "240" in message          # tests des écritures de journal
+        assert message.count("\n- ") == 2

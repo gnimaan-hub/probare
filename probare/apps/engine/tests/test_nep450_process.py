@@ -23,6 +23,20 @@ def _projet(db, **kw):
     return pid
 
 
+def _jet_execute(db, pid):
+    """Satisfait la garde ISA 240 : un résultat porté par un signal JET."""
+    db.save_resultat({
+        "id": str(uuid.uuid4()), "projet_id": pid,
+        "controle_ref": "JET-DESEQUILIBRE", "statut": "ok",
+    })
+
+
+def _conclure(db, pid, diligence, conclusion, par="Auditeur Test"):
+    """Évalue puis conclut/signe une diligence de périphérie."""
+    db.save_peripherie_evaluation(pid, diligence, {"score": 1.0, "niveau": "favorable"})
+    db.conclure_peripherie(pid, diligence, conclusion, par)
+
+
 def _exception(db, pid, ref="TRESOR-BAL-EQUIL", desc="écart"):
     eid = str(uuid.uuid4())
     db.save_exception({
@@ -101,6 +115,11 @@ class TestGardesPipeline:
     def test_generation_bloquee_par_cumul_nep450(self, db):
         pid = _projet(db, seuil_signification=100_000)
         db.update_projet(pid, {"etat_courant": "revue"})
+        # Gardes voisines de la transition satisfaites (JET ISA 240, événements
+        # postérieurs ISA 560) : on isole le cumul 450 puis la continuité 570.
+        _jet_execute(db, pid)
+        _conclure(db, pid, "evenements_posterieurs",
+                  "Aucun événement postérieur significatif.")
         e1 = _exception(db, pid)
         db.trancher_exception(e1, "Non corrigée", "Auditeur",
                               type_resolution="non_corrigee", montant_incidence=200_000)

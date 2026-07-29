@@ -77,8 +77,8 @@ def _diligences_non_conclues(db: ProjectDB, projet_id: str, codes: list[str]) ->
     return manquantes
 
 
-def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
-                     confirmer_depassement_seuil: bool = False) -> None:
+def _blocages(db: ProjectDB, projet_id: str, projet: dict, vers: str,
+              confirmer_depassement_seuil: bool = False) -> list[str]:
     """
     Gardes déterministes par transition (progression uniquement) :
     - ingestion           : diligences de début de mission conclues (210/240/550).
@@ -87,12 +87,17 @@ def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
     - generation          : exceptions tranchées + verrou ISA/NEP 450 + tests des
                             écritures (240) + diligences de clôture (560/570).
     - opinion             : diligences de conclusion conclues (580/260-265).
+
+    Renvoie TOUS les blocages de la transition, pas seulement le premier :
+    l'auditeur voit d'emblée l'intégralité de ce qui lui reste à faire.
     """
+    blocages: list[str] = []
+
     if vers == "ingestion":
         manquantes = _diligences_non_conclues(
             db, projet_id, _DILIGENCES_PAR_TRANSITION["ingestion"])
         if manquantes:
-            raise PipelineError(
+            blocages.append(
                 f"Diligences de début de mission à conclure avant l'ingestion "
                 f"({norme(210)}, {norme(240)}, {norme(550)}) : {', '.join(manquantes)}. "
                 "Complétez-les (questionnaire, évaluation, conclusion signée) dans l'écran Diligences."
@@ -101,7 +106,7 @@ def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
     if vers == "travaux_substantifs":
         seuil = projet.get("seuil_signification")
         if not seuil or float(seuil) <= 0:
-            raise PipelineError(
+            blocages.append(
                 f"Seuil de signification non défini ({norme(320)}). "
                 "Calculez ou saisissez le seuil dans Planification avant de lancer les travaux."
             )
@@ -109,15 +114,15 @@ def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
     if vers == "revue":
         resultats = db.list_resultats(projet_id)
         if not resultats:
-            raise PipelineError(
+            blocages.append(
                 f"Aucun contrôle n'a encore été exécuté ({norme(330)}). "
                 "Lancez au moins un cycle de contrôles avant de passer en revue."
             )
 
     if vers == "generation":
         if db.has_open_exceptions(projet_id):
-            raise PipelineError(
-                "Impossible de passer en génération : il reste des exceptions ouvertes."
+            blocages.append(
+                "Il reste des exceptions ouvertes : tranchez-les toutes avant la génération."
             )
         synthese = db.synthese_anomalies(
             projet_id,
@@ -125,7 +130,7 @@ def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
             projet.get("seuil_planification"),
         )
         if synthese["depasse_seuil_signification"] and not confirmer_depassement_seuil:
-            raise PipelineError(
+            blocages.append(
                 f"{CODE_SEUIL_DEPASSE} {norme(450)} : le cumul des anomalies non corrigées "
                 f"({synthese['cumul_non_corrigees']:,.0f}) dépasse le seuil de signification "
                 f"({synthese['seuil_signification']:,.0f}). "
@@ -133,38 +138,58 @@ def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
                 "ou confirmez explicitement le passage en génération en acceptant "
                 "l'incidence sur l'opinion (confirmer_depassement_seuil=true)."
             )
+        # Diligences de clôture (ISA 560 événements postérieurs + ISA 570 continuité) :
+        # conclusions signées obligatoires avant d'assembler le dossier de travail.
+        manquantes = _diligences_non_conclues(
+            db, projet_id, _DILIGENCES_PAR_TRANSITION["generation"])
+        if manquantes:
+            blocages.append(
+                f"Diligences de clôture à conclure avant le dossier de travail "
+                f"({norme(560)}, {norme(570)}) : {', '.join(manquantes)}. "
+                "Complétez-les (questionnaire, évaluation, conclusion signée) dans l'écran Diligences."
+            )
         # ISA 240 : les tests des écritures de journal (Journal Entry Testing) sont
         # une diligence obligatoire et transversale. Ils doivent avoir été exécutés
         # (au moins un résultat porté par une référence de signal JET) avant le dossier.
         from ..controls.registry import JET_SIGNAL_REF
         refs_jet = set(JET_SIGNAL_REF.values())
         if not any(r.get("controle_ref") in refs_jet for r in db.list_resultats(projet_id)):
-            raise PipelineError(
+            blocages.append(
                 f"Les tests des écritures de journal ({norme(240)}) n'ont pas été exécutés. "
                 "Lancez l'analyse dans l'écran « Écritures de journal » avant de passer "
                 "en génération : c'est une diligence obligatoire (détection du contournement "
                 "des contrôles)."
-            )
-        # Diligences de clôture (ISA 560 événements postérieurs + ISA 570 continuité) :
-        # conclusions signées obligatoires avant d'assembler le dossier de travail.
-        manquantes = _diligences_non_conclues(
-            db, projet_id, _DILIGENCES_PAR_TRANSITION["generation"])
-        if manquantes:
-            raise PipelineError(
-                f"Diligences de clôture à conclure avant le dossier de travail "
-                f"({norme(560)}, {norme(570)}) : {', '.join(manquantes)}. "
-                "Complétez-les (questionnaire, évaluation, conclusion signée) dans l'écran Diligences."
             )
 
     if vers == "opinion":
         manquantes = _diligences_non_conclues(
             db, projet_id, _DILIGENCES_PAR_TRANSITION["opinion"])
         if manquantes:
-            raise PipelineError(
+            blocages.append(
                 f"Diligences de conclusion à finaliser avant le rapport d'audit "
                 f"({norme(580)}, {norme(260)}) : {', '.join(manquantes)}. "
                 "Complétez-les (questionnaire, évaluation, conclusion signée) dans l'écran Diligences."
             )
+
+    return blocages
+
+
+def _message_blocages(vers: str, blocages: list[str]) -> str:
+    """Un blocage → le message tel quel ; plusieurs → une liste à puces."""
+    if len(blocages) == 1:
+        return blocages[0]
+    puces = "\n".join(f"- {b}" for b in blocages)
+    return (
+        f"Passage en « {vers} » impossible — {len(blocages)} points restent à traiter :\n"
+        f"{puces}"
+    )
+
+
+def _verifier_gardes(db: ProjectDB, projet_id: str, projet: dict, vers: str,
+                     confirmer_depassement_seuil: bool = False) -> None:
+    blocages = _blocages(db, projet_id, projet, vers, confirmer_depassement_seuil)
+    if blocages:
+        raise PipelineError(_message_blocages(vers, blocages))
 
 
 def transition(
