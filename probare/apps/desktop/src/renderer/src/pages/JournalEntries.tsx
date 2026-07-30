@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ScanSearch, Play, AlertTriangle, CheckCircle, XCircle, Loader2, Info,
-  ArrowRight, ChevronDown, ChevronRight, FileWarning,
+  ArrowRight, ChevronDown, ChevronRight, FileWarning, CalendarOff,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
@@ -45,7 +45,7 @@ const SIGNAL_SHORT: Record<string, string> = {
   desequilibre: 'Déséquilibrée',
   sous_seuil: 'Sous le seuil',
   contrepartie: 'Contrepartie inhabituelle',
-  weekend: 'Week-end',
+  weekend: 'Jour non ouvré',
   cutoff_tardif: 'Clôture tardive',
   sans_piece: 'Sans pièce',
   libelle_suspect: 'Libellé générique',
@@ -237,8 +237,8 @@ export function JournalEntries() {
             <p className="text-sm text-blue-800">
               Le test des écritures de journal ({normeLabel('240')}) parcourt <strong>l'intégralité du grand
               livre</strong> et attribue à chaque écriture un <strong>score de risque</strong> calculé par le
-              moteur (déséquilibre, montant juste sous le seuil, contrepartie inhabituelle, week-end, clôture
-              tardive, libellé générique…). Les écritures les plus risquées sont retenues pour revue ciblée :
+              moteur (déséquilibre, montant juste sous le seuil, contrepartie inhabituelle, jour non ouvré,
+              clôture tardive, libellé générique…). Les écritures les plus risquées sont retenues pour revue ciblée :
               investiguez-les puis pointez-les conformes ou en anomalie.
             </p>
           </div>
@@ -259,6 +259,9 @@ export function JournalEntries() {
                 </div>
                 <div className="text-xs text-slate-400">
                   Seuil de signalement : score ≥ {analyse.seuil_signalement}
+                  {typeof analyse.taux_signalement === 'number' && (
+                    <> · {(analyse.taux_signalement * 100).toFixed(1)} % de la population</>
+                  )}
                 </div>
               </div>
               {Object.keys(parSignal).length > 0 && (
@@ -277,6 +280,37 @@ export function JournalEntries() {
                   <FileWarning className="w-3.5 h-3.5" />
                   Le grand livre ne porte pas de numéros de pièce : le signal « sans pièce » a été neutralisé.
                 </p>
+              )}
+              {analyse.jours_non_ouvres_libelles?.length > 0 && (
+                <p className="text-xs text-slate-400 flex items-center gap-1">
+                  <CalendarOff className="w-3.5 h-3.5" />
+                  Jours non ouvrés retenus : <strong>{analyse.jours_non_ouvres_libelles.join(', ')}</strong>
+                  {analyse.jours_non_ouvres_deduits
+                    ? ' — déduits de l\'activité du grand livre.'
+                    : ' — convention par défaut : le grand livre ne permet pas de les déduire.'}
+                </p>
+              )}
+              {analyse.numeros_piece_reutilises > 0 && (
+                <p className="text-xs text-slate-400 flex items-center gap-1">
+                  <FileWarning className="w-3.5 h-3.5" />
+                  {analyse.numeros_piece_reutilises} numéro(s) de pièce sont réutilisés à des dates
+                  différentes : les écritures sont identifiées par le couple pièce + date.
+                </p>
+              )}
+              {analyse.signaux_neutralises && Object.keys(analyse.signaux_neutralises).length > 0 && (
+                <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
+                  <p className="flex items-center gap-1 font-medium">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Signaux neutralisés — trop généraux pour discriminer un risque
+                  </p>
+                  {Object.entries(analyse.signaux_neutralises).map(([s, t]) => (
+                    <p key={s}>
+                      {SIGNAL_SHORT[s] || s} : déclenché sur {((t as number) * 100).toFixed(1)} % des
+                      écritures. Ce taux caractérise le grand livre, non une fraude — il est documenté
+                      au dossier et retiré du score.
+                    </p>
+                  ))}
+                </div>
               )}
             </div>
           )}

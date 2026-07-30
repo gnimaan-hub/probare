@@ -800,10 +800,10 @@ enregistrer(ControleDefinition(
 enregistrer(ControleDefinition(
     ref="JET-WEEKEND",
     assertions=["existence"],
-    libelle="Écritures datées un week-end",
+    libelle="Écritures datées un jour non ouvré",
     nep_ref="NEP 240",
     cycle="journal",
-    description="Écritures comptabilisées un samedi ou un dimanche — hors calendrier d'exploitation habituel.",
+    description="Écritures comptabilisées un jour où l'entité ne travaille pas — hors calendrier d'exploitation. Les jours non ouvrés sont déduits du grand livre (la semaine ouvrée n'est pas la même à Djibouti et en France).",
     severite_defaut="significative",
 ))
 

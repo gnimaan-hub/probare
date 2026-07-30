@@ -130,6 +130,40 @@ livre ne porte quasiment aucun numéro de pièce, le signal « sans pièce » es
 neutralisé (caractéristique du fichier, pas une anomalie de masse). Le LLM ne
 calcule jamais le score.
 
+### Calibrage de la sélection (D1b)
+
+Un signal qui se déclenche sur une grande part de la population ne désigne plus
+un risque : il décrit le fichier ou l'entité. Trois mécanismes, tous
+déterministes, tous rapportés dans l'analyse (et à l'écran) :
+
+- **Identité de l'écriture = (numéro de pièce, date)**, pas le seul numéro. Les
+  numéros sont couramment réattribués d'un journal à l'autre — les à-nouveaux
+  d'ouverture sont renumérotés à partir de 1 et collisionnent avec les écritures
+  de l'exercice. Grouper sur le seul numéro agglomère des écritures étrangères
+  et fabrique un faux déséquilibre de masse (82 % de la population sur ARULOS
+  2024, dont **une seule** pièce multi-dates s'équilibrait réellement). La clé
+  est strictement plus fine : sur une numérotation fiable elle ne change rien.
+  `numeros_piece_reutilises` documente le nombre de collisions constatées.
+- **Jours non ouvrés déduits du grand livre**, pas codés en dur. La semaine
+  ouvrée court du dimanche au jeudi à Djibouti, du lundi au vendredi en France :
+  signaler « samedi ou dimanche » désignait 17 % du grand livre ARULOS (tous les
+  dimanches, jours pleinement ouvrés) et laissait passer les vendredis. Un jour
+  portant moins de 20 % de l'activité moyenne quotidienne est tenu pour non
+  ouvré ; repli sur samedi-dimanche si la population est trop faible (< 60
+  écritures datées) ou la datation trop concentrée (> 3 jours creux). Un
+  ensemble vide est un résultat valable — le signal ne se déclenche alors jamais.
+  Le signal reste nommé `weekend` (référence `JET-WEEKEND` stockée en base).
+- **Neutralisation des signaux non discriminants** — généralisation du garde-fou
+  « sans pièce » : tout signal déclenché sur plus de 30 % des écritures (au-delà
+  de 100 écritures, en deçà la statistique est instable) est retiré du score.
+  Le dossier ne dit alors **pas** « aucune écriture concernée » — il porte un
+  résultat qui nomme le taux et sa cause probable : c'est un constat sur la
+  qualité des données, pas un silence. Aucune exception n'est levée.
+
+Effet mesuré sur ARULOS 2024 (41 506 lignes) : **7 438 → 337 écritures
+retenues** (2,1 % de 16 348 écritures), et la première retenue est le schéma
+recherché — 219 M à 94,8 % du seuil de signification, datée du 31 décembre.
+
 ## Couverture risque ↔ assertion (ISA 315 révisée — M4)
 
 Chaque contrôle du registre déclare les **assertions** qu'il couvre

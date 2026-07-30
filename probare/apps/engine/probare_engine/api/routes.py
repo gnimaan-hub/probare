@@ -2684,10 +2684,24 @@ def run_journal_entry_testing(projet_id: str, body: dict = {}):
                 sources_par_signal[s].extend(e["sources"][:3])
 
     resultats_total, exceptions_total = [], []
+    neutralises = analyse.get("signaux_neutralises") or {}
     for signal, defn in SIGNAUX.items():
         ref = JET_SIGNAL_REF[signal]
         count = analyse["par_signal"].get(signal, 0)
-        if count == 0:
+        if signal in neutralises:
+            # Le signal touchait une part telle de la population qu'il ne
+            # discriminait plus rien : il est neutralisé, et le dossier doit dire
+            # pourquoi — c'est un constat sur les données, pas une absence
+            # d'anomalie.
+            taux = neutralises[signal]
+            resultats_total.append(_result_ok(
+                projet_id, ref, round(taux * 100, 1),
+                f"Signal neutralisé : « {defn['libelle']} » se déclenchait sur "
+                f"{taux * 100:.1f} % des écritures. Un signal aussi général "
+                f"caractérise le grand livre (format d'export, identification des "
+                f"écritures, calendrier de l'entité) et non un risque de fraude ; "
+                f"il n'entre pas dans le score de risque.", []))
+        elif count == 0:
             resultats_total.append(_result_ok(
                 projet_id, ref, 0,
                 f"Aucune écriture concernée par : {defn['libelle']}.", []))
@@ -2714,6 +2728,8 @@ def run_journal_entry_testing(projet_id: str, body: dict = {}):
         "nb_ecritures": analyse["nb_ecritures"],
         "nb_signalees": analyse["nb_signalees"],
         "seuil_signalement": seuil_signalement,
+        "jours_non_ouvres": analyse["jours_non_ouvres_libelles"],
+        "signaux_neutralises": sorted(analyse["signaux_neutralises"]),
     })
     _auto_interpreter(db, projet_id, projet, enregistrees)
 

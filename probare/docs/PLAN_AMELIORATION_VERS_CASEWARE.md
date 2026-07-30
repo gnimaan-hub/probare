@@ -56,7 +56,7 @@ Chaque chantier est présenté sous forme de **fiche** avec :
 | M2 | Seuils complémentaires (anomalies insignifiantes, seuils spécifiques) | Méthodologie | **P0** | 1 | S | — | ✅ Réalisé |
 | M3 | Couverture des ISA de périphérie de mission (210, 220, 240, 550, 560, 570, 580, 260/265) | Méthodologie | **P0** | 2 | L | — | ✅ Réalisé |
 | M4 | Cartographie contrôles ↔ assertions (ISA 315 révisée) | Méthodologie | **P0** | 2 | M | — | ✅ Réalisé |
-| D1 | Tests des écritures de journal — Journal Entry Testing (ISA 240) | Analyse de données | **P0** | 3 | M | M3 (volet fraude) | ✅ Réalisé (calibrage seuil à revoir → D1b) |
+| D1 | Tests des écritures de journal — Journal Entry Testing (ISA 240) | Analyse de données | **P0** | 3 | M | M3 (volet fraude) | ✅ Réalisé (sélection calibrée → D1b) |
 | G1 | Générateurs livrables : rapport d'audit, mémorandum, opinion IA | Production | **P0** | 3 | L | M1–M4 | ✅ Réalisé (hors plan initial) |
 | M5 | Feuilles maîtresses (leadsheets) **par rubrique d'états financiers** | Dossier de travail | **P0** ⬆ | 3 | M | M1 | ✅ Réalisé |
 | P2 | États financiers liés à la balance (cadrage, bilan/CR, notes) + **bloc signature** | Production | **P1** ⬆ | 4 | L | M5 ✅ | 🟡 En cours — P2-c ✅ et P2-a ✅ réalisés ; reste P2-b (bilan/CR + notes dérivés) |
@@ -601,8 +601,8 @@ deux livrables clients (rapport, mémo) sont générés.*
 
 **Phase 1 bis — « Livrable présentable » (NOUVELLE, prioritaire — issue du test E2E)**
 **M5 (feuilles maîtresses) ✅, R1 (fondement complet) ✅, P2-c (bloc signature) ✅,
-R3 (réserve qualitative ↔ opinion) ✅, P2-a (cadrage EF ↔ balance auditée) ✅** → reste :
-D1b (calibrage JET).
+R3 (réserve qualitative ↔ opinion) ✅, P2-a (cadrage EF ↔ balance auditée) ✅,
+D1b (calibrage de la sélection JET) ✅ — phase complète.**
 *Sortie de phase : le rapport et le mémo Probare ont la forme et la cohérence d'un livrable client
 (présentation par rubrique, signature engageante, opinion cohérente avec les réserves).*
 
@@ -625,7 +625,7 @@ C4, P2 complet, P3, P4 complet. À n'ouvrir que si la cible commerciale dépasse
 |---|---|---|
 | R1 | Fondement d'opinion : paragraphe standard ISA toujours présent — ✅ réalisé | 1 |
 | P2-c | Bloc signature nominatif + en-tête entité au rapport — ✅ réalisé | 1 |
-| D1b | Calibrage du seuil de signalement JET | 1 |
+| D1b | Calibrage de la sélection JET — ✅ réalisé | 1 |
 | D2 | Loi de Benford | 2 |
 | D4 | Balance âgée | 2 |
 | C1 | Hash d'intégrité + délai d'assemblage 60 jours | 2 |
@@ -638,7 +638,7 @@ C4, P2 complet, P3, P4 complet. À n'ouvrir que si la cible commerciale dépasse
 Un audit complet a été déroulé de bout en bout sur un vrai dossier (cabinet ABA — ARULOS,
 exercice 2024) : cadrage → QCI 8 cycles → ingestion (balance 357 comptes, grand livre 41 506
 écritures) → diligences de début → planification (seuil 231 M, 12 risques IA, 52 procédures,
-couverture assertions 76 %) → travaux (510 contrôles, 139 exceptions, JET 7 438 écritures signalées)
+couverture assertions 76 %) → travaux (510 contrôles, 139 exceptions, JET 7 438 écritures signalées — ramenées à 337 par D1b)
 → tranchement → diligences de clôture → génération. **Six livrables produits** : note de planification,
 rapport d'audit, dossier de travail, mémorandum, tableau des exceptions, diligences.
 
@@ -690,10 +690,33 @@ d'interprétation non bloquante (statut `en_attente → interpretee`), progressi
 erreur LLM transitoire (503 / connection error fréquentes au test), et lot regroupant plusieurs
 exceptions par appel.
 
-#### D1b — Calibrage du seuil de signalement JET · **P1 · difficulté 1 · charge S**
-Le JET a signalé **7 438 / 41 506 écritures (18 %)** — trop pour une revue ciblée. Affiner la
-pondération quand le fichier a beaucoup de libellés génériques ou de montants ronds (étendre le
-garde-fou « sans pièce » déjà présent), et plafonner la sélection ciblée (top N par score).
+#### D1b — Calibrage de la sélection JET · **P1 · difficulté 1 · charge S** — ✅ RÉALISÉ
+Le JET signalait **7 438 / 41 506 écritures (18 %)** — trop pour une revue ciblée. Le diagnostic sur le
+grand livre réel a montré que le seuil de signalement n'était pas en cause : **deux définitions
+l'étaient**.
+
+1. **L'identité de l'écriture.** Le regroupement se faisait sur le seul numéro de pièce. Or ARULOS
+   réattribue les numéros d'un journal à l'autre : les 7 641 à-nouveaux du 01/01 sont renumérotés à
+   partir de 1 et collisionnent avec les écritures de l'exercice. 7 266 « pièces » portaient plusieurs
+   dates et **une seule s'équilibrait** : le signal « déséquilibre » se déclenchait sur 82 % de la
+   population, intégralement à tort. L'identité est désormais le couple **(pièce, date)** — une
+   écriture comptable porte une date unique, et la clé est strictement plus fine (sans effet sur un
+   grand livre correctement numéroté).
+2. **Le calendrier.** Le signal « week-end » était codé samedi-dimanche. À Djibouti la semaine ouvrée
+   court du dimanche au jeudi : vendredi et samedi portent **1,8 %** du grand livre, le dimanche
+   **17 %**. Le signal désignait donc tous les dimanches (jours pleinement ouvrés) et laissait passer
+   les vendredis. Les jours non ouvrés sont maintenant **déduits de l'activité du grand livre**, avec
+   repli sur la convention samedi-dimanche si la population ou la datation ne le permettent pas.
+
+S'y ajoute un garde-fou général, généralisant celui de « sans pièce » : **tout signal déclenché sur
+plus de 30 % des écritures est neutralisé** — il décrit le fichier, pas un risque. Le dossier porte
+alors un résultat qui nomme le taux et sa cause probable, jamais un « aucune écriture concernée » qui
+laisserait croire le grand livre sain.
+
+Résultat sur ARULOS : **7 438 → 337 écritures retenues** (2,1 % de 16 348 écritures), et la première
+retenue est le schéma que le test cherche — 219 M à **94,8 % du seuil de signification**, datée du
+31 décembre. Le plafonnement « top N par score » initialement envisagé a été écarté : il aurait
+tronqué par le score et fait tomber les écritures déséquilibrées, les plus intéressantes du lot.
 
 #### D5 (promu) — Ingestion FEC / fichiers sans en-tête · **P1 · difficulté 2 · charge M**
 Le grand livre réel (sans ligne d'en-tête, dates `ddmmyy`, encodage Latin-1) a exigé une
