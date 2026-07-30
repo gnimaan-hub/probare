@@ -5,7 +5,9 @@ import uuid
 import pytest
 
 from probare_engine.storage.db import ProjectDB
-from probare_engine.normes import libelle_referentiel_comptable, REFERENTIELS_COMPTABLES
+from probare_engine.normes import (
+    libelle_referentiel_comptable, prefixe_actif, REFERENTIELS_COMPTABLES,
+)
 from probare_engine.reporting.export import (
     generer_rapport_audit, generer_memorandum_controle_comptes,
 )
@@ -145,6 +147,127 @@ def test_generer_rapport_audit(db, tmp_path):
                    "Plan Comptable Général de Djibouti", "M. X, Gérant",
                    "Il appartient à la direction", "Commissaire aux comptes"]:
         assert needle in txt, f"absent du rapport : {needle}"
+
+
+# ─── R1 : le fondement porte toujours le paragraphe normatif ─────────────────
+
+def test_fondement_normatif_absent_est_complete():
+    """Un fondement réduit à la base de la réserve (cas constaté au test E2E)
+    est complété par le paragraphe normatif, sans être réécrit."""
+    from probare_engine.reporting.export import fondement_complet, fondement_normatif_present
+
+    base = ("Nous n'avons pas pu obtenir d'éléments probants suffisants concernant "
+            "les provisions pour risques.")
+    assert fondement_normatif_present(base) is False
+    complet = fondement_complet(base)
+    assert complet.startswith(base), "la base de la réserve doit rester en tête (ISA 705)"
+    t = complet.lower()
+    assert "indépendants" in t
+    assert "suffisants et appropriés" in t
+    assert prefixe_actif().lower() in t
+
+
+def test_fondement_deja_normatif_est_preserve_tel_quel():
+    """Accents et typographie de l'auditeur sont conservés : aucun ajout si les
+    trois composantes normatives sont déjà là."""
+    from probare_engine.reporting.export import fondement_complet
+
+    redige = ("Nous avons effectué notre audit selon les normes d'audit "
+              f"{prefixe_actif()}. Nous sommes indépendants de l'entité et estimons que les "
+              "éléments probants collectés sont suffisants et appropriés — « sous les "
+              "réserves exposées ci-dessus ».")
+    assert fondement_complet(redige) == redige
+
+
+def test_fondement_vide_rend_le_paragraphe_normatif_seul():
+    from probare_engine.reporting.export import fondement_complet, fondement_normatif_present
+    assert fondement_normatif_present(fondement_complet(None))
+    assert fondement_normatif_present(fondement_complet("   "))
+
+
+def test_rapport_porte_le_paragraphe_normatif_meme_si_ledition_la_supprime(db, tmp_path):
+    """R1 — l'auditeur a vidé le fondement de ses mentions normatives : le
+    rapport généré les rétablit. Un rapport sans indépendance n'est pas signable."""
+    pid = _projet(db)
+    projet = db.get_projet(pid)
+    opinion = {"type_opinion": "avec_reserve", "titre": "Opinion avec réserve",
+               "texte_opinion": "À notre avis, sous réserve...",
+               "fondement": "Les provisions n'ont pas pu être validées.", "validee": 1}
+    out = generer_rapport_audit(projet, opinion, tmp_path / "rapport.docx",
+                                cabinet=CABINET, plan=db.get_or_create_planification(pid))
+    txt = _docx_text(out)
+    assert "Les provisions n'ont pas pu être validées." in txt
+    assert "indépendants de l'entité" in txt
+    assert "suffisants et appropriés" in txt
+
+
+# ─── P2-c : bloc signature, en-tête entité, destinataire ─────────────────────
+
+def test_bloc_signature_porte_lidentite_complete_du_signataire(db, tmp_path):
+    pid = _projet(db)
+    db.update_projet(pid, {"adresse": "Rue de Venise, Héron", "boite_postale": "2456",
+                           "telephone": "21 35 40 40"})
+    db.update_planification(pid, {"forme_juridique": "SARL",
+                                  "dirigeants": [{"nom": "M. X", "fonction": "Gérant"}]})
+    projet = db.get_projet(pid)
+    cabinet = {**CABINET, "adresse_rue": "Avenue Mohamed Jama",
+               "numero_agrement": "H2A-DJ-2025-001", "inscription_cour_appel": "Djibouti",
+               "telephone": "21 25 25 25", "email": "contact@cabinet.dj"}
+    opinion = {"type_opinion": "sans_reserve", "texte_opinion": "À notre avis...",
+               "fondement": "", "validee": 1}
+    out = generer_rapport_audit(projet, opinion, tmp_path / "rapport.docx",
+                                cabinet=cabinet, plan=db.get_or_create_planification(pid))
+    txt = _docx_text(out)
+    for needle in [
+        "Fait à Djibouti, le",                       # lieu et date de signature
+        "Cabinet NIMAAN & Associés — SARL",          # raison sociale + forme juridique
+        "Avenue Mohamed Jama",                       # adresse du cabinet
+        "contact@cabinet.dj",                        # contacts
+        "Agrément H2A-DJ-2025-001",
+        "Inscrit au tableau de l'Ordre n° CAC-DJ-042",
+        "Inscrit près la cour d'appel de Djibouti",
+        "Gouled Ahmed", "Commissaire aux comptes",   # signataire et qualité
+        "Signature : ",
+    ]:
+        assert needle in txt, f"absent du bloc de signature : {needle}"
+    # En-tête d'identification de l'entité auditée
+    for needle in ["HARBI MATERIAUX SARL", "Rue de Venise, Héron", "BP 2456", "Tél. 21 35 40 40"]:
+        assert needle in txt, f"absent de l'en-tête entité : {needle}"
+
+
+def test_destinataire_prend_le_dirigeant_le_plus_haut_place(db):
+    """Le rapport s'adresse à la gouvernance, pas au premier dirigeant saisi."""
+    from probare_engine.reporting.export import destinataire_rapport
+    projet = {"client": "ARULOS SARL"}
+    plan = {"dirigeants": [{"nom": "Mme B", "fonction": "Directrice financière"},
+                           {"nom": "M. A", "fonction": "Gérant"}]}
+    assert destinataire_rapport(projet, plan) == "À l'attention de M. A, Gérant"
+
+
+def test_destinataire_sans_dirigeant_vise_lorgane_social(db):
+    from probare_engine.reporting.export import destinataire_rapport
+    projet = {"client": "ARULOS"}
+    assert destinataire_rapport(projet, {"forme_juridique": "SARL"}) == "Aux associés de ARULOS,"
+    assert destinataire_rapport(projet, {"forme_juridique": "SA"}) == "Aux actionnaires de ARULOS,"
+    assert destinataire_rapport(projet, {}) == "À la direction de ARULOS,"
+
+
+def test_cabinet_incomplet_est_detecte(db):
+    """Sans signataire ni lieu, le livrable n'est pas signable : les champs
+    manquants sont nommés pour que l'auditeur puisse les compléter."""
+    from probare_engine.reporting.export import champs_cabinet_manquants
+    assert champs_cabinet_manquants({}) and len(champs_cabinet_manquants({})) == 4
+    assert champs_cabinet_manquants(CABINET) == []
+    partiel = {**CABINET, "responsable_nom": "  "}
+    assert champs_cabinet_manquants(partiel) == ["nom du signataire"]
+
+
+def test_coordonnees_entite_persistees(db):
+    """Les coordonnées de l'entité saisies au cadrage survivent au rechargement."""
+    pid = _projet(db)
+    db.update_projet(pid, {"adresse": "Héron", "boite_postale": "1234", "telephone": "21 00 00 00"})
+    p = db.get_projet(pid)
+    assert (p["adresse"], p["boite_postale"], p["telephone"]) == ("Héron", "1234", "21 00 00 00")
 
 
 def test_generer_memorandum_triptyque(db, tmp_path):

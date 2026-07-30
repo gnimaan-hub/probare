@@ -23,6 +23,7 @@ interface CabinetConfig {
   site_web: string
   numero_agrement: string
   numero_ordre: string
+  inscription_cour_appel: string
   responsable_nom: string
   responsable_titre: string
   logo_data_url: string
@@ -40,6 +41,7 @@ const DEFAULT_CONFIG: CabinetConfig = {
   site_web: '',
   numero_agrement: '',
   numero_ordre: '',
+  inscription_cour_appel: '',
   responsable_nom: '',
   responsable_titre: 'Commissaire aux comptes',
   logo_data_url: '',
@@ -62,6 +64,20 @@ function loadConfig(): CabinetConfig {
 
 function saveConfig(config: CabinetConfig) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
+}
+
+// Miroir de CHAMPS_CABINET_REQUIS côté moteur : sans ces champs, le bloc de
+// signature est incomplet et le moteur refuse de produire les livrables signés.
+const CHAMPS_SIGNATURE: [keyof CabinetConfig, string][] = [
+  ['nom', 'la raison sociale du cabinet'],
+  ['responsable_nom', 'le nom du signataire'],
+  ['responsable_titre', 'la qualité du signataire'],
+  ['adresse_ville', 'la ville (lieu de signature)'],
+]
+
+function champsSignatureManquants(config: CabinetConfig): string[] {
+  return CHAMPS_SIGNATURE.filter(([champ]) => !String(config[champ] || '').trim())
+    .map(([, libelle]) => libelle)
 }
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
@@ -282,6 +298,18 @@ export function Configuration() {
             </p>
           </div>
 
+          {/* Champs sans lesquels le rapport d'audit et le mémorandum ne sont pas
+              signables : le moteur refuse alors de les produire. */}
+          {champsSignatureManquants(form).length > 0 && (
+            <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200">
+              <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 leading-relaxed">
+                Fiche incomplète : le rapport d'audit et le mémorandum ne pourront pas être
+                générés tant qu'il manque {champsSignatureManquants(form).join(', ')}.
+              </p>
+            </div>
+          )}
+
           {/* Section 0 : Référentiel de normes (ISA / NEP) */}
           <SectionReferentiel />
 
@@ -355,7 +383,7 @@ export function Configuration() {
                     onChange={set('adresse_code_postal')}
                   />
                 </Field>
-                <Field label="Ville">
+                <Field label="Ville" required>
                   <input
                     className="input-field"
                     placeholder="ex : Djibouti"
@@ -430,6 +458,20 @@ export function Configuration() {
                   onChange={set('numero_ordre')}
                 />
               </Field>
+              <div className="col-span-2">
+                <Field label="Inscription près la cour d'appel">
+                  <input
+                    className="input-field"
+                    placeholder="ex : Djibouti"
+                    value={form.inscription_cour_appel}
+                    onChange={set('inscription_cour_appel')}
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    Ville de la cour d'appel auprès de laquelle le signataire est inscrit —
+                    mention portée au bloc de signature des rapports.
+                  </p>
+                </Field>
+              </div>
             </div>
           </Section>
 
@@ -482,9 +524,13 @@ export function Configuration() {
                   )}
                   {form.telephone && <p className="text-xs text-slate-500">Tél. {form.telephone}</p>}
                   {form.email && <p className="text-xs text-slate-500">{form.email}</p>}
-                  {(form.numero_agrement || form.numero_ordre) && (
+                  {(form.numero_agrement || form.numero_ordre || form.inscription_cour_appel) && (
                     <p className="text-xs text-slate-400 mt-1">
-                      {[form.numero_agrement && `Agrément ${form.numero_agrement}`, form.numero_ordre && `Ordre ${form.numero_ordre}`].filter(Boolean).join(' · ')}
+                      {[
+                        form.numero_agrement && `Agrément ${form.numero_agrement}`,
+                        form.numero_ordre && `Inscrit au tableau de l'Ordre n° ${form.numero_ordre}`,
+                        form.inscription_cour_appel && `Inscrit près la cour d'appel de ${form.inscription_cour_appel}`,
+                      ].filter(Boolean).join(' · ')}
                     </p>
                   )}
                   {form.responsable_nom && (

@@ -25,6 +25,16 @@ function loadCabinet(): Record<string, any> {
   return {}
 }
 
+// Miroir de fondement_normatif_present() côté moteur : le fondement doit porter
+// le référentiel d'audit, l'indépendance et le caractère suffisant et approprié
+// des éléments probants. Sinon le générateur les rétablit à l'export.
+function fondementNormatifPresent(fondement?: string | null): boolean {
+  const t = (fondement || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  if (!t.trim()) return false
+  const referentiel = t.includes('isa') || t.includes('nep') || t.includes("normes d'audit")
+  return referentiel && t.includes('independan') && t.includes('suffisant') && t.includes('appropri')
+}
+
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -428,6 +438,13 @@ export function RapportAudit() {
                     value={opinion.fondement || ''}
                     onChange={(e) => patchOpinion('fondement', e.target.value)}
                   />
+                  {!fondementNormatifPresent(opinion.fondement) && (
+                    <p className="text-[11px] text-amber-600 mt-1 leading-relaxed">
+                      Le paragraphe normatif exigé par {normeLabel('700')} — référentiel d'audit,
+                      indépendance, éléments probants suffisants et appropriés — sera ajouté
+                      automatiquement à la suite de ce texte dans le rapport : il ne peut pas être omis.
+                    </p>
+                  )}
                 </div>
 
                 <div>

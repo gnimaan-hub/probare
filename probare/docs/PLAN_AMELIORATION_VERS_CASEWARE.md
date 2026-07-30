@@ -59,9 +59,9 @@ Chaque chantier est présenté sous forme de **fiche** avec :
 | D1 | Tests des écritures de journal — Journal Entry Testing (ISA 240) | Analyse de données | **P0** | 3 | M | M3 (volet fraude) | ✅ Réalisé (calibrage seuil à revoir → D1b) |
 | G1 | Générateurs livrables : rapport d'audit, mémorandum, opinion IA | Production | **P0** | 3 | L | M1–M4 | ✅ Réalisé (hors plan initial) |
 | M5 | Feuilles maîtresses (leadsheets) **par rubrique d'états financiers** | Dossier de travail | **P0** ⬆ | 3 | M | M1 | ✅ Réalisé |
-| P2 | États financiers liés à la balance (cadrage, bilan/CR, notes) + **bloc signature** | Production | **P1** ⬆ | 4 | L | M5 ✅ | ⬜ À faire — **débloqué** (P2-c bloc signature = quick win) |
+| P2 | États financiers liés à la balance (cadrage, bilan/CR, notes) + **bloc signature** | Production | **P1** ⬆ | 4 | L | M5 ✅ | 🟡 En cours — P2-c ✅ réalisé ; reste P2-a (cadrage EF) et P2-b (bilan/CR + notes) |
 | R3 | Réserve qualitative (limitation/incertitude) ↔ opinion | Méthodologie | **P0** | 2 | S | G1 | ⬜ À faire (incohérence relevée au test E2E) |
-| R1 | Fondement d'opinion : conserver le paragraphe standard ISA | Production | **P0** | 1 | S | G1 | ⬜ À faire (quick win) |
+| R1 | Fondement d'opinion : conserver le paragraphe standard ISA | Production | **P0** | 1 | S | G1 | ✅ Réalisé |
 | D2 | Loi de Benford | Analyse de données | **P1** | 2 | S | — | ⬜ À faire |
 | D3 | Échantillonnage statistique complet (MUS, stratifié, attributs) | Analyse de données | **P1** | 3 | M | — | ⬜ À faire |
 | D4 | Balance âgée automatique (clients / fournisseurs) | Analyse de données | **P1** | 2 | S | — | ⬜ À faire |
@@ -533,10 +533,15 @@ depuis la balance mappée, recalculés à chaque ajustement.
 20 notes annexes** ; le rapport Probare ne les porte pas et sort avec une fiche cabinet *placeholder*
 (pas de bloc signature engageant, destinataire générique). Trois volets, du moins coûteux au plus lourd :
 
-**P2-c — Bloc signature & en-tête · quick win · difficulté 1 · charge S — À LIVRER EN PREMIER**
-Fiche Cabinet complète (raison sociale, signataire, n° OECD, inscription cour d'appel, adresse,
-contacts, logo) **rendue en bloc de signature** daté et localisé ; en-tête entité (adresse, BP, tél.) ;
-destinataire nominatif (organe de gouvernance). Indépendant des autres volets.
+**P2-c — Bloc signature & en-tête · quick win · difficulté 1 · charge S — ✅ RÉALISÉ**
+Fiche Cabinet complète (raison sociale, forme juridique, agrément, tableau de l'Ordre, inscription
+près la cour d'appel, adresse, contacts, logo) **rendue en bloc de signature** daté et localisé, avec
+espace de signature manuscrite. En-tête d'identification de l'entité (adresse, BP, tél., NIF) saisi au
+cadrage (colonnes `projet.adresse` / `boite_postale` / `telephone`). Destinataire nominatif choisi par
+**rang de gouvernance** (`destinataire_rapport`) et non plus par ordre de saisie ; à défaut de
+dirigeant, l'organe social déduit de la forme juridique (associés / actionnaires). Garde :
+`champs_cabinet_manquants` — le rapport et le mémorandum ne sont **pas produits** (HTTP 400) tant que
+raison sociale, signataire, qualité et lieu de signature ne sont pas renseignés.
 
 **P2-a — Cadrage états financiers présentés ↔ balance auditée · difficulté 2 · charge M**
 Import (ou saisie) du bilan/CR **présentés par le client** ; rapprochement automatique avec la
@@ -584,8 +589,8 @@ M2 → M1 → M4 → D1 → M3, plus les générateurs de livrables (G1 : rappor
 deux livrables clients (rapport, mémo) sont générés.*
 
 **Phase 1 bis — « Livrable présentable » (NOUVELLE, prioritaire — issue du test E2E)**
-**M5 (feuilles maîtresses par rubrique) ✅ réalisé** → reste : R1 (fondement complet) → P2-c (bloc
-signature) → R3 (réserve qualitative ↔ opinion) → P2-a (cadrage EF, désormais débloqué par M5) →
+**M5 (feuilles maîtresses) ✅, R1 (fondement complet) ✅, P2-c (bloc signature) ✅** → reste :
+R3 (réserve qualitative ↔ opinion) → P2-a (cadrage EF, désormais débloqué par M5) →
 D1b (calibrage JET).
 *Sortie de phase : le rapport et le mémo Probare ont la forme et la cohérence d'un livrable client
 (présentation par rubrique, signature engageante, opinion cohérente avec les réserves).*
@@ -607,8 +612,8 @@ C4, P2 complet, P3, P4 complet. À n'ouvrir que si la cible commerciale dépasse
 
 | Réf | Quick win | Difficulté |
 |---|---|---|
-| R1 | Fondement d'opinion : paragraphe standard ISA toujours présent | 1 |
-| P2-c | Bloc signature nominatif + en-tête entité au rapport | 1 |
+| R1 | Fondement d'opinion : paragraphe standard ISA toujours présent — ✅ réalisé | 1 |
+| P2-c | Bloc signature nominatif + en-tête entité au rapport — ✅ réalisé | 1 |
 | D1b | Calibrage du seuil de signalement JET | 1 |
 | D2 | Loi de Benford | 2 |
 | D4 | Balance âgée | 2 |
@@ -635,11 +640,18 @@ rapport d'audit, dossier de travail, mémorandum, tableau des exceptions, dilige
 
 ### Nouveaux chantiers issus du test
 
-#### R1 — Fondement de l'opinion : paragraphe standard ISA · **P0 · difficulté 1 · charge S**
+#### R1 — Fondement de l'opinion : paragraphe standard ISA · **P0 · difficulté 1 · charge S** — ✅ RÉALISÉ
 Le fondement doit **toujours** contenir le paragraphe normatif (audit conduit selon les ISA,
 **indépendance**, caractère suffisant et approprié des éléments probants) **en plus** de la base de la
 réserve. Le générateur ne doit pas pouvoir le perdre lors d'une édition auditeur (constaté au test).
 Préserver aussi accents et typographie. **Quick win.**
+
+*Livré :* `fondement_complet()` dans `reporting/export.py` — point de passage unique du rapport et du
+mémorandum. Détection insensible aux accents et à la casse des trois composantes (référentiel d'audit,
+indépendance, éléments probants suffisants et appropriés) ; si l'une manque, le paragraphe normatif est
+ajouté **après** le texte de l'auditeur (ordre ISA 705), sans jamais réécrire ni tronquer celui-ci. Le
+prompt d'opinion l'exige désormais explicitement, et l'écran Rapport d'audit signale à l'auditeur que
+le paragraphe sera rétabli.
 
 #### R3 — Réserve qualitative (limitation / incertitude) ↔ opinion · **P0 · difficulté 2 · charge S**
 Les réserves ARULOS sont des **limitations d'étendue / incertitudes** (absence d'éléments probants sur

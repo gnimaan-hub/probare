@@ -517,13 +517,22 @@ class UpdateProjetBody(BaseModel):
     consentement_client: bool | None = None
     cycles_couverts: list[str] | None = None
     nature_mission: str | None = None
+    referentiel_comptable: str | None = None
     client_id: str | None = None
+    # Coordonnées de l'entité auditée (en-tête des livrables signés)
+    adresse: str | None = None
+    boite_postale: str | None = None
+    telephone: str | None = None
 
 
 @router.patch("/projets/{projet_id}")
 def update_projet(projet_id: str, body: UpdateProjetBody):
     db = _get_db(projet_id)
     data = {k: v for k, v in body.model_dump().items() if v is not None}
+    ref_compta = data.get("referentiel_comptable")
+    if ref_compta and ref_compta not in REFERENTIELS_COMPTABLES:
+        raise HTTPException(400, f"Référentiel comptable inconnu : {ref_compta}. "
+                                 f"Valeurs admises : {sorted(REFERENTIELS_COMPTABLES)}.")
     if "consentement_client" in data and data["consentement_client"]:
         data["consentement_horodatage"] = _now()
     projet = db.update_projet(projet_id, data)
@@ -3231,6 +3240,20 @@ class ExportSigneBody(BaseModel):
     cabinet: dict | None = None
 
 
+def _exiger_cabinet_signataire(cabinet: dict | None) -> None:
+    """Un livrable engageant ne sort pas avec une identité de cabinet incomplète.
+
+    Sans raison sociale, signataire, qualité et lieu de signature, le document
+    n'est pas signable — il ne doit donc pas être produit (P2-c).
+    """
+    from ..reporting.export import champs_cabinet_manquants
+    manquants = champs_cabinet_manquants(cabinet)
+    if manquants:
+        raise HTTPException(400, "Fiche Cabinet incomplète — le livrable ne serait pas "
+                                 "signable. Complétez dans Configuration : "
+                                 + ", ".join(manquants) + ".")
+
+
 _RIGUEURS_VALIDES = {"stricte", "moderee", "permissive"}
 _TYPES_OPINION_VALIDES = {"sans_reserve", "avec_reserve", "defavorable", "impossibilite"}
 
@@ -3327,6 +3350,7 @@ def exporter_rapport_audit(projet_id: str, body: ExportSigneBody | None = None):
                                  "Validez l'opinion avant de générer le rapport d'audit.")
     plan = db.get_or_create_planification(projet_id)
     cabinet = (body.cabinet if body else None) or {}
+    _exiger_cabinet_signataire(cabinet)
     output_dir = DATA_DIR / projet_id / "exports"
     output_path = output_dir / f"rapport_audit_{projet_id[:8]}.docx"
     generer_rapport_audit(projet, opinion, output_path, cabinet=cabinet, plan=plan)
@@ -3346,6 +3370,7 @@ def exporter_memorandum(projet_id: str, body: ExportSigneBody | None = None):
         raise HTTPException(404, "Projet introuvable.")
     plan = db.get_or_create_planification(projet_id)
     cabinet = (body.cabinet if body else None) or {}
+    _exiger_cabinet_signataire(cabinet)
     # Agrégat déterministe complet (toutes phases, anomalies, CI, fichiers) pour un mémo exhaustif (#5).
     synthese = _synthese_mission(db, projet_id, projet)
 

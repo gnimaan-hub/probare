@@ -1703,7 +1703,12 @@ Ta tâche :
 2. Rédige le PARAGRAPHE D'OPINION lui-même, au style normatif d'un rapport d'audit,
    à la première personne du pluriel (« Nous avons effectué l'audit… », « À notre avis… »).
    Cite le référentiel comptable applicable. Pour une réserve/refus, expose le motif.
-3. Rédige le FONDEMENT DE L'OPINION (référentiel d'audit, éléments probants, indépendance).
+3. Rédige le FONDEMENT DE L'OPINION. Il porte OBLIGATOIREMENT, et dans cet ordre :
+   d'abord la base de la réserve ou du refus lorsqu'il y en a une, puis le paragraphe
+   normatif complet — audit conduit selon les normes {prefixe_actif()}, INDÉPENDANCE
+   vis-à-vis de l'entité, caractère SUFFISANT et APPROPRIÉ des éléments probants collectés.
+   Ces trois mentions normatives ne doivent jamais être omises, même pour une opinion
+   sans réserve.
 4. Le cas échéant, rédige un paragraphe d'OBSERVATION ou d'incertitude (continuité,
    événements postérieurs) — sinon laisse vide.
 5. Explique en 2-3 phrases la JUSTIFICATION de ce choix au regard de la rigueur retenue.

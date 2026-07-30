@@ -109,6 +109,9 @@ export function Cadrage() {
     nature_mission: 'contractuelle' as string,
     referentiel_comptable: 'pcgd' as string,
     client_id: null as string | null,
+    adresse: '',
+    boite_postale: '',
+    telephone: '',
   })
   const [referentiels, setReferentiels] = useState<{ id: string; libelle: string }[]>([])
   const [saving, setSaving] = useState(false)
@@ -130,6 +133,9 @@ export function Cadrage() {
         nature_mission: p.nature_mission || 'contractuelle',
         referentiel_comptable: p.referentiel_comptable || 'pcgd',
         client_id: p.client_id || null,
+        adresse: p.adresse || '',
+        boite_postale: p.boite_postale || '',
+        telephone: p.telephone || '',
       })
     }).catch((e) => toast.error(e.message))
     get('/referentiels-comptables')
@@ -316,6 +322,35 @@ export function Cadrage() {
                   </select>
                   <p className="text-xs text-slate-400 mt-1">
                     Référentiel appliqué par l'entité auditée (distinct du référentiel d'audit ISA/NEP).
+                  </p>
+                </div>
+              </div>
+              {/* Coordonnées de l'entité : en-tête des livrables signés */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Adresse du siège
+                  </label>
+                  <input className="input-field" value={form.adresse}
+                    placeholder="Rue, quartier, ville"
+                    onChange={(e) => setForm({ ...form, adresse: e.target.value })} disabled={locked} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Boîte postale
+                  </label>
+                  <input className="input-field" value={form.boite_postale} placeholder="ex : 2456"
+                    onChange={(e) => setForm({ ...form, boite_postale: e.target.value })} disabled={locked} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Téléphone</label>
+                  <input className="input-field" value={form.telephone}
+                    onChange={(e) => setForm({ ...form, telephone: e.target.value })} disabled={locked} />
+                </div>
+                <div className="col-span-2 flex items-end">
+                  <p className="text-xs text-slate-400">
+                    Ces coordonnées forment l'en-tête d'identification de l'entité sur le rapport
+                    d'audit et le mémorandum.
                   </p>
                 </div>
               </div>

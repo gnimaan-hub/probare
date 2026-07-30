@@ -55,6 +55,10 @@ class ProjectDB:
             referentiel_comptable TEXT DEFAULT 'pcgd',
             client_id TEXT,
             archive INTEGER DEFAULT 0,
+            -- Identité de l'entité auditée, rendue en en-tête des livrables signés
+            adresse TEXT,
+            boite_postale TEXT,
+            telephone TEXT,
             cree_le TEXT,
             modifie_le TEXT
         );
@@ -455,6 +459,10 @@ class ProjectDB:
             ("projet", "referentiel_comptable", "TEXT DEFAULT 'pcgd'"),
             ("projet", "client_id", "TEXT"),
             ("projet", "archive", "INTEGER DEFAULT 0"),
+            # P2-c : coordonnées de l'entité auditée (en-tête des livrables signés)
+            ("projet", "adresse", "TEXT"),
+            ("projet", "boite_postale", "TEXT"),
+            ("projet", "telephone", "TEXT"),
             ("planification", "note_synthese", "TEXT"),
             ("fichier_source", "description_ia", "TEXT"),
             ("fichier_source", "nature_ia", "TEXT"),
@@ -541,7 +549,8 @@ class ProjectDB:
                   if k in ("nom","client","nif","exercice","seuil_signification",
                            "seuil_planification","seuil_insignifiance","consentement_client",
                            "consentement_horodatage","etat_courant","cycles_couverts",
-                           "nature_mission","referentiel_comptable","client_id","archive")}
+                           "nature_mission","referentiel_comptable","client_id","archive",
+                           "adresse","boite_postale","telephone")}
         # Sérialiser cycles_couverts en JSON si c'est une liste
         if "cycles_couverts" in fields and isinstance(fields["cycles_couverts"], list):
             fields["cycles_couverts"] = json.dumps(fields["cycles_couverts"])

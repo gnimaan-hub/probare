@@ -1353,6 +1353,68 @@ def _cabinet_ligne_adresse(cabinet: dict) -> str:
     return " — ".join(p for p in parts if p)
 
 
+def _cabinet_references(cabinet: dict) -> str:
+    """Références professionnelles du signataire (agrément, tableau de l'Ordre,
+    inscription près la cour d'appel) — mentions qui engagent le cabinet."""
+    return "  ·  ".join(x for x in [
+        cabinet.get("numero_agrement") and f"Agrément {cabinet['numero_agrement']}",
+        cabinet.get("numero_ordre") and f"Inscrit au tableau de l'Ordre n° {cabinet['numero_ordre']}",
+        cabinet.get("inscription_cour_appel")
+        and f"Inscrit près la cour d'appel de {cabinet['inscription_cour_appel']}",
+    ] if x)
+
+
+def _cabinet_contacts(cabinet: dict) -> str:
+    return "  ·  ".join(x for x in [
+        cabinet.get("telephone") and f"Tél. {cabinet['telephone']}",
+        cabinet.get("email"),
+        cabinet.get("site_web"),
+    ] if x)
+
+
+# Champs sans lesquels un livrable ne peut pas être signé : il sortirait avec une
+# identité de cabinet incomplète — c'est ce qu'a montré le test E2E.
+CHAMPS_CABINET_REQUIS = {
+    "nom": "raison sociale du cabinet",
+    "responsable_nom": "nom du signataire",
+    "responsable_titre": "qualité du signataire",
+    "adresse_ville": "ville (lieu de signature)",
+}
+
+
+def champs_cabinet_manquants(cabinet: dict | None) -> list[str]:
+    """Libellés des champs de la fiche Cabinet absents pour un livrable signé."""
+    cabinet = cabinet or {}
+    return [libelle for champ, libelle in CHAMPS_CABINET_REQUIS.items()
+            if not str(cabinet.get(champ) or "").strip()]
+
+
+def _logo_bytes(cabinet: dict) -> bytes | None:
+    """Décode le logo du cabinet (data URL du paramétrage) en octets d'image.
+    Un logo illisible n'interrompt jamais la génération d'un livrable."""
+    import base64
+    data_url = (cabinet or {}).get("logo_data_url") or ""
+    if not data_url.startswith("data:image/"):
+        return None
+    try:
+        return base64.b64decode(data_url.split(",", 1)[1])
+    except Exception:
+        return None
+
+
+def _inserer_logo(doc, cabinet: dict, largeur_cm: float = 3.5) -> bool:
+    """Insère le logo du cabinet ; retourne False si aucun logo exploitable."""
+    from docx.shared import Cm
+    brut = _logo_bytes(cabinet)
+    if not brut:
+        return False
+    try:
+        doc.add_picture(io.BytesIO(brut), width=Cm(largeur_cm))
+    except Exception:
+        return False
+    return True
+
+
 def _entete_cabinet(doc, cabinet: dict) -> None:
     """Rend l'en-tête d'identité du cabinet en haut d'un livrable signé.
     `cabinet` provient du paramétrage Cabinet (transmis par le frontend)."""
@@ -1369,15 +1431,8 @@ def _entete_cabinet(doc, cabinet: dict) -> None:
     if cabinet.get("forme_juridique"):
         p.add_run(f"  ·  {cabinet['forme_juridique']}").font.size = Pt(9)
     ligne_adr = _cabinet_ligne_adresse(cabinet)
-    contacts = "  ·  ".join(x for x in [
-        cabinet.get("telephone") and f"Tél. {cabinet['telephone']}",
-        cabinet.get("email"),
-        cabinet.get("site_web"),
-    ] if x)
-    refs = "  ·  ".join(x for x in [
-        cabinet.get("numero_agrement") and f"Agrément {cabinet['numero_agrement']}",
-        cabinet.get("numero_ordre") and f"Ordre {cabinet['numero_ordre']}",
-    ] if x)
+    contacts = _cabinet_contacts(cabinet)
+    refs = _cabinet_references(cabinet)
     for txt in (ligne_adr, contacts, refs):
         if txt:
             sub = doc.add_paragraph()
@@ -1385,6 +1440,62 @@ def _entete_cabinet(doc, cabinet: dict) -> None:
             run.font.size = Pt(9)
             run.font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
     doc.add_paragraph("─" * 60)
+
+
+# ─── Fondement de l'opinion : paragraphe normatif obligatoire (R1) ───────────
+#
+# Le fondement de l'opinion doit TOUJOURS porter le paragraphe normatif (audit
+# conduit selon le référentiel actif, indépendance, caractère suffisant et
+# approprié des éléments probants) — en plus, le cas échéant, de la base de la
+# réserve. Une édition auditeur ne doit pas pouvoir le faire disparaître : le
+# générateur le rétablit à l'export.
+
+
+def _sans_accents(texte: str) -> str:
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", texte)
+                   if unicodedata.category(c) != "Mn").lower()
+
+
+def paragraphe_normatif_fondement() -> str:
+    """Paragraphe standard du fondement de l'opinion (ISA/NEP 700)."""
+    return (
+        f"Nous avons effectué notre audit selon les normes d'audit {prefixe_actif()}. "
+        "Les responsabilités qui nous incombent en vertu de ces normes sont décrites "
+        "dans la section « Responsabilités de l'auditeur » du présent rapport. Nous sommes "
+        "indépendants de l'entité et nous nous sommes acquittés des autres responsabilités "
+        "déontologiques qui nous incombent. Nous estimons que les éléments probants que nous "
+        "avons collectés sont suffisants et appropriés pour fonder notre opinion."
+    )
+
+
+def fondement_normatif_present(fondement: str | None) -> bool:
+    """Vrai si le texte porte les trois composantes normatives exigées :
+    référence au référentiel d'audit, indépendance, éléments probants suffisants
+    et appropriés. La comparaison ignore accents et casse."""
+    t = _sans_accents(fondement or "")
+    if not t.strip():
+        return False
+    a_referentiel = ("isa" in t or "nep" in t or "normes d'audit" in t
+                     or "normes internationales d'audit" in t)
+    a_independance = "independan" in t
+    a_probants = "suffisant" in t and "appropri" in t
+    return a_referentiel and a_independance and a_probants
+
+
+def fondement_complet(fondement: str | None) -> str:
+    """Fondement rendu dans les livrables : texte de l'auditeur (base de la
+    réserve) suivi du paragraphe normatif dès qu'il n'y figure pas déjà.
+
+    Ordre conforme à ISA 705 : la base de la réserve d'abord, le paragraphe
+    normatif ensuite. Le texte de l'auditeur n'est jamais réécrit ni tronqué —
+    accents et typographie sont conservés tels quels.
+    """
+    texte = (fondement or "").strip()
+    if fondement_normatif_present(texte):
+        return texte
+    normatif = paragraphe_normatif_fondement()
+    return f"{texte}\n\n{normatif}" if texte else normatif
 
 
 def _bloc_signature(doc, cabinet: dict) -> None:
@@ -1431,7 +1542,11 @@ _TYPE_OPINION_LABELS = {
 
 
 def _bloc_signature_theme(doc, cabinet: dict) -> None:
-    """Bloc « Lieu, date et signature » mis en forme selon la charte."""
+    """Bloc de signature d'un livrable engageant (P2-c) : lieu, date, logo,
+    identité complète du cabinet, qualité et références du signataire.
+
+    Ce bloc est ce qui distingue un livrable client d'un brouillon interne : il
+    porte l'identité qui engage le signataire, pas seulement son nom."""
     from . import theme as T
     cabinet = cabinet or {}
     ville = cabinet.get("adresse_ville") or "Djibouti"
@@ -1439,14 +1554,90 @@ def _bloc_signature_theme(doc, cabinet: dict) -> None:
     T.para(doc, f"Fait à {ville}, le {datetime.now(timezone.utc).strftime('%d/%m/%Y')}.",
            justify=False)
     doc.add_paragraph()
+    _inserer_logo(doc, cabinet, largeur_cm=3.2)
     if cabinet.get("nom"):
-        T.para(doc, cabinet["nom"], justify=False, bold=True, color=T.NAVY, size=12)
+        raison = cabinet["nom"]
+        if cabinet.get("forme_juridique"):
+            raison = f"{raison} — {cabinet['forme_juridique']}"
+        T.para(doc, raison, justify=False, bold=True, color=T.NAVY, size=12)
+    ligne_adr = _cabinet_ligne_adresse(cabinet)
+    if ligne_adr:
+        T.para(doc, ligne_adr, justify=False, size=9, color=T.MUTED)
+    contacts = _cabinet_contacts(cabinet)
+    if contacts:
+        T.para(doc, contacts, justify=False, size=9, color=T.MUTED)
+    refs = _cabinet_references(cabinet)
+    if refs:
+        T.para(doc, refs, justify=False, size=9, color=T.MUTED)
+    doc.add_paragraph()
     if cabinet.get("responsable_nom"):
         T.para(doc, cabinet["responsable_nom"], justify=False, bold=True)
-    if cabinet.get("responsable_titre"):
-        T.para(doc, cabinet["responsable_titre"], justify=False, italic=True, color=T.MUTED)
-    if not cabinet.get("responsable_nom"):
+        if cabinet.get("responsable_titre"):
+            T.para(doc, cabinet["responsable_titre"], justify=False, italic=True, color=T.MUTED)
+        # Espace matériel pour la signature manuscrite : Probare ne signe pas.
+        doc.add_paragraph()
+        T.para(doc, "Signature : ______________________________", justify=False, size=9,
+               color=T.MUTED)
+    else:
         T.para(doc, "Nom et signature : ______________________________", justify=False)
+
+
+# Rang de gouvernance des fonctions dirigeantes : le rapport s'adresse d'abord
+# aux responsables de la gouvernance (ISA 260), pas au premier dirigeant listé.
+_RANG_GOUVERNANCE = [
+    "conseil d'administration", "president du conseil", "president",
+    "gerant", "associe", "directeur general", "directeur",
+]
+
+
+def _rang_fonction(fonction: str | None) -> int:
+    f = _sans_accents(fonction or "")
+    for i, cle in enumerate(_RANG_GOUVERNANCE):
+        if cle in f:
+            return i
+    return len(_RANG_GOUVERNANCE)
+
+
+def destinataire_rapport(projet: dict, plan: dict | None) -> str:
+    """Formule d'adresse nominative du rapport (P2-c).
+
+    Le dirigeant le plus haut placé dans la gouvernance est nommé ; à défaut, on
+    s'adresse à l'organe social correspondant à la forme juridique de l'entité."""
+    plan = plan or {}
+    client = projet.get("client") or projet.get("nom") or "l'entité"
+    dirigeants = [d for d in (plan.get("dirigeants") or [])
+                  if d.get("nom") and d.get("fonction")]
+    if dirigeants:
+        d = sorted(dirigeants, key=lambda x: _rang_fonction(x.get("fonction")))[0]
+        return f"À l'attention de {d['nom']}, {d['fonction']}"
+    forme = _sans_accents(plan.get("forme_juridique") or "")
+    if forme.startswith("sa") and not forme.startswith("sarl"):
+        return f"Aux actionnaires de {client},"
+    if "sarl" in forme or "scp" in forme or "sas" in forme:
+        return f"Aux associés de {client},"
+    return f"À la direction de {client},"
+
+
+def _entete_entite(doc, projet: dict, plan: dict | None) -> None:
+    """En-tête d'identification de l'entité auditée en tête du rapport."""
+    from . import theme as T
+    plan = plan or {}
+    client = projet.get("client") or projet.get("nom") or ""
+    if not client:
+        return
+    intitule = client
+    if plan.get("forme_juridique") and _sans_accents(plan["forme_juridique"]) not in _sans_accents(client):
+        intitule = f"{client} ({plan['forme_juridique']})"
+    T.para(doc, intitule, justify=False, bold=True, color=T.NAVY, size=11)
+    coordonnees = "  ·  ".join(x for x in [
+        projet.get("adresse"),
+        projet.get("boite_postale") and f"BP {projet['boite_postale']}",
+        projet.get("telephone") and f"Tél. {projet['telephone']}",
+        projet.get("nif") and f"NIF {projet['nif']}",
+    ] if x)
+    if coordonnees:
+        T.para(doc, coordonnees, justify=False, size=9, color=T.MUTED)
+    doc.add_paragraph()
 
 
 def _pied_livrable(doc, texte: str) -> None:
@@ -1512,14 +1703,9 @@ def generer_rapport_audit(
     ]
     T.sommaire(doc, entrees)
 
-    # Destinataire
-    dirigeants = plan.get("dirigeants") or []
-    destinataire = None
-    for d in dirigeants:
-        if d.get("fonction") and d.get("nom"):
-            destinataire = f"À l'attention de {d['nom']}, {d['fonction']}"
-            break
-    T.para(doc, destinataire or f"À la direction de {client},", justify=False)
+    # En-tête entité auditée + destinataire nominatif (P2-c)
+    _entete_entite(doc, projet, plan)
+    T.para(doc, destinataire_rapport(projet, plan), justify=False)
 
     num = 1
     # 1. Opinion
@@ -1528,15 +1714,10 @@ def generer_rapport_audit(
     T.section_header(doc, titre_op, str(num)); num += 1
     T.para(doc, opinion.get("texte_opinion") or "")
 
-    # 2. Fondement de l'opinion
+    # 2. Fondement de l'opinion — le paragraphe normatif est toujours rendu (R1)
     T.section_header(doc, "Fondement de l'opinion", str(num)); num += 1
-    T.para(doc, opinion.get("fondement") or (
-        f"Nous avons effectué notre audit selon les normes d'audit {prefixe_actif()}. "
-        "Les responsabilités qui nous incombent en vertu de ces normes sont décrites "
-        "dans la section « Responsabilités de l'auditeur » du présent rapport. Nous sommes "
-        "indépendants de l'entité et estimons que les éléments probants que nous avons "
-        "collectés sont suffisants et appropriés pour fonder notre opinion."
-    ))
+    for bloc in fondement_complet(opinion.get("fondement")).split("\n\n"):
+        T.para(doc, bloc.strip())
 
     # 3. Observation / incertitude (conditionnel)
     if observations:
@@ -2334,8 +2515,8 @@ def generer_memorandum_controle_comptes(
         if type_op:
             T.bande_verte(doc, _TYPE_OPINION_LABELS.get(type_op, type_op))
         T.para(doc, opinion["texte_opinion"])
-        if opinion.get("fondement"):
-            T.para(doc, opinion["fondement"])
+        for bloc in fondement_complet(opinion.get("fondement")).split("\n\n"):
+            T.para(doc, bloc.strip())
 
     # ── 6. Livrables produits et pièces du dossier ───────────────────────────
     T.section_header(doc, "Livrables produits et pièces du dossier", str(num)); num += 1

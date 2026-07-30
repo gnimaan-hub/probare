@@ -202,6 +202,29 @@ Le chapitre est versé au dossier de travail et au mémorandum (placé AVANT le
 détail par cycle : le lecteur entre par le poste publié). Écran transversal
 « Feuilles maîtresses », disponible dès l'ingestion.
 
+## Livrables signés : fondement et bloc de signature (R1, P2-c)
+
+Rapport d'audit et mémorandum sont des documents **engageants** ; deux invariants
+les protègent, tous deux dans `reporting/export.py` :
+
+- **Fondement de l'opinion** — `fondement_complet()` est le seul point de rendu.
+  Le paragraphe normatif (référentiel d'audit actif, **indépendance**, caractère
+  suffisant et approprié des éléments probants) est rétabli dès qu'une des trois
+  composantes manque, **après** le texte de l'auditeur (base de la réserve
+  d'abord, ordre ISA 705). Le texte saisi n'est jamais réécrit ni tronqué : une
+  édition auditeur ne peut pas produire un rapport sans mention d'indépendance.
+- **Identité du signataire** — `champs_cabinet_manquants()` liste les champs de
+  la fiche Cabinet sans lesquels le livrable n'est pas signable (raison sociale,
+  signataire, qualité, ville de signature). Les routes d'export refusent alors de
+  produire le document (HTTP 400) plutôt que de sortir un placeholder. Le bloc de
+  signature porte logo, forme juridique, adresse, contacts, agrément, tableau de
+  l'Ordre et inscription près la cour d'appel.
+
+Le destinataire est nominatif : `destinataire_rapport()` retient le dirigeant le
+plus haut placé dans la gouvernance (ISA 260) et, à défaut, l'organe social déduit
+de la forme juridique. L'en-tête d'identification de l'entité provient des
+colonnes `projet.adresse` / `boite_postale` / `telephone`, saisies au cadrage.
+
 ## Seuils (ISA 320/450)
 
 Trois seuils calculés en planification (`planning/thresholds.py`) :
