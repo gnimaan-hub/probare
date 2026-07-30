@@ -275,6 +275,11 @@ export function CadrageEtatsFinanciers({ projetId, referentiel }: {
                 <strong>Le bilan présenté ne s'équilibre pas.</strong> Actif{' '}
                 {formatMontant(totaux?.actif_presente)} contre passif{' '}
                 {formatMontant(totaux?.passif_presente)}, écart {formatMontant(rap.equilibre_bilan.ecart)}.
+                {rap.equilibre_bilan.explique_par_resultat && (
+                  <> L'écart est égal au résultat de l'exercice
+                    {' '}({formatMontant(totaux?.resultat_audite)}) : le résultat n'a
+                    vraisemblablement pas été porté aux capitaux propres.</>
+                )}
               </p>
             </div>
           )}

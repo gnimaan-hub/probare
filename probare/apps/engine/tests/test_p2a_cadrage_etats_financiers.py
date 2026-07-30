@@ -155,6 +155,30 @@ def test_bilan_presente_desequilibre():
     assert eq["equilibre"] is False and eq["ecart"] == 1_000_000
 
 
+def test_desequilibre_egal_au_resultat_est_diagnostique():
+    """Cause la plus fréquente d'un bilan déséquilibré : le résultat n'a pas été
+    porté aux capitaux propres. Le dire évite de chercher une anomalie ailleurs.
+    Constaté sur le dossier ARULOS, dont la balance n'a pas encore viré le résultat."""
+    m = _matrice(**{"AC-CLIENTS": 5_000_000, "PA-CAPITAL": -4_000_000,
+                    "RE-ACHATS": 2_000_000, "RE-VENTES": -3_000_000})
+    assert m["totaux"]["resultat"] == 1_000_000
+    postes = [_poste(COTE_ACTIF, "Clients", 5_000_000, "AC-CLIENTS"),
+              _poste(COTE_PASSIF, "Capital", 4_000_000, "PA-CAPITAL"),
+              _poste(COTE_CHARGES, "Achats", 2_000_000, "RE-ACHATS"),
+              _poste(COTE_PRODUITS, "Ventes", 3_000_000, "RE-VENTES")]
+    eq = rapprocher(postes, m, seuil=100_000)["equilibre_bilan"]
+    assert eq["equilibre"] is False and eq["ecart"] == 1_000_000
+    assert eq["explique_par_resultat"] is True
+
+
+def test_desequilibre_sans_rapport_avec_le_resultat_nest_pas_explique():
+    m = _matrice(**{"AC-CLIENTS": 5_000_000, "PA-CAPITAL": -4_000_000})
+    postes = [_poste(COTE_ACTIF, "Clients", 5_000_000, "AC-CLIENTS"),
+              _poste(COTE_PASSIF, "Capital", 3_000_000, "PA-CAPITAL")]
+    eq = rapprocher(postes, m, seuil=100_000)["equilibre_bilan"]
+    assert eq["equilibre"] is False and eq["explique_par_resultat"] is False
+
+
 def test_resultat_presente_vs_resultat_audite():
     m = _matrice(**{"RE-ACHATS": 2_000_000, "RE-VENTES": -3_000_000})
     assert m["totaux"]["resultat"] == 1_000_000

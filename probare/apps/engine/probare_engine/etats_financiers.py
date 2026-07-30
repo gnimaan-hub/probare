@@ -255,6 +255,13 @@ def rapprocher(postes: list[dict], matrice: dict, seuil: float | None = None) ->
             "ecart": ecart_bilan,
             "equilibre": abs(ecart_bilan) <= TOLERANCE_ARRONDI,
             "applicable": bool(actif or passif),
+            # Cause la plus fréquente d'un bilan présenté déséquilibré : le
+            # résultat de l'exercice n'a pas été porté aux capitaux propres.
+            # L'écart vaut alors exactement le résultat — le dire évite de faire
+            # chercher une anomalie là où il n'y a qu'une affectation à faire.
+            "explique_par_resultat": bool(
+                abs(ecart_bilan) > TOLERANCE_ARRONDI and resultat_audite
+                and abs(ecart_bilan - resultat_audite) <= TOLERANCE_ARRONDI),
         },
         "coherence_resultat": {
             "ecart": ecart_resultat,

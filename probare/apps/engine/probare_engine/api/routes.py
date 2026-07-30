@@ -6199,11 +6199,17 @@ def run_cadrage_etats_financiers(projet_id: str):
                 f"Le bilan présenté est équilibré (actif = passif = "
                 f"{totaux['actif_presente']:,.0f}).".replace(",", " "), ["etats_presentes"]))
         else:
+            cause = ""
+            if eq.get("explique_par_resultat"):
+                cause = (" L'écart est égal au résultat de l'exercice "
+                         f"({totaux['resultat_audite']:,.0f}) : le résultat n'a "
+                         "vraisemblablement pas été porté aux capitaux propres du bilan "
+                         "présenté.").replace(",", " ")
             res, exc = _result_exception(
                 projet_id, "EF-CADRAGE-EQUILIBRE", eq["ecart"],
-                f"Le bilan présenté ne s'équilibre pas : actif {totaux['actif_presente']:,.0f} "
-                f"contre passif {totaux['passif_presente']:,.0f}, écart "
-                f"{eq['ecart']:,.0f}.".replace(",", " "), ["etats_presentes"])
+                (f"Le bilan présenté ne s'équilibre pas : actif {totaux['actif_presente']:,.0f} "
+                 f"contre passif {totaux['passif_presente']:,.0f}, écart "
+                 f"{eq['ecart']:,.0f}.".replace(",", " ")) + cause, ["etats_presentes"])
             resultats.append(res)
             if exc:
                 exceptions.append(exc)
