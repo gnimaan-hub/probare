@@ -1459,10 +1459,12 @@ class ProjectDB:
 
     def list_points_reserve(self, projet_id: str) -> list[dict]:
         """Points de réserve du projet : ouverts d'abord (ils pèsent sur
-        l'opinion), puis les points levés, du plus récent au plus ancien."""
+        l'opinion), puis les points levés — chaque groupe dans l'ordre où
+        l'auditeur les a identifiés. Cet ordre est celui du fondement rendu au
+        rapport : il doit rester stable d'une génération à l'autre."""
         rows = self.conn.execute(
             """SELECT * FROM point_reserve WHERE projet_id=?
-               ORDER BY CASE WHEN statut='ouvert' THEN 0 ELSE 1 END, cree_le DESC""",
+               ORDER BY CASE WHEN statut='ouvert' THEN 0 ELSE 1 END, cree_le""",
             (projet_id,)
         ).fetchall()
         return [dict(r) for r in rows]

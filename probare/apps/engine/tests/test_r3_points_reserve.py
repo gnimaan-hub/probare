@@ -166,12 +166,16 @@ def test_crud_points_reserve(db):
     assert db.list_points_reserve(pid) == []
 
 
-def test_liste_ouverts_avant_leves(db):
+def test_liste_ouverts_avant_leves_puis_ordre_didentification(db):
+    """Les points ouverts passent devant ; à l'intérieur d'un groupe, l'ordre
+    est celui de l'identification — c'est l'ordre rendu au fondement du rapport."""
     pid = _projet(db)
     db.save_point_reserve(_point(projet_id=pid, libelle="Levé", statut=STATUT_LEVE,
                                  resolution="ok"))
-    db.save_point_reserve(_point(projet_id=pid, libelle="Ouvert"))
-    assert [p["libelle"] for p in db.list_points_reserve(pid)] == ["Ouvert", "Levé"]
+    db.save_point_reserve(_point(projet_id=pid, libelle="Ouvert 1"))
+    db.save_point_reserve(_point(projet_id=pid, libelle="Ouvert 2"))
+    assert [p["libelle"] for p in db.list_points_reserve(pid)] == [
+        "Ouvert 1", "Ouvert 2", "Levé"]
 
 
 # ─── Bout en bout : API et livrables ─────────────────────────────────────────
