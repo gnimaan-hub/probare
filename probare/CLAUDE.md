@@ -225,6 +225,36 @@ plus haut placé dans la gouvernance (ISA 260) et, à défaut, l'organe social d
 de la forme juridique. L'en-tête d'identification de l'entité provient des
 colonnes `projet.adresse` / `boite_postale` / `telephone`, saisies au cadrage.
 
+## Cadrage des états financiers présentés (P2-a, module `etats_financiers.py`)
+
+Les états **publiés par l'entité** sont saisis ou collés (`poste_ef_presente`)
+puis rapprochés poste par poste des **feuilles maîtresses** (M5). Sans ce
+rapprochement, le dossier peut être impeccable sur la balance et l'opinion porter
+sur des états qui ne lui correspondent pas.
+
+- **Convention de signe** — la feuille maîtresse raisonne en solde net débiteur
+  positif ; le client publie des montants positifs des deux côtés du bilan. Chaque
+  poste déclare donc son `cote` (actif / passif / charges / produits) et le montant
+  attendu vaut `montant_ajuste × signe_du_côté`. C'est ce qui traite correctement
+  les rubriques à **double sens**, dont le côté de présentation dépend du signe du
+  solde et non du plan.
+- Le rattachement automatique poste → rubrique est **lexical et déterministe**
+  (aucun LLM) et **refuse de trancher** en cas d'ambiguïté : un mauvais
+  rattachement silencieux fabriquerait un écart imaginaire, pire que pas de
+  rattachement du tout.
+- Les postes se remplacent **en bloc** : un état financier se saisit ou s'importe
+  d'un seul tenant, jamais ligne à ligne (sinon des orphelins d'un import
+  précédent faussent le rapprochement).
+- Plusieurs postes publiés peuvent viser une même rubrique et inversement : on
+  compare des **sommes par rubrique**, jamais des lignes isolées.
+- Quatre contrôles au registre (cycle transversal `etats_financiers`) :
+  `EF-CADRAGE-ECART` (écart poste à poste, une exception par rubrique au-delà du
+  seuil), `EF-CADRAGE-EQUILIBRE` (bilan présenté déséquilibré),
+  `EF-CADRAGE-RESULTAT` (résultat présenté ↔ résultat audité),
+  `EF-CADRAGE-EXHAUSTIVITE` (rubrique auditée significative absente des états
+  publiés). Les exceptions sont standard : interprétées par l'IA comme les autres.
+- Écran : onglet « Cadrage des états présentés » de la page Feuilles maîtresses.
+
 ## Points de réserve qualitatifs (ISA 705 — R3, module `reserves.py`)
 
 Le cumul ISA 450 ne modélise que le **quantitatif**. Une réserve naît tout aussi

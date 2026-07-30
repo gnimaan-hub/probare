@@ -247,6 +247,12 @@ PRECONDITIONS_CONTROLES: dict[str, list[str]] = {
     "JET-SANS-PIECE":        ["grand_livre"],
     "JET-LIBELLE":           ["grand_livre"],
     "JET-MONTANT-ROND":      ["grand_livre"],
+    # Cadrage des états financiers présentés (P2-a) : la balance fournit le terme
+    # de comparaison ; les états publiés sont saisis ou collés, pas ingérés.
+    "EF-CADRAGE-ECART":         ["balance"],
+    "EF-CADRAGE-EQUILIBRE":     ["balance"],
+    "EF-CADRAGE-RESULTAT":      ["balance"],
+    "EF-CADRAGE-EXHAUSTIVITE":  ["balance"],
 }
 
 

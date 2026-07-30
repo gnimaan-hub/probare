@@ -12,6 +12,7 @@ import { useApi } from '../hooks/useApi'
 import { useToast } from '../hooks/useToast'
 import { useSyncProjet } from '../hooks/useProjet'
 import { formatMontant, cn } from '../lib/utils'
+import { CadrageEtatsFinanciers } from '../components/ef/CadrageEtatsFinanciers'
 
 // ─── Types (miroir de /feuilles-maitresses) ───────────────────────────────────
 
@@ -313,6 +314,9 @@ export function FeuillesMaitresses() {
   const [erreur, setErreur] = useState<string | null>(null)
   const [ouvertes, setOuvertes] = useState<Set<string>>(new Set())
   const [aReaffecter, setAReaffecter] = useState<{ compte: CompteFeuille; rubrique: Rubrique } | null>(null)
+  // Le cadrage des états présentés se lit contre ces mêmes feuilles maîtresses :
+  // deux vues d'un même objet, d'où l'onglet plutôt qu'un écran séparé.
+  const [onglet, setOnglet] = useState<'feuilles' | 'cadrage'>('feuilles')
 
   const charger = useCallback(async () => {
     if (!projetId) return
@@ -410,6 +414,30 @@ export function FeuillesMaitresses() {
       />
 
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        {/* Onglets : la balance regroupée d'un côté, son cadrage avec les EF publiés de l'autre */}
+        <div className="flex gap-1 border-b border-border">
+          {([
+            ['feuilles', 'Feuilles maîtresses'],
+            ['cadrage', 'Cadrage des états présentés'],
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setOnglet(id)}
+              className={cn('px-4 py-2 text-sm border-b-2 -mb-px transition-colors',
+                onglet === id
+                  ? 'border-primary-500 text-primary-700 font-medium'
+                  : 'border-transparent text-slate-500 hover:text-slate-700')}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {onglet === 'cadrage' && projetId && (
+          <CadrageEtatsFinanciers projetId={projetId} referentiel={matrice.referentiel_comptable} />
+        )}
+
+        {onglet === 'feuilles' && (<>
         {/* Bandeau d'explication */}
         <div className="card p-4 flex gap-3">
           <Info className="w-4 h-4 text-primary-500 flex-shrink-0 mt-0.5" />
@@ -646,6 +674,7 @@ export function FeuillesMaitresses() {
             </div>
           </div>
         ))}
+        </>)}
       </div>
 
       {aReaffecter && matrice && (

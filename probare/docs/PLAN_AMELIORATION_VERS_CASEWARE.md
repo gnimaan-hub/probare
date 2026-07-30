@@ -59,7 +59,7 @@ Chaque chantier est présenté sous forme de **fiche** avec :
 | D1 | Tests des écritures de journal — Journal Entry Testing (ISA 240) | Analyse de données | **P0** | 3 | M | M3 (volet fraude) | ✅ Réalisé (calibrage seuil à revoir → D1b) |
 | G1 | Générateurs livrables : rapport d'audit, mémorandum, opinion IA | Production | **P0** | 3 | L | M1–M4 | ✅ Réalisé (hors plan initial) |
 | M5 | Feuilles maîtresses (leadsheets) **par rubrique d'états financiers** | Dossier de travail | **P0** ⬆ | 3 | M | M1 | ✅ Réalisé |
-| P2 | États financiers liés à la balance (cadrage, bilan/CR, notes) + **bloc signature** | Production | **P1** ⬆ | 4 | L | M5 ✅ | 🟡 En cours — P2-c ✅ réalisé ; reste P2-a (cadrage EF) et P2-b (bilan/CR + notes) |
+| P2 | États financiers liés à la balance (cadrage, bilan/CR, notes) + **bloc signature** | Production | **P1** ⬆ | 4 | L | M5 ✅ | 🟡 En cours — P2-c ✅ et P2-a ✅ réalisés ; reste P2-b (bilan/CR + notes dérivés) |
 | R3 | Réserve qualitative (limitation/incertitude) ↔ opinion | Méthodologie | **P0** | 2 | S | G1 | ✅ Réalisé |
 | R1 | Fondement d'opinion : conserver le paragraphe standard ISA | Production | **P0** | 1 | S | G1 | ✅ Réalisé |
 | D2 | Loi de Benford | Analyse de données | **P1** | 2 | S | — | ⬜ À faire |
@@ -543,10 +543,21 @@ dirigeant, l'organe social déduit de la forme juridique (associés / actionnair
 `champs_cabinet_manquants` — le rapport et le mémorandum ne sont **pas produits** (HTTP 400) tant que
 raison sociale, signataire, qualité et lieu de signature ne sont pas renseignés.
 
-**P2-a — Cadrage états financiers présentés ↔ balance auditée · difficulté 2 · charge M**
-Import (ou saisie) du bilan/CR **présentés par le client** ; rapprochement automatique avec la
-**feuille maîtresse (M5)** ; tout écart > seuil = exception standard (interprétation IA). *C'est la
-diligence d'audit réelle sur les EF, à 10 % du coût de CaseView.*
+**P2-a — Cadrage états financiers présentés ↔ balance auditée · difficulté 2 · charge M — ✅ RÉALISÉ**
+Saisie (ou collage depuis Excel) du bilan/CR **présentés par le client** ; rapprochement automatique
+avec la **feuille maîtresse (M5)** ; tout écart > seuil = exception standard (interprétation IA).
+*C'est la diligence d'audit réelle sur les EF, à 10 % du coût de CaseView.*
+
+*Livré :* module `etats_financiers.py` (rapprochement pur), table `poste_ef_presente`, quatre
+contrôles au registre (cycle transversal `etats_financiers`) : écart poste à poste, équilibre du
+bilan présenté, résultat présenté ↔ résultat audité, exhaustivité (rubrique auditée absente des
+états publiés). Chaque poste déclare son **côté** de présentation (actif / passif / charges /
+produits) : c'est lui qui commande la conversion depuis la convention interne en solde net débiteur,
+et c'est ce qui rend correct le traitement des rubriques à double sens. Rattachement poste →
+rubrique automatique par rapprochement lexical déterministe, qui **refuse de trancher** en cas
+d'ambiguïté (un mauvais rattachement fabriquerait un écart imaginaire) ; l'auditeur complète.
+Les postes se remplacent en bloc — un état financier se saisit d'un seul tenant. Écran : onglet
+« Cadrage des états présentés » de la page Feuilles maîtresses.
 
 **P2-b — Restitution bilan/CR + notes dérivés de la balance · difficulté 3 · charge M**
 Génération d'un bilan + compte de résultat depuis la balance ajustée et le mapping M5, insérés dans
@@ -590,7 +601,7 @@ deux livrables clients (rapport, mémo) sont générés.*
 
 **Phase 1 bis — « Livrable présentable » (NOUVELLE, prioritaire — issue du test E2E)**
 **M5 (feuilles maîtresses) ✅, R1 (fondement complet) ✅, P2-c (bloc signature) ✅,
-R3 (réserve qualitative ↔ opinion) ✅** → reste : P2-a (cadrage EF, désormais débloqué par M5) →
+R3 (réserve qualitative ↔ opinion) ✅, P2-a (cadrage EF ↔ balance auditée) ✅** → reste :
 D1b (calibrage JET).
 *Sortie de phase : le rapport et le mémo Probare ont la forme et la cohérence d'un livrable client
 (présentation par rubrique, signature engageante, opinion cohérente avec les réserves).*

@@ -6023,3 +6023,237 @@ def delete_affectation_rubrique(projet_id: str, compte: str):
     db.log(projet_id, "action_humaine",
            {"action": "retablir_rubrique_defaut", "compte": compte})
     return {"deleted": True, "compte": compte}
+
+
+# ─── Cadrage des états financiers présentés ↔ balance auditée (P2-a) ──────────
+
+
+class PosteEFBody(BaseModel):
+    id: str | None = None
+    cote: str
+    libelle: str
+    montant: float = 0.0
+    montant_n1: float | None = None
+    rubrique_ref: str | None = None
+    ordre: int | None = None
+
+
+class EtatsPresentesBody(BaseModel):
+    postes: list[PosteEFBody]
+    # Rattache automatiquement les postes sans rubrique par rapprochement
+    # lexical avec le plan (déterministe). L'auditeur corrige ensuite.
+    rattacher_auto: bool = True
+    source: str | None = None
+    fichier_source_id: str | None = None
+
+
+def _rapprochement_ef(db, projet_id: str, projet: dict) -> dict:
+    """Rapprochement états présentés ↔ feuilles maîtresses, avec le seuil du dossier."""
+    from ..etats_financiers import rapprocher
+    matrice = _construire_matrice_feuilles(db, projet_id, projet, avec_travaux=False)
+    postes = db.list_postes_ef(projet_id)
+    seuil = _seuil_projet(db, projet_id, projet)
+    return {"postes": postes, "matrice_totaux": matrice.get("totaux"),
+            "rapprochement": rapprocher(postes, matrice, seuil)}
+
+
+def _seuil_projet(db, projet_id: str, projet: dict) -> float:
+    plan = db.get_or_create_planification(projet_id)
+    return float(projet.get("seuil_signification") or plan.get("seuil_calcule") or 0.0)
+
+
+@router.get("/projets/{projet_id}/etats-financiers-presentes")
+def get_etats_financiers_presentes(projet_id: str):
+    """États financiers présentés par l'entité et leur cadrage avec la balance
+    auditée : par rubrique, montant présenté, montant audité et écart."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    return _rapprochement_ef(db, projet_id, projet)
+
+
+@router.put("/projets/{projet_id}/etats-financiers-presentes")
+def set_etats_financiers_presentes(projet_id: str, body: EtatsPresentesBody):
+    """Enregistre (ou remplace) les états financiers présentés par l'entité.
+
+    Le remplacement est global : un état financier se saisit ou s'importe d'un
+    seul tenant, jamais ligne à ligne."""
+    from ..etats_financiers import valider_poste, suggerer_rubrique
+    from ..rubriques import plan_rubriques, rubrique_as_dict
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    _exiger_projet_actif(db, projet_id)
+
+    rubriques = [rubrique_as_dict(r) for r in plan_rubriques(projet.get("referentiel_comptable"))]
+    refs_valides = {r["ref"] for r in rubriques}
+    postes, nb_auto = [], 0
+    for i, p in enumerate(body.postes):
+        data = p.model_dump()
+        try:
+            valider_poste(data)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        if data.get("rubrique_ref") and data["rubrique_ref"] not in refs_valides:
+            raise HTTPException(400, f"Rubrique inconnue : {data['rubrique_ref']}.")
+        if not data.get("rubrique_ref") and body.rattacher_auto:
+            suggestion = suggerer_rubrique(data["libelle"], rubriques, data["cote"])
+            if suggestion:
+                data["rubrique_ref"] = suggestion
+                nb_auto += 1
+        data["ordre"] = data.get("ordre") if data.get("ordre") is not None else i
+        data["source"] = body.source or "saisie"
+        data["fichier_source_id"] = body.fichier_source_id
+        postes.append(data)
+
+    db.remplacer_postes_ef(projet_id, postes)
+    db.log(projet_id, "action_humaine", {
+        "action": "enregistrer_etats_financiers_presentes",
+        "nb_postes": len(postes), "nb_rattaches_auto": nb_auto,
+        "source": body.source or "saisie",
+    })
+    resultat = _rapprochement_ef(db, projet_id, projet)
+    resultat["nb_rattaches_auto"] = nb_auto
+    return resultat
+
+
+class RattachementPosteBody(BaseModel):
+    rubrique_ref: str | None = None
+
+
+@router.put("/projets/{projet_id}/etats-financiers-presentes/{poste_id}/rubrique")
+def rattacher_poste_ef(projet_id: str, poste_id: str, body: RattachementPosteBody):
+    """Rattache un poste présenté à une rubrique (ou le détache)."""
+    from ..rubriques import plan_rubriques, index_par_ref
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    _exiger_projet_actif(db, projet_id)
+    if body.rubrique_ref and body.rubrique_ref not in index_par_ref(
+            plan_rubriques(projet.get("referentiel_comptable"))):
+        raise HTTPException(400, f"Rubrique inconnue : {body.rubrique_ref}.")
+    poste = db.maj_rubrique_poste_ef(projet_id, poste_id, body.rubrique_ref)
+    if not poste:
+        raise HTTPException(404, "Poste présenté introuvable.")
+    db.log(projet_id, "action_humaine", {
+        "action": "rattacher_poste_ef", "poste": poste.get("libelle"),
+        "rubrique_ref": body.rubrique_ref,
+    })
+    return _rapprochement_ef(db, projet_id, projet)
+
+
+@router.post("/projets/{projet_id}/controles/cadrage-etats-financiers")
+def run_cadrage_etats_financiers(projet_id: str):
+    """Cadrage des états financiers présentés avec la balance auditée (P2-a).
+
+    Produit un résultat par contrôle et une exception par écart significatif,
+    interprétée par l'IA comme n'importe quelle autre exception. Les montants
+    viennent tous du rapprochement Python — jamais du LLM."""
+    from ..controls.engine import _result_ok, _result_exception
+    from ..etats_financiers import COTES
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    _exiger_etat_pour_controles(projet)
+
+    postes = db.list_postes_ef(projet_id)
+    if not postes:
+        raise HTTPException(400, "Aucun état financier présenté n'a été enregistré. "
+                                 "Importez ou saisissez le bilan et le compte de résultat "
+                                 "publiés par l'entité avant de lancer le cadrage.")
+
+    rap = _rapprochement_ef(db, projet_id, projet)["rapprochement"]
+    syn, totaux = rap["synthese"], rap["totaux"]
+    resultats, exceptions = [], []
+
+    # 1. Écarts poste à poste
+    ecarts = [l for l in rap["lignes"] if l["statut"] == "ecart_significatif"]
+    if not ecarts:
+        resultats.append(_result_ok(
+            projet_id, "EF-CADRAGE-ECART", syn["ecart_total_absolu"],
+            f"Les {syn['nb_lignes']} poste(s) présenté(s) se raccordent à la balance auditée "
+            f"(écart cumulé {syn['ecart_total_absolu']:,.0f}, sous le seuil).".replace(",", " "),
+            [f"feuille_maitresse:{l['rubrique_ref']}" for l in rap["lignes"]][:50]))
+    else:
+        for l in ecarts:
+            res, exc = _result_exception(
+                projet_id, "EF-CADRAGE-ECART", l["ecart"],
+                f"{COTES[l['cote']]} — « {l['rubrique_libelle']} » : montant présenté "
+                f"{l['montant_presente']:,.0f} contre {l['montant_audite']:,.0f} au dossier "
+                f"audité, soit un écart de {l['ecart']:,.0f}.".replace(",", " "),
+                l["sources"])
+            resultats.append(res)
+            if exc:
+                exceptions.append(exc)
+
+    # 2. Équilibre du bilan présenté
+    eq = rap["equilibre_bilan"]
+    if eq["applicable"]:
+        if eq["equilibre"]:
+            resultats.append(_result_ok(
+                projet_id, "EF-CADRAGE-EQUILIBRE", 0.0,
+                f"Le bilan présenté est équilibré (actif = passif = "
+                f"{totaux['actif_presente']:,.0f}).".replace(",", " "), ["etats_presentes"]))
+        else:
+            res, exc = _result_exception(
+                projet_id, "EF-CADRAGE-EQUILIBRE", eq["ecart"],
+                f"Le bilan présenté ne s'équilibre pas : actif {totaux['actif_presente']:,.0f} "
+                f"contre passif {totaux['passif_presente']:,.0f}, écart "
+                f"{eq['ecart']:,.0f}.".replace(",", " "), ["etats_presentes"])
+            resultats.append(res)
+            if exc:
+                exceptions.append(exc)
+
+    # 3. Résultat présenté vs résultat audité
+    coh = rap["coherence_resultat"]
+    if coh["applicable"]:
+        if coh["coherent"]:
+            resultats.append(_result_ok(
+                projet_id, "EF-CADRAGE-RESULTAT", 0.0,
+                f"Le résultat présenté ({totaux['resultat_presente']:,.0f}) correspond au "
+                f"résultat issu de la balance auditée.".replace(",", " "),
+                ["etats_presentes", "balance_ajustee"]))
+        else:
+            res, exc = _result_exception(
+                projet_id, "EF-CADRAGE-RESULTAT", coh["ecart"],
+                f"Le résultat présenté ({totaux['resultat_presente']:,.0f}) diffère du résultat "
+                f"issu de la balance auditée ({totaux['resultat_audite']:,.0f}), écart "
+                f"{coh['ecart']:,.0f}.".replace(",", " "),
+                ["etats_presentes", "balance_ajustee"])
+            resultats.append(res)
+            if exc:
+                exceptions.append(exc)
+
+    # 4. Exhaustivité : rubrique auditée significative absente des états publiés
+    absentes = rap["rubriques_absentes"]
+    if not absentes:
+        resultats.append(_result_ok(
+            projet_id, "EF-CADRAGE-EXHAUSTIVITE", 0,
+            "Toutes les rubriques significatives de la balance auditée sont reprises dans les "
+            "états financiers présentés.", ["etats_presentes"]))
+    else:
+        for a in absentes:
+            res, exc = _result_exception(
+                projet_id, "EF-CADRAGE-EXHAUSTIVITE", a["montant_audite"],
+                f"La rubrique « {a['rubrique_libelle']} » ({a['montant_audite']:,.0f} au dossier "
+                f"audité) n'apparaît dans aucun poste des états financiers "
+                f"présentés.".replace(",", " "), a["sources"])
+            resultats.append(res)
+            if exc:
+                exceptions.append(exc)
+
+    enregistrees = _persister_controles(db, projet_id, resultats, exceptions,
+                                        cycle="etats_financiers")
+    db.log(projet_id, "action_humaine", {
+        "action": "cadrage_etats_financiers",
+        "nb_postes": syn["nb_postes"], "nb_ecarts_significatifs": syn["nb_ecarts_significatifs"],
+        "nb_non_rattaches": syn["nb_non_rattaches"], "nb_absentes": syn["nb_absentes"],
+    })
+    _auto_interpreter(db, projet_id, projet, enregistrees)
+
+    return {"rapprochement": rap, "nb_exceptions": len(exceptions),
+            "exceptions": db.list_exceptions(projet_id)}

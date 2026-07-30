@@ -848,6 +848,52 @@ enregistrer(ControleDefinition(
 ))
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# CADRAGE DES ÉTATS FINANCIERS PRÉSENTÉS (transversal) — 4 contrôles
+# P2-a : les états publiés par l'entité se raccordent-ils à la balance auditée ?
+# ═══════════════════════════════════════════════════════════════════════════════
+
+enregistrer(ControleDefinition(
+    ref="EF-CADRAGE-ECART",
+    assertions=["presentation", "evaluation"],
+    libelle="Écart entre un poste présenté et la feuille maîtresse",
+    nep_ref="NEP 700",
+    cycle="etats_financiers",
+    description="Un poste des états financiers présentés ne se raccorde pas au montant issu de la balance auditée.",
+    severite_defaut="significative",
+))
+
+enregistrer(ControleDefinition(
+    ref="EF-CADRAGE-EQUILIBRE",
+    assertions=["presentation"],
+    libelle="Bilan présenté déséquilibré",
+    nep_ref="NEP 700",
+    cycle="etats_financiers",
+    description="Le total de l'actif du bilan présenté diffère du total du passif.",
+    severite_defaut="critique",
+))
+
+enregistrer(ControleDefinition(
+    ref="EF-CADRAGE-RESULTAT",
+    assertions=["presentation", "evaluation"],
+    libelle="Résultat présenté différent du résultat audité",
+    nep_ref="NEP 700",
+    cycle="etats_financiers",
+    description="Le résultat du compte de résultat présenté diffère de celui issu de la balance auditée.",
+    severite_defaut="critique",
+))
+
+enregistrer(ControleDefinition(
+    ref="EF-CADRAGE-EXHAUSTIVITE",
+    assertions=["exhaustivite", "presentation"],
+    libelle="Rubrique auditée absente des états présentés",
+    nep_ref="NEP 700",
+    cycle="etats_financiers",
+    description="Une rubrique significative de la balance auditée n'apparaît dans aucun poste des états financiers présentés.",
+    severite_defaut="significative",
+))
+
+
 # Correspondance signal JET → référence de contrôle du registre.
 JET_SIGNAL_REF: dict[str, str] = {
     "desequilibre":    "JET-DESEQUILIBRE",

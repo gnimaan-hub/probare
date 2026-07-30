@@ -414,6 +414,23 @@ class ProjectDB:
             PRIMARY KEY (projet_id, compte)
         );
 
+        -- P2-a : postes des états financiers PRÉSENTÉS par l'entité, rapprochés
+        -- des feuilles maîtresses issues de la balance auditée.
+        CREATE TABLE IF NOT EXISTS poste_ef_presente (
+            id TEXT PRIMARY KEY,
+            projet_id TEXT NOT NULL REFERENCES projet(id),
+            cote TEXT NOT NULL,
+            libelle TEXT NOT NULL,
+            rubrique_ref TEXT,
+            montant REAL DEFAULT 0,
+            montant_n1 REAL,
+            ordre INTEGER DEFAULT 0,
+            source TEXT DEFAULT 'saisie',
+            fichier_source_id TEXT,
+            cree_le TEXT,
+            modifie_le TEXT
+        );
+
         -- R3 : points de réserve QUALITATIFS (limitation / incertitude / désaccord).
         -- Fondement non chiffré d'une réserve — le pendant du cumul ISA 450.
         CREATE TABLE IF NOT EXISTS point_reserve (
@@ -1454,6 +1471,54 @@ class ProjectDB:
         )
         self.conn.commit()
         return self.get_opinion(projet_id)
+
+    # --- États financiers présentés (P2-a) ---
+
+    def list_postes_ef(self, projet_id: str) -> list[dict]:
+        """Postes présentés, dans l'ordre de présentation de l'état."""
+        rows = self.conn.execute(
+            "SELECT * FROM poste_ef_presente WHERE projet_id=? ORDER BY cote, ordre, libelle",
+            (projet_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def remplacer_postes_ef(self, projet_id: str, postes: list[dict]) -> list[dict]:
+        """Remplace en bloc les états présentés.
+
+        Un état financier se saisit ou s'importe d'un seul tenant : une mise à
+        jour ligne à ligne laisserait des postes orphelins d'un import précédent
+        et fausserait le rapprochement.
+        """
+        now = _now()
+        self.conn.execute("DELETE FROM poste_ef_presente WHERE projet_id=?", (projet_id,))
+        for i, p in enumerate(postes):
+            self.conn.execute(
+                """INSERT INTO poste_ef_presente
+                   (id, projet_id, cote, libelle, rubrique_ref, montant, montant_n1,
+                    ordre, source, fichier_source_id, cree_le, modifie_le)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (p.get("id") or str(__import__("uuid").uuid4()), projet_id, p.get("cote"),
+                 p.get("libelle"), p.get("rubrique_ref"),
+                 float(p.get("montant") or 0.0),
+                 float(p["montant_n1"]) if p.get("montant_n1") is not None else None,
+                 p.get("ordre", i), p.get("source") or "saisie",
+                 p.get("fichier_source_id"), now, now)
+            )
+        self.conn.commit()
+        return self.list_postes_ef(projet_id)
+
+    def maj_rubrique_poste_ef(self, projet_id: str, poste_id: str,
+                              rubrique_ref: str | None) -> dict | None:
+        """Rattache (ou détache) un poste présenté à une rubrique."""
+        self.conn.execute(
+            "UPDATE poste_ef_presente SET rubrique_ref=?, modifie_le=? WHERE id=? AND projet_id=?",
+            (rubrique_ref, _now(), poste_id, projet_id)
+        )
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT * FROM poste_ef_presente WHERE id=? AND projet_id=?", (poste_id, projet_id)
+        ).fetchone()
+        return dict(row) if row else None
 
     # --- Points de réserve qualitatifs (R3 — ISA 705) ---
 
