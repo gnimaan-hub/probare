@@ -702,11 +702,14 @@ l'étaient**.
    population, intégralement à tort. L'identité est désormais le couple **(pièce, date)** — une
    écriture comptable porte une date unique, et la clé est strictement plus fine (sans effet sur un
    grand livre correctement numéroté).
-2. **Le calendrier.** Le signal « week-end » était codé samedi-dimanche. À Djibouti la semaine ouvrée
-   court du dimanche au jeudi : vendredi et samedi portent **1,8 %** du grand livre, le dimanche
-   **17 %**. Le signal désignait donc tous les dimanches (jours pleinement ouvrés) et laissait passer
-   les vendredis. Les jours non ouvrés sont maintenant **déduits de l'activité du grand livre**, avec
-   repli sur la convention samedi-dimanche si la population ou la datation ne le permettent pas.
+2. **Le calendrier.** Le signal « week-end » était codé samedi-dimanche. Or à Djibouti le week-end est
+   **vendredi-samedi** et la semaine ouvrée court du dimanche au jeudi : vendredi et samedi portent
+   **1,8 %** du grand livre ARULOS, le dimanche en porte **17 %**. Le signal désignait donc tous les
+   dimanches (jours pleinement ouvrés) et laissait passer les vendredis, qui sont précisément les
+   jours suspects. Les jours non ouvrés sont maintenant **déduits de l'activité du grand livre**, avec
+   repli sur la convention djiboutienne (vendredi-samedi) si la population ou la datation ne
+   permettent pas de conclure. Sur un dossier français, la déduction ressort samedi-dimanche
+   d'elle-même, sans paramétrage.
 
 S'y ajoute un garde-fou général, généralisant celui de « sans pièce » : **tout signal déclenché sur
 plus de 30 % des écritures est neutralisé** — il décrit le fichier, pas un risque. Le dossier porte

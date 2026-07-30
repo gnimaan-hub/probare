@@ -99,10 +99,16 @@ class TestSignaux:
         a = analyser_journal(rows_normal, seuil=1_000_000, exercice="2024", seuil_signalement=1)
         assert "contrepartie" not in _signaux(a, "P5")
 
-    def test_weekend(self):
-        rows = _piece_equilibree("P6", 5000, date="2024-06-16")  # dimanche
+    def test_jour_non_ouvre(self):
+        # Population trop faible pour déduire le calendrier → convention par
+        # défaut : le week-end djiboutien, vendredi-samedi.
+        rows = _piece_equilibree("P6", 5000, date="2024-06-14")  # vendredi
         a = analyser_journal(rows, seuil=1_000_000, exercice="2024", seuil_signalement=1)
         assert "weekend" in _signaux(a, "P6")
+        # Le dimanche est un jour ouvré à Djibouti : il n'est pas signalé
+        rows = _piece_equilibree("P6b", 5000, date="2024-06-16")  # dimanche
+        a = analyser_journal(rows, seuil=1_000_000, exercice="2024", seuil_signalement=1)
+        assert "weekend" not in _signaux(a, "P6b")
 
     def test_cutoff_tardif(self):
         rows = _piece_equilibree("P7", 5000, date="2024-12-31")
@@ -122,10 +128,10 @@ class TestSignaux:
 
 class TestScoreEtAgregation:
     def test_score_cumule_les_signaux(self):
-        # Pièce déséquilibrée (3) + libellé suspect (1) + week-end (2) = 6
+        # Pièce déséquilibrée (3) + libellé suspect (1) + jour non ouvré (2) = 6
         rows = [
-            _row("601000", debit=1000, piece="PX", date="2024-06-16", libelle="OD"),
-            _row("401000", credit=700, piece="PX", date="2024-06-16", libelle="OD"),
+            _row("601000", debit=1000, piece="PX", date="2024-06-14", libelle="OD"),
+            _row("401000", credit=700, piece="PX", date="2024-06-14", libelle="OD"),
         ]
         a = analyser_journal(rows, seuil=1_000_000, exercice="2024", seuil_signalement=1)
         e = next(x for x in a["signalees"] if x["numero_piece"] == "PX")
@@ -244,6 +250,9 @@ class TestCalendrierNonOuvre:
         jours, deduits = _jours_non_ouvres(self._dates({j: 20 for j in range(7)}))
         assert deduits is True
         assert jours == frozenset()  # le signal ne se déclenche jamais
+
+    def test_convention_par_defaut_est_le_weekend_djiboutien(self):
+        assert JOURS_NON_OUVRES_DEFAUT == frozenset({4, 5})  # vendredi, samedi
 
     def test_population_insuffisante_repli_sur_la_convention(self):
         jours, deduits = _jours_non_ouvres(self._dates({0: 2, 6: 2}))

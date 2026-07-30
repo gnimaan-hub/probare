@@ -80,7 +80,10 @@ FRACTION_SOUS_SEUIL = 0.90
 JOURS_SEMAINE = ("lundi", "mardi", "mercredi", "jeudi", "vendredi",
                  "samedi", "dimanche")
 # Convention retenue quand le grand livre ne permet pas de déduire le calendrier.
-JOURS_NON_OUVRES_DEFAUT = frozenset({5, 6})  # samedi, dimanche
+# Djibouti : le week-end est vendredi-samedi, la semaine ouvrée court du dimanche
+# au jeudi. C'est la convention du terrain de Probare ; sur un dossier français,
+# la déduction depuis le grand livre ressort samedi-dimanche d'elle-même.
+JOURS_NON_OUVRES_DEFAUT = frozenset({4, 5})  # vendredi, samedi
 # Population minimale d'écritures datées pour déduire le calendrier de l'entité.
 POPULATION_MIN_CALENDRIER = 60
 # Un jour portant moins que cette fraction de l'activité moyenne quotidienne est
@@ -100,10 +103,11 @@ POPULATION_MIN_NEUTRALISATION = 100
 def _jours_non_ouvres(dates: list) -> tuple[frozenset[int], bool]:
     """Déduit du grand livre les jours de la semaine où l'entité ne travaille pas.
 
-    Le calendrier d'exploitation n'est pas universel : la semaine ouvrée court du
-    dimanche au jeudi à Djibouti, du lundi au vendredi en France. Coder
-    « samedi et dimanche » signalerait 17 % d'un grand livre djiboutien (tous les
-    dimanches, jours pleinement ouvrés) tout en laissant passer les vendredis.
+    Le calendrier d'exploitation n'est pas universel : à Djibouti le week-end est
+    **vendredi-samedi** et la semaine ouvrée court du dimanche au jeudi ; en
+    France c'est samedi-dimanche. Coder « samedi et dimanche » signalerait 17 %
+    d'un grand livre djiboutien (tous les dimanches, jours pleinement ouvrés) tout
+    en laissant passer les vendredis, qui sont précisément les jours suspects.
 
     Le calendrier est donc lu dans les données : un jour portant une activité
     marginale au regard de la moyenne quotidienne est un jour non ouvré. Retourne

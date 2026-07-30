@@ -144,14 +144,17 @@ déterministes, tous rapportés dans l'analyse (et à l'écran) :
   2024, dont **une seule** pièce multi-dates s'équilibrait réellement). La clé
   est strictement plus fine : sur une numérotation fiable elle ne change rien.
   `numeros_piece_reutilises` documente le nombre de collisions constatées.
-- **Jours non ouvrés déduits du grand livre**, pas codés en dur. La semaine
-  ouvrée court du dimanche au jeudi à Djibouti, du lundi au vendredi en France :
-  signaler « samedi ou dimanche » désignait 17 % du grand livre ARULOS (tous les
-  dimanches, jours pleinement ouvrés) et laissait passer les vendredis. Un jour
-  portant moins de 20 % de l'activité moyenne quotidienne est tenu pour non
-  ouvré ; repli sur samedi-dimanche si la population est trop faible (< 60
-  écritures datées) ou la datation trop concentrée (> 3 jours creux). Un
-  ensemble vide est un résultat valable — le signal ne se déclenche alors jamais.
+- **Jours non ouvrés déduits du grand livre**, pas codés en dur. À Djibouti le
+  week-end est **vendredi-samedi** et la semaine ouvrée court du dimanche au
+  jeudi ; en France c'est samedi-dimanche. Signaler « samedi ou dimanche »
+  désignait 17 % du grand livre ARULOS (tous les dimanches, jours pleinement
+  ouvrés) et laissait passer les vendredis, qui sont précisément les jours
+  suspects. Un jour portant moins de 20 % de l'activité moyenne quotidienne est
+  tenu pour non ouvré ; repli sur la convention djiboutienne
+  (`JOURS_NON_OUVRES_DEFAUT` = vendredi, samedi) si la population est trop faible
+  (< 60 écritures datées) ou la datation trop concentrée (> 3 jours creux) — sur
+  un dossier français la déduction ressort samedi-dimanche d'elle-même. Un
+  ensemble vide est un résultat valable : le signal ne se déclenche alors jamais.
   Le signal reste nommé `weekend` (référence `JET-WEEKEND` stockée en base).
 - **Neutralisation des signaux non discriminants** — généralisation du garde-fou
   « sans pièce » : tout signal déclenché sur plus de 30 % des écritures (au-delà
