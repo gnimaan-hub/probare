@@ -1678,7 +1678,13 @@ Réponds UNIQUEMENT avec un JSON :
             )
             regle_seuil = (
                 "- Si le cumul des anomalies non corrigées dépasse le seuil de signification, tu ne "
-                "peux PAS proposer une opinion sans réserve, quelle que soit la rigueur."
+                "peux PAS proposer une opinion sans réserve, quelle que soit la rigueur.\n"
+                "- Le champ `points_reserve.opinion_minimale_requise` de la synthèse est le type "
+                "d'opinion le MOINS sévère que le dossier justifie (il tient compte des points de "
+                "réserve qualitatifs ouverts comme du cumul chiffré). Tu ne peux pas proposer moins "
+                "sévère que lui. Inversement, ne propose pas de réserve si `points_reserve."
+                "nb_impactants` vaut 0 et que le cumul des anomalies non corrigées est nul : une "
+                "réserve sans fondement traçable dans le dossier serait relevée en contrôle qualité."
             )
 
         prompt = f"""Tu es l'associé signataire d'une mission d'audit à Djibouti (devise {DEVISE}).
@@ -1708,7 +1714,10 @@ Ta tâche :
    normatif complet — audit conduit selon les normes {prefixe_actif()}, INDÉPENDANCE
    vis-à-vis de l'entité, caractère SUFFISANT et APPROPRIÉ des éléments probants collectés.
    Ces trois mentions normatives ne doivent jamais être omises, même pour une opinion
-   sans réserve.
+   sans réserve. Quand la synthèse porte des POINTS DE RÉSERVE QUALITATIFS ouverts
+   (limitation de l'étendue des travaux, incertitude significative, désaccord), la base
+   de la réserve doit les exposer explicitement — c'est là, et non dans un montant, que
+   se trouve alors le fondement de l'opinion.
 4. Le cas échéant, rédige un paragraphe d'OBSERVATION ou d'incertitude (continuité,
    événements postérieurs) — sinon laisse vide.
 5. Explique en 2-3 phrases la JUSTIFICATION de ce choix au regard de la rigueur retenue.

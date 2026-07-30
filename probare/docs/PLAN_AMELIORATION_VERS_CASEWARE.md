@@ -60,7 +60,7 @@ Chaque chantier est présenté sous forme de **fiche** avec :
 | G1 | Générateurs livrables : rapport d'audit, mémorandum, opinion IA | Production | **P0** | 3 | L | M1–M4 | ✅ Réalisé (hors plan initial) |
 | M5 | Feuilles maîtresses (leadsheets) **par rubrique d'états financiers** | Dossier de travail | **P0** ⬆ | 3 | M | M1 | ✅ Réalisé |
 | P2 | États financiers liés à la balance (cadrage, bilan/CR, notes) + **bloc signature** | Production | **P1** ⬆ | 4 | L | M5 ✅ | 🟡 En cours — P2-c ✅ réalisé ; reste P2-a (cadrage EF) et P2-b (bilan/CR + notes) |
-| R3 | Réserve qualitative (limitation/incertitude) ↔ opinion | Méthodologie | **P0** | 2 | S | G1 | ⬜ À faire (incohérence relevée au test E2E) |
+| R3 | Réserve qualitative (limitation/incertitude) ↔ opinion | Méthodologie | **P0** | 2 | S | G1 | ✅ Réalisé |
 | R1 | Fondement d'opinion : conserver le paragraphe standard ISA | Production | **P0** | 1 | S | G1 | ✅ Réalisé |
 | D2 | Loi de Benford | Analyse de données | **P1** | 2 | S | — | ⬜ À faire |
 | D3 | Échantillonnage statistique complet (MUS, stratifié, attributs) | Analyse de données | **P1** | 3 | M | — | ⬜ À faire |
@@ -589,8 +589,8 @@ M2 → M1 → M4 → D1 → M3, plus les générateurs de livrables (G1 : rappor
 deux livrables clients (rapport, mémo) sont générés.*
 
 **Phase 1 bis — « Livrable présentable » (NOUVELLE, prioritaire — issue du test E2E)**
-**M5 (feuilles maîtresses) ✅, R1 (fondement complet) ✅, P2-c (bloc signature) ✅** → reste :
-R3 (réserve qualitative ↔ opinion) → P2-a (cadrage EF, désormais débloqué par M5) →
+**M5 (feuilles maîtresses) ✅, R1 (fondement complet) ✅, P2-c (bloc signature) ✅,
+R3 (réserve qualitative ↔ opinion) ✅** → reste : P2-a (cadrage EF, désormais débloqué par M5) →
 D1b (calibrage JET).
 *Sortie de phase : le rapport et le mémo Probare ont la forme et la cohérence d'un livrable client
 (présentation par rubrique, signature engageante, opinion cohérente avec les réserves).*
@@ -653,13 +653,24 @@ ajouté **après** le texte de l'auditeur (ordre ISA 705), sans jamais réécrir
 prompt d'opinion l'exige désormais explicitement, et l'écran Rapport d'audit signale à l'auditeur que
 le paragraphe sera rétabli.
 
-#### R3 — Réserve qualitative (limitation / incertitude) ↔ opinion · **P0 · difficulté 2 · charge S**
+#### R3 — Réserve qualitative (limitation / incertitude) ↔ opinion · **P0 · difficulté 2 · charge S** — ✅ RÉALISÉ
 Les réserves ARULOS sont des **limitations d'étendue / incertitudes** (absence d'éléments probants sur
 les provisions et les dettes foncières), **non des anomalies chiffrées**. Or le cumul ISA 450 modélise
 uniquement le quantitatif : au test, cumul = 0 alors que l'opinion est « avec réserve » — incohérence
 qu'un réviseur relèverait. Travaux : introduire un registre de **points de réserve qualitatifs**
 (type : limitation | incertitude | désaccord ; rubrique ; montant potentiellement concerné ; impact
 opinion), les relier à l'opinion et au fondement, et les afficher dans la synthèse à côté du cumul 450.
+
+*Livré :* module `reserves.py` (vocabulaire ISA 705 + règles pures), table `point_reserve`, API
+`/points-reserve` (CRUD + `/candidats`). Deux règles déterministes portent le chantier :
+`opinion_minimale_requise()` croise les points ouverts et le cumul 450 ; `incoherences_opinion()`
+relève les DEUX sens de l'écart — opinion trop clémente au regard du dossier, et **réserve sans
+fondement traçable** (le défaut ARULOS : réserve exprimée, cumul nul, registre vide). La cohérence
+est vérifiée à la **validation** de l'opinion et de nouveau à l'**export** du rapport (le registre a
+pu bouger entre les deux) ; l'enregistrement en brouillon reste libre. Les points ouverts sont rendus
+dans le fondement du rapport entre la base de la réserve et le paragraphe normatif, et dans le
+mémorandum juste après le cumul 450. `/candidats` propose les limitations que le dossier établit
+déjà (contrôles non exécutés, circularisations sans réponse) sans rien créer d'office.
 
 #### D8 — Interprétation IA asynchrone / par lots · **P1 · difficulté 3 · charge M**
 Le tranchement auto **synchrone** de chaque exception (`_auto_interpreter` en boucle) a fait dépasser

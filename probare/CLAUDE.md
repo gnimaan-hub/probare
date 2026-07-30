@@ -225,6 +225,32 @@ plus haut placé dans la gouvernance (ISA 260) et, à défaut, l'organe social d
 de la forme juridique. L'en-tête d'identification de l'entité provient des
 colonnes `projet.adresse` / `boite_postale` / `telephone`, saisies au cadrage.
 
+## Points de réserve qualitatifs (ISA 705 — R3, module `reserves.py`)
+
+Le cumul ISA 450 ne modélise que le **quantitatif**. Une réserve naît tout aussi
+souvent d'un fait non chiffrable : **limitation** de l'étendue des travaux,
+**incertitude** significative, **désaccord** avec la direction. Le registre
+`point_reserve` les enregistre (type, rubrique, montant du poste *concerné*,
+incidence sur l'opinion, statut ouvert/levé).
+
+- Le **montant concerné n'est jamais une anomalie** : il n'entre pas au cumul 450.
+  Il dit l'ampleur du poste sur lequel les éléments probants manquent.
+- Un point **levé** reste au dossier (il documente une diligence menée à son
+  terme) mais cesse de peser sur l'opinion ; le lever exige de dire comment.
+- `opinion_minimale_requise()` croise points ouverts et cumul 450 →
+  type d'opinion le moins sévère que le dossier justifie. L'auditeur peut être
+  plus sévère, jamais moins.
+- `incoherences_opinion()` relève les **deux** sens de l'écart : opinion trop
+  clémente, et **réserve sans fondement traçable** (cumul nul + registre vide —
+  le défaut relevé au test E2E). Vérifié à la **validation** de l'opinion et de
+  nouveau à l'**export** du rapport ; le brouillon reste libre.
+- Rendu : dans le fondement du rapport entre la base de la réserve et le
+  paragraphe normatif ; dans le mémorandum juste après le cumul 450 ; dans la
+  synthèse de mission (`points_reserve`, `coherence_opinion`).
+- `GET /points-reserve/candidats` propose les limitations que le dossier établit
+  déjà (contrôles non exécutés, circularisations sans réponse). Rien n'est créé
+  d'office : c'est l'auditeur qui décide si le fait pèse sur son opinion.
+
 ## Seuils (ISA 320/450)
 
 Trois seuils calculés en planification (`planning/thresholds.py`) :

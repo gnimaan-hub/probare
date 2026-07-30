@@ -1483,19 +1483,80 @@ def fondement_normatif_present(fondement: str | None) -> bool:
     return a_referentiel and a_independance and a_probants
 
 
-def fondement_complet(fondement: str | None) -> str:
-    """Fondement rendu dans les livrables : texte de l'auditeur (base de la
-    réserve) suivi du paragraphe normatif dès qu'il n'y figure pas déjà.
+def _ligne_point_reserve(point: dict) -> str:
+    """Un point de réserve qualitatif rendu en une phrase du fondement (R3)."""
+    from ..reserves import TYPES_POINT_RESERVE
+    type_label = TYPES_POINT_RESERVE.get(point.get("type"), point.get("type") or "Point")
+    ligne = f"• {type_label} — {point.get('libelle') or ''}".rstrip()
+    if point.get("rubrique"):
+        ligne += f" ({point['rubrique']})"
+    description = (point.get("description") or "").strip()
+    if description:
+        ligne += f" : {description}"
+    elif not ligne.endswith("."):
+        ligne += "."
+    montant = point.get("montant_concerne")
+    if montant:
+        ligne += (f" Le poste concerné s'élève à {_fmt_fdj(montant)} ; ce montant n'est pas "
+                  "une anomalie chiffrée et n'entre pas au cumul des anomalies non corrigées.")
+    return ligne
 
-    Ordre conforme à ISA 705 : la base de la réserve d'abord, le paragraphe
-    normatif ensuite. Le texte de l'auditeur n'est jamais réécrit ni tronqué —
-    accents et typographie sont conservés tels quels.
+
+def _bloc_points_reserve(doc, points_reserve: list[dict] | None) -> None:
+    """Registre des points de réserve qualitatifs, rendu dans le mémorandum
+    juste après le cumul ISA 450 (R3). Les points levés y figurent aussi : ils
+    documentent une limitation finalement résorbée, ce qui est une diligence."""
+    from . import theme as T
+    from ..reserves import (TYPES_POINT_RESERVE, IMPACTS_OPINION, STATUT_OUVERT,
+                            points_ouverts)
+    tous = list(points_reserve or [])
+    if not tous:
+        return
+    ouverts = points_ouverts(tous)
+    T.bande_verte(doc, "Points de réserve qualitatifs")
+    T.para(doc,
+        f"Outre les anomalies chiffrées ci-dessus, le dossier recense {len(tous)} point(s) de "
+        f"réserve qualitatif(s) — limitation de l'étendue des travaux, incertitude significative "
+        f"ou désaccord — dont {len(ouverts)} demeure(nt) ouvert(s) à la date du présent "
+        "mémorandum. Ces points ne sont pas chiffrables et n'entrent donc pas au cumul des "
+        "anomalies non corrigées ; ils n'en pèsent pas moins sur l'opinion.")
+    for p in tous:
+        type_label = TYPES_POINT_RESERVE.get(p.get("type"), p.get("type") or "")
+        ouvert = (p.get("statut") or STATUT_OUVERT) == STATUT_OUVERT
+        T.para(doc, f"• {type_label} — {p.get('libelle') or ''}", justify=False,
+               bold=True, size=9.5, color=T.NAVY if ouvert else T.MUTED)
+        details = "  ·  ".join(x for x in [
+            p.get("rubrique"),
+            p.get("montant_concerne") and f"poste concerné {_fmt_fdj(p['montant_concerne'])}",
+            IMPACTS_OPINION.get(p.get("impact_opinion")),
+            "Ouvert" if ouvert else "Levé",
+        ] if x)
+        if details:
+            T.para(doc, details, justify=False, size=9, color=T.MUTED)
+        if p.get("description"):
+            T.para(doc, p["description"], size=9.5)
+        if not ouvert and p.get("resolution"):
+            T.para(doc, f"Levé — {p['resolution']}", justify=False, size=9, italic=True)
+
+
+def fondement_complet(fondement: str | None, points_reserve: list[dict] | None = None) -> str:
+    """Fondement rendu dans les livrables, en trois temps (ordre ISA 705) :
+
+    1. la base de la réserve rédigée par l'auditeur ;
+    2. les **points de réserve qualitatifs ouverts** — limitations d'étendue,
+       incertitudes, désaccords : le fondement non chiffré d'une réserve, qui
+       n'apparaîtrait nulle part si l'on ne modélisait que le cumul ISA 450 ;
+    3. le paragraphe normatif, ajouté dès qu'il ne figure pas déjà dans le texte.
+
+    Le texte de l'auditeur n'est jamais réécrit ni tronqué — accents et
+    typographie sont conservés tels quels.
     """
-    texte = (fondement or "").strip()
-    if fondement_normatif_present(texte):
-        return texte
-    normatif = paragraphe_normatif_fondement()
-    return f"{texte}\n\n{normatif}" if texte else normatif
+    from ..reserves import points_ouverts
+    blocs = [t for t in [(fondement or "").strip()] if t]
+    blocs += [_ligne_point_reserve(p) for p in points_ouverts(points_reserve)]
+    if not fondement_normatif_present(fondement):
+        blocs.append(paragraphe_normatif_fondement())
+    return "\n\n".join(blocs)
 
 
 def _bloc_signature(doc, cabinet: dict) -> None:
@@ -1653,6 +1714,7 @@ def generer_rapport_audit(
     output_path: Path,
     cabinet: dict | None = None,
     plan: dict | None = None,
+    points_reserve: list[dict] | None = None,
 ) -> Path:
     """Génère le RAPPORT D'AUDIT sur les comptes annuels en .docx (ISA/NEP 700).
 
@@ -1714,9 +1776,10 @@ def generer_rapport_audit(
     T.section_header(doc, titre_op, str(num)); num += 1
     T.para(doc, opinion.get("texte_opinion") or "")
 
-    # 2. Fondement de l'opinion — le paragraphe normatif est toujours rendu (R1)
+    # 2. Fondement de l'opinion — paragraphe normatif toujours rendu (R1) et
+    # points de réserve qualitatifs exposés comme base de la réserve (R3).
     T.section_header(doc, "Fondement de l'opinion", str(num)); num += 1
-    for bloc in fondement_complet(opinion.get("fondement")).split("\n\n"):
+    for bloc in fondement_complet(opinion.get("fondement"), points_reserve).split("\n\n"):
         T.para(doc, bloc.strip())
 
     # 3. Observation / incertitude (conditionnel)
@@ -2107,6 +2170,7 @@ def generer_memorandum_controle_comptes(
     programme: list[dict] | None = None,
     diligences_eval: list[dict] | None = None,
     feuilles_maitresses: dict | None = None,
+    points_reserve: list[dict] | None = None,
 ) -> Path:
     """Génère le MÉMORANDUM SUR LE CONTRÔLE DES COMPTES en .docx.
 
@@ -2508,6 +2572,10 @@ def generer_memorandum_controle_comptes(
             f"diligences, les anomalies relevées ne remettent pas en cause, à elles seules, la régularité "
             "et la sincérité des comptes.")
 
+    # R3 — le fondement QUALITATIF, lu à côté du cumul chiffré. Une réserve peut
+    # naître de l'un comme de l'autre ; le cumul seul ne dit pas tout.
+    _bloc_points_reserve(doc, points_reserve)
+
     # ── 5. Opinion (si disponible) ───────────────────────────────────────────
     if opinion.get("texte_opinion"):
         T.section_header(doc, "Opinion de l'auditeur", str(num)); num += 1
@@ -2515,7 +2583,7 @@ def generer_memorandum_controle_comptes(
         if type_op:
             T.bande_verte(doc, _TYPE_OPINION_LABELS.get(type_op, type_op))
         T.para(doc, opinion["texte_opinion"])
-        for bloc in fondement_complet(opinion.get("fondement")).split("\n\n"):
+        for bloc in fondement_complet(opinion.get("fondement"), points_reserve).split("\n\n"):
             T.para(doc, bloc.strip())
 
     # ── 6. Livrables produits et pièces du dossier ───────────────────────────

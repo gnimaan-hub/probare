@@ -12,6 +12,7 @@ import { useToast } from '../hooks/useToast'
 import { useProjetStore } from '../stores/projetStore'
 import { useSyncProjet } from '../hooks/useProjet'
 import { normeLabel, formatMontant } from '../lib/utils'
+import { PointsReserve } from '../components/opinion/PointsReserve'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -292,6 +293,13 @@ export function RapportAudit() {
             </div>
           </motion.div>
 
+          {/* ── 1 bis. Points de réserve qualitatifs (R3) ──────────────────── */}
+          {projetId && (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.02 }}>
+              <PointsReserve projetId={projetId} onChange={loadData} />
+            </motion.div>
+          )}
+
           {/* ── 2. Fichiers de la mission ──────────────────────────────────── */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }} className="card p-5">
             <h2 className="font-semibold text-slate-900 mb-3">Fichiers de la mission</h2>
@@ -466,6 +474,18 @@ export function RapportAudit() {
                   />
                 </div>
               </div>
+
+              {(synthese?.coherence_opinion || []).length > 0 && (
+                <div className="flex items-start gap-2 p-3 mt-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-amber-800 space-y-1">
+                    <p className="font-medium">
+                      L'opinion enregistrée n'est pas cohérente avec le dossier — la validation est refusée.
+                    </p>
+                    {(synthese.coherence_opinion as string[]).map((e, i) => <p key={i}>{e}</p>)}
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-2 mt-4">
                 <button onClick={handleSave} disabled={saving} className="btn-secondary text-sm">

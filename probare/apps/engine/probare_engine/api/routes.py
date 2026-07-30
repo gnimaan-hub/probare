@@ -63,6 +63,10 @@ from ..anonymization.anonymizer import Anonymizer
 from ..normes import norme, reformater_refs, lire_config, ecrire_config, \
     REFERENTIEL_ACTIF, REFERENTIELS, LIBELLES_REFERENTIEL, \
     REFERENTIELS_COMPTABLES, libelle_referentiel_comptable
+from ..reserves import (
+    TYPES_POINT_RESERVE, IMPACTS_OPINION, STATUTS_POINT_RESERVE, TYPE_LIMITATION,
+    LABELS_TYPE_OPINION, incoherences_opinion, synthese_points_reserve, valider_point,
+)
 
 
 router = APIRouter()
@@ -3089,6 +3093,7 @@ def _synthese_mission(db: ProjectDB, projet_id: str, projet: dict) -> dict:
     sondages = db.list_sondages(projet_id)
     feuilles = db.list_feuilles(projet_id)
     ignores = db.list_controles_ignores(projet_id)
+    points_reserve = db.list_points_reserve(projet_id)
     anomalies = db.synthese_anomalies(
         projet_id, projet.get("seuil_signification"), projet.get("seuil_planification"))
     opinion = db.get_opinion(projet_id)
@@ -3136,6 +3141,8 @@ def _synthese_mission(db: ProjectDB, projet_id: str, projet: dict) -> dict:
             "Non corrigées": anomalies.get("nb_non_corrigees", 0),
             "Cumul non corrigé": anomalies.get("cumul_non_corrigees", 0),
             "Dépasse le seuil": "Oui" if anomalies.get("depasse_seuil_signification") else "Non",
+            "Points de réserve ouverts": len([
+                p for p in points_reserve if (p.get("statut") or "ouvert") == "ouvert"]),
         }},
         {"id": "generation", "label": _LABELS_PHASES["generation"], "indicateurs": {
             "Feuilles de travail": len(feuilles),
@@ -3182,6 +3189,11 @@ def _synthese_mission(db: ProjectDB, projet_id: str, projet: dict) -> dict:
         },
         "phases": phases,
         "anomalies": anomalies,
+        # R3 : fondement QUALITATIF d'une réserve, servi à côté du cumul ISA 450.
+        # Les deux se lisent ensemble — une réserve peut naître de l'un ou de l'autre.
+        "points_reserve": synthese_points_reserve(points_reserve, anomalies),
+        "coherence_opinion": incoherences_opinion(
+            (opinion or {}).get("type_opinion"), points_reserve, anomalies),
         "controle_interne": {
             "niveau_global": qci_glob.get("niveau_global"),
             "score_global": qci_glob.get("score_global"),
@@ -3209,6 +3221,137 @@ def list_referentiels_comptables():
     return {"referentiels": [{"id": k, "libelle": v}
                              for k, v in REFERENTIELS_COMPTABLES.items()],
             "defaut": "pcgd"}
+
+
+# ─── Points de réserve qualitatifs (R3 — ISA 705) ────────────────────────────
+
+
+class PointReserveBody(BaseModel):
+    type: str
+    libelle: str
+    description: str | None = None
+    rubrique: str | None = None
+    cycle: str | None = None
+    montant_concerne: float | None = None
+    impact_opinion: str = "reserve"
+    statut: str | None = None
+    resolution: str | None = None
+    # Origine du point : « manuel », ou la pièce du dossier qui l'établit
+    # (contrôle non exécuté, circularisation sans réponse) — voir /candidats.
+    source: str | None = None
+    reference: str | None = None
+    cree_par: str | None = None
+
+
+@router.get("/vocabulaire-reserves")
+def get_vocabulaire_reserves():
+    """Vocabulaire ISA 705 des points de réserve (types, impacts, statuts)."""
+    return {
+        "types": [{"id": k, "libelle": v} for k, v in TYPES_POINT_RESERVE.items()],
+        "impacts": [{"id": k, "libelle": v} for k, v in IMPACTS_OPINION.items()],
+        "statuts": [{"id": k, "libelle": v} for k, v in STATUTS_POINT_RESERVE.items()],
+    }
+
+
+@router.get("/projets/{projet_id}/points-reserve")
+def list_points_reserve(projet_id: str):
+    """Registre des points de réserve, avec la synthèse servie à côté du
+    cumul ISA 450 et le type d'opinion minimal que le dossier justifie."""
+    db = _get_db(projet_id)
+    projet = db.get_projet(projet_id)
+    if not projet:
+        raise HTTPException(404, "Projet introuvable.")
+    points = db.list_points_reserve(projet_id)
+    anomalies = db.synthese_anomalies(projet_id, projet.get("seuil_signification"),
+                                      projet.get("seuil_planification"))
+    return {"points": points, "synthese": synthese_points_reserve(points, anomalies)}
+
+
+@router.get("/projets/{projet_id}/points-reserve/candidats")
+def candidats_points_reserve(projet_id: str):
+    """Limitations d'étendue **déjà établies par le dossier**, proposées à
+    l'enregistrement : contrôles non exécutés (ISA 230) et circularisations
+    restées sans réponse (ISA 505). Déterministe — rien n'est créé d'office,
+    c'est l'auditeur qui décide si le fait pèse sur son opinion."""
+    db = _get_db(projet_id)
+    if not db.get_projet(projet_id):
+        raise HTTPException(404, "Projet introuvable.")
+    deja = {(p.get("source"), p.get("reference")) for p in db.list_points_reserve(projet_id)}
+    candidats = []
+    for ig in db.list_controles_ignores(projet_id):
+        ref = ig.get("controle_ref")
+        if ("controle_ignore", ref) in deja:
+            continue
+        candidats.append({
+            "type": TYPE_LIMITATION, "source": "controle_ignore", "reference": ref,
+            "cycle": ig.get("cycle"),
+            "libelle": f"Contrôle {ref} non exécuté",
+            "description": (f"Le contrôle {ref} n'a pas pu être mis en œuvre : "
+                            f"{ig.get('raison') or 'motif non documenté'}."),
+        })
+    for c in db.list_circularisations(projet_id):
+        # Seul « sans_reponse » établit la limitation : les autres statuts sont
+        # soit en cours, soit résolus par la réponse reçue.
+        if c.get("statut") != "sans_reponse" or ("circularisation", c.get("id")) in deja:
+            continue
+        tiers = c.get("libelle") or c.get("compte") or "tiers"
+        candidats.append({
+            "type": TYPE_LIMITATION, "source": "circularisation", "reference": c.get("id"),
+            "cycle": c.get("cycle"), "montant_concerne": c.get("solde_comptable"),
+            "libelle": f"Confirmation externe non obtenue — {tiers}",
+            "description": (f"La demande de confirmation adressée à {tiers} (compte "
+                            f"{c.get('compte')}) est restée sans réponse à la date du rapport."),
+        })
+    return {"candidats": candidats}
+
+
+@router.post("/projets/{projet_id}/points-reserve")
+def creer_point_reserve(projet_id: str, body: PointReserveBody):
+    db = _get_db(projet_id)
+    if not db.get_projet(projet_id):
+        raise HTTPException(404, "Projet introuvable.")
+    data = {**body.model_dump(exclude_none=True), "id": str(uuid.uuid4()),
+            "projet_id": projet_id}
+    try:
+        valider_point(data)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    point = db.save_point_reserve(data)
+    db.log(projet_id, "action_humaine", {"action": "creer_point_reserve",
+                                         "type": point.get("type"),
+                                         "impact_opinion": point.get("impact_opinion"),
+                                         "libelle": point.get("libelle")})
+    return {"point": point}
+
+
+@router.put("/projets/{projet_id}/points-reserve/{point_id}")
+def maj_point_reserve(projet_id: str, point_id: str, body: PointReserveBody):
+    db = _get_db(projet_id)
+    existant = db.get_point_reserve(point_id)
+    if not existant or existant.get("projet_id") != projet_id:
+        raise HTTPException(404, "Point de réserve introuvable.")
+    data = {**existant, **body.model_dump(exclude_none=True), "id": point_id,
+            "projet_id": projet_id}
+    try:
+        valider_point(data)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    point = db.save_point_reserve(data)
+    db.log(projet_id, "action_humaine", {"action": "maj_point_reserve", "id": point_id,
+                                         "statut": point.get("statut")})
+    return {"point": point}
+
+
+@router.delete("/projets/{projet_id}/points-reserve/{point_id}")
+def supprimer_point_reserve(projet_id: str, point_id: str):
+    db = _get_db(projet_id)
+    existant = db.get_point_reserve(point_id)
+    if not existant or existant.get("projet_id") != projet_id:
+        raise HTTPException(404, "Point de réserve introuvable.")
+    db.delete_point_reserve(point_id)
+    db.log(projet_id, "action_humaine", {"action": "supprimer_point_reserve", "id": point_id,
+                                         "libelle": existant.get("libelle")})
+    return {"deleted": True, "id": point_id}
 
 
 @router.get("/projets/{projet_id}/opinion")
@@ -3276,10 +3419,12 @@ def proposer_opinion(projet_id: str, body: OpinionProposerBody):
                                  f"Valeurs admises : {sorted(_TYPES_OPINION_VALIDES)}.")
 
     recap = _synthese_mission(db, projet_id, projet)
-    # Entrée LLM compacte et déterministe : phases + anomalies + contrôle interne.
+    # Entrée LLM compacte et déterministe : phases + anomalies chiffrées (ISA 450)
+    # + points de réserve qualitatifs (ISA 705) + contrôle interne.
     recap_llm = {
         "phases": recap["phases"],
         "anomalies": recap["anomalies"],
+        "points_reserve": recap["points_reserve"],
         "controle_interne": recap["controle_interne"],
     }
     ref_compta = libelle_referentiel_comptable(projet.get("referentiel_comptable"))
@@ -3325,6 +3470,17 @@ def update_opinion(projet_id: str, body: OpinionUpdateBody):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if "validee" in updates:
         updates["validee"] = 1 if updates["validee"] else 0
+    # R3 — une opinion ne se VALIDE que si elle est cohérente avec ce que le
+    # dossier établit : points de réserve qualitatifs ouverts (ISA 705) et cumul
+    # des anomalies non corrigées (ISA 450). L'enregistrement en brouillon reste
+    # libre : c'est la signature qui engage, pas le travail en cours.
+    if updates.get("validee"):
+        type_final = updates.get("type_opinion") or existing.get("type_opinion")
+        anomalies = db.synthese_anomalies(projet_id, projet.get("seuil_signification"),
+                                          projet.get("seuil_planification"))
+        ecarts = incoherences_opinion(type_final, db.list_points_reserve(projet_id), anomalies)
+        if ecarts:
+            raise HTTPException(400, "Opinion incohérente avec le dossier — " + " ".join(ecarts))
     # Une correction manuelle d'un champ rédactionnel n'est plus « pure IA ».
     if any(k in updates for k in ("texte_opinion", "type_opinion", "fondement", "observations")):
         updates.setdefault("proposee_par_ia", 0)
@@ -3348,12 +3504,22 @@ def exporter_rapport_audit(projet_id: str, body: ExportSigneBody | None = None):
     if not opinion.get("validee"):
         raise HTTPException(400, "L'opinion n'est pas encore validée par l'auditeur. "
                                  "Validez l'opinion avant de générer le rapport d'audit.")
+    # R3 — le registre a pu bouger depuis la validation : dernier contrôle avant
+    # qu'un rapport incohérent avec son propre dossier ne parte au client.
+    ecarts = incoherences_opinion(
+        opinion.get("type_opinion"), db.list_points_reserve(projet_id),
+        db.synthese_anomalies(projet_id, projet.get("seuil_signification"),
+                              projet.get("seuil_planification")))
+    if ecarts:
+        raise HTTPException(400, "Opinion incohérente avec le dossier — " + " ".join(ecarts)
+                            + " Revalidez l'opinion après correction.")
     plan = db.get_or_create_planification(projet_id)
     cabinet = (body.cabinet if body else None) or {}
     _exiger_cabinet_signataire(cabinet)
     output_dir = DATA_DIR / projet_id / "exports"
     output_path = output_dir / f"rapport_audit_{projet_id[:8]}.docx"
-    generer_rapport_audit(projet, opinion, output_path, cabinet=cabinet, plan=plan)
+    generer_rapport_audit(projet, opinion, output_path, cabinet=cabinet, plan=plan,
+                          points_reserve=db.list_points_reserve(projet_id))
     db.log(projet_id, "action_humaine", {"action": "exporter_rapport_audit",
                                          "type_opinion": opinion.get("type_opinion")})
     client_slug = (projet.get("client") or "client").replace(" ", "_")[:20]
@@ -3426,6 +3592,7 @@ def exporter_memorandum(projet_id: str, body: ExportSigneBody | None = None):
             programme=programme,
             diligences_eval=diligences_eval,
             feuilles_maitresses=_construire_matrice_feuilles(db, projet_id, projet),
+            points_reserve=db.list_points_reserve(projet_id),
         )
     except BouclageError as e:
         raise HTTPException(422, str(e))

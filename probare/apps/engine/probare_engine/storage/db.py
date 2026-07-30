@@ -414,6 +414,27 @@ class ProjectDB:
             PRIMARY KEY (projet_id, compte)
         );
 
+        -- R3 : points de réserve QUALITATIFS (limitation / incertitude / désaccord).
+        -- Fondement non chiffré d'une réserve — le pendant du cumul ISA 450.
+        CREATE TABLE IF NOT EXISTS point_reserve (
+            id TEXT PRIMARY KEY,
+            projet_id TEXT NOT NULL REFERENCES projet(id),
+            type TEXT NOT NULL,
+            libelle TEXT NOT NULL,
+            description TEXT,
+            rubrique TEXT,
+            cycle TEXT,
+            montant_concerne REAL,
+            impact_opinion TEXT NOT NULL,
+            statut TEXT DEFAULT 'ouvert',
+            resolution TEXT,
+            source TEXT DEFAULT 'manuel',
+            reference TEXT,
+            cree_par TEXT,
+            cree_le TEXT,
+            modifie_le TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS opinion (
             projet_id TEXT PRIMARY KEY REFERENCES projet(id),
             rigueur TEXT,
@@ -1433,6 +1454,57 @@ class ProjectDB:
         )
         self.conn.commit()
         return self.get_opinion(projet_id)
+
+    # --- Points de réserve qualitatifs (R3 — ISA 705) ---
+
+    def list_points_reserve(self, projet_id: str) -> list[dict]:
+        """Points de réserve du projet : ouverts d'abord (ils pèsent sur
+        l'opinion), puis les points levés, du plus récent au plus ancien."""
+        rows = self.conn.execute(
+            """SELECT * FROM point_reserve WHERE projet_id=?
+               ORDER BY CASE WHEN statut='ouvert' THEN 0 ELSE 1 END, cree_le DESC""",
+            (projet_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_point_reserve(self, point_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM point_reserve WHERE id=?", (point_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def save_point_reserve(self, data: dict) -> dict:
+        """Crée ou remplace un point de réserve (upsert sur l'id)."""
+        now = _now()
+        existing = self.get_point_reserve(data["id"])
+        merged = {**(existing or {}), **data}
+        self.conn.execute(
+            """INSERT INTO point_reserve
+               (id, projet_id, type, libelle, description, rubrique, cycle,
+                montant_concerne, impact_opinion, statut, resolution, source,
+                reference, cree_par, cree_le, modifie_le)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(id) DO UPDATE SET
+                 type=excluded.type, libelle=excluded.libelle,
+                 description=excluded.description, rubrique=excluded.rubrique,
+                 cycle=excluded.cycle, montant_concerne=excluded.montant_concerne,
+                 impact_opinion=excluded.impact_opinion, statut=excluded.statut,
+                 resolution=excluded.resolution, source=excluded.source,
+                 reference=excluded.reference, modifie_le=excluded.modifie_le""",
+            (merged["id"], merged["projet_id"], merged.get("type"), merged.get("libelle"),
+             merged.get("description"), merged.get("rubrique"), merged.get("cycle"),
+             merged.get("montant_concerne"), merged.get("impact_opinion"),
+             merged.get("statut") or "ouvert", merged.get("resolution"),
+             merged.get("source") or "manuel", merged.get("reference"),
+             merged.get("cree_par"), (existing or {}).get("cree_le") or now, now)
+        )
+        self.conn.commit()
+        return self.get_point_reserve(merged["id"])
+
+    def delete_point_reserve(self, point_id: str) -> bool:
+        cur = self.conn.execute("DELETE FROM point_reserve WHERE id=?", (point_id,))
+        self.conn.commit()
+        return cur.rowcount > 0
 
     # --- Contrôles ignorés (NEP 230 : documenter les procédures non réalisées) ---
 
