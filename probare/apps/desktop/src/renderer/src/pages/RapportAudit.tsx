@@ -97,7 +97,14 @@ export function RapportAudit() {
   const [exporting, setExporting] = useState<'' | 'rapport' | 'memo'>('')
 
   const cabinet = loadCabinet()
-  const cabinetPret = Boolean(cabinet.nom && cabinet.responsable_nom)
+  // Miroir de CHAMPS_CABINET_REQUIS côté moteur : sans ces champs, l'export est refusé.
+  const cabinetManquants = [
+    !cabinet.nom && 'la raison sociale du cabinet',
+    !cabinet.responsable_nom && 'le nom du signataire',
+    !cabinet.responsable_titre && 'la qualité du signataire',
+    !cabinet.adresse_ville && 'la ville (lieu de signature)',
+  ].filter(Boolean) as string[]
+  const cabinetPret = cabinetManquants.length === 0
 
   const loadData = async () => {
     if (!projetId) return
@@ -488,9 +495,8 @@ export function RapportAudit() {
               <div className="flex items-start gap-2 p-3 mb-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <Building2 className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-700">
-                  L'identité du cabinet (nom + responsable signataire) est incomplète. Renseignez-la dans
-                  l'onglet <button onClick={() => navigate('/configuration')} className="underline font-medium">Cabinet</button> pour
-                  un en-tête et une signature complets sur le rapport.
+                  Génération bloquée : le livrable ne serait pas signable. Il manque {cabinetManquants.join(', ')}.
+                  Complétez la fiche dans l'onglet <button onClick={() => navigate('/configuration')} className="underline font-medium">Cabinet</button>.
                 </p>
               </div>
             )}
@@ -505,7 +511,7 @@ export function RapportAudit() {
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => handleExport('rapport')}
-                disabled={exporting !== '' || !opinionValidee}
+                disabled={exporting !== '' || !opinionValidee || !cabinetPret}
                 className="btn-primary justify-center py-3"
               >
                 {exporting === 'rapport' ? <Spinner size="sm" /> : <Stamp className="w-5 h-5" />}
@@ -517,7 +523,7 @@ export function RapportAudit() {
 
               <button
                 onClick={() => handleExport('memo')}
-                disabled={exporting !== '' || !opinionValidee}
+                disabled={exporting !== '' || !opinionValidee || !cabinetPret}
                 className="btn-secondary justify-center py-3"
               >
                 {exporting === 'memo' ? <Spinner size="sm" /> : <FileText className="w-5 h-5" />}
