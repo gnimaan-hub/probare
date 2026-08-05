@@ -1,7 +1,10 @@
 import { app, BrowserWindow, shell, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { startSidecar, stopSidecar, getSidecarPort, getSidecarToken, waitForSidecar } from './sidecar'
+import {
+  startSidecar, stopSidecar, getSidecarPort, getSidecarToken, waitForSidecar,
+  getSidecarErrorLog,
+} from './sidecar'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -46,16 +49,22 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // Démarrer le sidecar Python
+  // La fenêtre s'ouvre AVANT que le moteur soit prêt : elle affiche l'écran de
+  // démarrage pendant que le sidecar se lance. Attendre ici laisserait
+  // l'utilisateur devant un bureau vide jusqu'à une demi-minute quand le
+  // démarrage échoue — c'est le renderer qui sonde /health et sait patienter.
   try {
     await startSidecar()
-    await waitForSidecar(30)
-    console.log(`[main] Sidecar Python démarré sur le port ${getSidecarPort()}`)
   } catch (err) {
-    console.error('[main] Impossible de démarrer le sidecar:', err)
+    // Échec du lancement : la fenêtre doit s'ouvrir quand même pour porter le
+    // diagnostic, sinon l'application ne montre rien du tout.
+    console.error('[main] Démarrage du sidecar impossible:', err)
   }
-
   createWindow()
+
+  waitForSidecar(45)
+    .then(() => console.log(`[main] Sidecar Python démarré sur le port ${getSidecarPort()}`))
+    .catch((err) => console.error('[main] Impossible de démarrer le sidecar:', err))
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -65,6 +74,8 @@ app.whenReady().then(async () => {
 // IPC : port et jeton du sidecar
 ipcMain.handle('get-api-port', () => getSidecarPort())
 ipcMain.handle('get-api-token', () => getSidecarToken())
+// Diagnostic affiché sur l'écran d'erreur quand le moteur n'a pas démarré.
+ipcMain.handle('get-sidecar-error', () => getSidecarErrorLog())
 
 app.on('window-all-closed', async () => {
   await stopSidecar()

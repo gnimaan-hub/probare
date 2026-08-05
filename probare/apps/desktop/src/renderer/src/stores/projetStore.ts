@@ -98,10 +98,15 @@ interface ProjetStore {
   // Préfixe du référentiel de normes actif ('ISA' par défaut, 'NEP' en option),
   // chargé au démarrage depuis la configuration cabinet du moteur.
   referentiel: 'ISA' | 'NEP'
+  // Vrai si le moteur dispose d'une clé API Claude. Sans elle, les
+  // interprétations automatiques sont ignorées : l'interface doit le signaler
+  // plutôt que de laisser croire que l'IA a examiné le dossier sans rien trouver.
+  llmDisponible: boolean
 
   setApiPort: (port: number) => void
   setApiToken: (token: string) => void
   setReferentiel: (ref: 'ISA' | 'NEP') => void
+  setLlmDisponible: (v: boolean) => void
   setLoading: (v: boolean) => void
   setError: (e: string | null) => void
   setProjets: (projets: Projet[]) => void
@@ -129,10 +134,12 @@ export const useProjetStore = create<ProjetStore>((set) => ({
   apiPort: 8765,
   apiToken: '',
   referentiel: 'ISA',
+  llmDisponible: false,
 
   setApiPort: (port) => set({ apiPort: port }),
   setApiToken: (token) => set({ apiToken: token }),
   setReferentiel: (referentiel) => set({ referentiel }),
+  setLlmDisponible: (llmDisponible) => set({ llmDisponible }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
   setProjets: (projets) => set({ projets }),

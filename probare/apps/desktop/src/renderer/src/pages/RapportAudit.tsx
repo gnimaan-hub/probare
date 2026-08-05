@@ -13,18 +13,9 @@ import { useProjetStore } from '../stores/projetStore'
 import { useSyncProjet } from '../hooks/useProjet'
 import { normeLabel, formatMontant } from '../lib/utils'
 import { PointsReserve } from '../components/opinion/PointsReserve'
+import { loadCabinet } from '../lib/cabinet'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-const CABINET_KEY = 'probare_cabinet_config'
-
-function loadCabinet(): Record<string, any> {
-  try {
-    const raw = localStorage.getItem(CABINET_KEY)
-    if (raw) return JSON.parse(raw)
-  } catch { /* ignore */ }
-  return {}
-}
 
 // Miroir de fondement_normatif_present() côté moteur : le fondement doit porter
 // le référentiel d'audit, l'indépendance et le caractère suffisant et approprié

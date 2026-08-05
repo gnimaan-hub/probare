@@ -160,7 +160,8 @@ class ProjectDB:
             projet_id TEXT REFERENCES projet(id),
             type TEXT NOT NULL,
             payload TEXT,
-            horodatage TEXT
+            horodatage TEXT,
+            acteur TEXT
         );
 
         CREATE TABLE IF NOT EXISTS planification (
@@ -523,6 +524,10 @@ class ProjectDB:
             ("planification", "seuil_insignifiance_calcule", "REAL"),
             # M2 — Seuils spécifiques par cycle : {cycle: {seuil, justification}}
             ("planification", "seuils_specifiques_json", "TEXT"),
+            # ISA 230 — auteur de l'action journalisée (fiche Cabinet). Les lignes
+            # écrites avant cette version restent à NULL : on ne peut pas leur
+            # attribuer rétroactivement un auteur qui n'a jamais été enregistré.
+            ("journal", "acteur", "TEXT"),
         ]
         for table, col, typedef in migrations:
             try:
@@ -2088,10 +2093,21 @@ class ProjectDB:
 
     # --- Journal ---
 
-    def log(self, projet_id: str | None, type_: str, payload: Any) -> None:
+    def log(self, projet_id: str | None, type_: str, payload: Any,
+            acteur: str | None = None) -> None:
+        """Écrit une ligne de piste d'audit.
+
+        `acteur` est l'auteur de l'action (ISA 230). Il est repris par défaut du
+        contexte de la requête HTTP — nom du responsable signataire de la fiche
+        Cabinet — pour que les centaines d'appels existants l'enregistrent sans
+        avoir à le transmettre. Le passer explicitement reste possible quand
+        l'auteur diffère de celui du contexte.
+        """
+        from ..acteur import acteur_courant, normaliser
+        nom = normaliser(acteur) if acteur is not None else acteur_courant()
         self.conn.execute(
-            "INSERT INTO journal (projet_id,type,payload,horodatage) VALUES (?,?,?,?)",
-            (projet_id, type_, json.dumps(payload, default=str), _now())
+            "INSERT INTO journal (projet_id,type,payload,horodatage,acteur) VALUES (?,?,?,?,?)",
+            (projet_id, type_, json.dumps(payload, default=str), _now(), nom)
         )
         self.conn.commit()
 

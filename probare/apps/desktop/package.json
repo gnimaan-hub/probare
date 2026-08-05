@@ -10,8 +10,10 @@
     "preview": "electron-vite preview",
     "preview:renderer": "vite --config vite.preview.config.ts",
     "start": "electron .",
+    "build:engine": "python ../engine/build_engine.py",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "installeur": "npm run build:engine && npm run build && electron-builder"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.2",
@@ -55,18 +57,39 @@
       "output": "release"
     },
     "files": [
-      "dist/**/*"
+      "out/**/*",
+      "package.json"
     ],
     "extraResources": [
       {
-        "from": "../engine",
-        "to": "engine",
-        "filter": [
-          "**/*",
-          "!**/__pycache__/**",
-          "!**/node_modules/**"
-        ]
+        "from": "resources/engine",
+        "to": "engine"
       }
-    ]
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "Probare"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.business"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Office"
+    }
   }
 }

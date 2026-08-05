@@ -1,4 +1,5 @@
 import { useProjetStore } from '../stores/projetStore'
+import { acteurCourant } from '../lib/cabinet'
 
 function useBaseUrl() {
   const port = useProjetStore((s) => s.apiPort)
@@ -6,14 +7,30 @@ function useBaseUrl() {
 }
 
 /**
- * En-têtes d'authentification pour l'API locale. Lit le jeton depuis le store
- * (utilisable hors composant React via getState), et le combine avec des
- * en-têtes supplémentaires éventuels. Retourne un objet vide si aucun jeton
- * n'est configuré (mode dev/browser sans Electron).
+ * En-têtes de chaque appel à l'API locale. Deux choses distinctes y voyagent :
+ *
+ * - « X-Probare-Token » : le jeton partagé avec le sidecar (contrôle d'accès).
+ *   Absent en mode dev/browser sans Electron — le moteur désactive alors la garde.
+ * - « X-Probare-Acteur » : le responsable signataire de la fiche Cabinet, écrit
+ *   comme auteur dans la piste d'audit (ISA 230). Ce n'est pas une
+ *   authentification, c'est une attribution — voir `acteur.py` côté moteur.
+ *
+ * Les caractères non-ASCII sont retirés du nom : un en-tête HTTP ne transporte
+ * que du latin-1 et `fetch` lève sur un accent, ce qui casserait l'appel entier
+ * pour un signataire nommé « Awalé ». Le moteur ne se sert de ce nom que pour
+ * le journal ; les livrables signés portent, eux, le nom complet non dégradé.
  */
 export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { ...extra }
   const token = useProjetStore.getState().apiToken
-  return token ? { ...extra, 'X-Probare-Token': token } : { ...extra }
+  if (token) headers['X-Probare-Token'] = token
+  const acteur = acteurCourant()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // accents retires, pas les lettres
+    .replace(/[^\x20-\x7e]/g, '')
+    .trim()
+  if (acteur) headers['X-Probare-Acteur'] = acteur
+  return headers
 }
 
 export function useApi() {

@@ -355,9 +355,11 @@ Réponds UNIQUEMENT avec ce JSON valide :
   "score": {score}
 }}"""
 
+        # 2560 : avec 10 réponses commentées, la synthèse JSON dépassait 1024 tokens
+        # (tokens_sortie = max_tokens) et retombait sur l'évaluation automatique.
         resp = self._messages_create(
             model=MODEL_SIMPLE,
-            max_tokens=1024,
+            max_tokens=2560,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_SIMPLE, "evaluer_controle_interne",
@@ -491,9 +493,11 @@ Réponds UNIQUEMENT avec un JSON valide :
   "urgence": "faible|moyenne|elevee"
 }}"""
 
+        # 4096 : une interprétation détaillée (hypothèses + diligences + projet de
+        # décision) peut dépasser 2048 tokens — une troncature ferait perdre le JSON.
         resp = self._messages_create(
             model=MODEL_DEFAULT,
-            max_tokens=2048,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, "interpreter_exception",
@@ -823,7 +827,7 @@ Réponds UNIQUEMENT avec un JSON valide :
 
         resp = self._messages_create(
             model=MODEL_DEFAULT,
-            max_tokens=3000,
+            max_tokens=6000,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, "interpreter_variations_analytiques",
@@ -898,7 +902,7 @@ Réponds UNIQUEMENT avec un JSON valide :
 
         resp = self._messages_create(
             model=MODEL_DEFAULT,
-            max_tokens=3000,
+            max_tokens=6000,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, "proposer_risques",
@@ -1152,7 +1156,7 @@ Réponds UNIQUEMENT avec un JSON :
 
         resp = self._messages_create(
             model=MODEL_DEFAULT,
-            max_tokens=2048,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, "generer_lettre_circularisation",
@@ -1200,7 +1204,7 @@ Réponds UNIQUEMENT avec un JSON :
 
         resp = self._messages_create(
             model=MODEL_DEFAULT,
-            max_tokens=1024,
+            max_tokens=2560,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, "analyser_reponse_circularisation",
@@ -1261,7 +1265,7 @@ Réponds UNIQUEMENT avec un JSON :
 
         resp = self._messages_create(
             model=MODEL_DEFAULT,
-            max_tokens=1500,
+            max_tokens=2560,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, "conclure_sondage",
@@ -1411,7 +1415,7 @@ Réponds UNIQUEMENT avec un JSON valide (une entrée par assertion non couverte)
 
         resp = self._messages_create(
             model=MODEL_DEFAULT,
-            max_tokens=2048,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, "proposer_procedures_complementaires",
@@ -1468,7 +1472,7 @@ Réponds UNIQUEMENT avec un JSON valide :
 
         resp = self._messages_create(
             model=MODEL_DEFAULT,
-            max_tokens=1024,
+            max_tokens=2560,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, "proposer_ecriture_ajustement",
@@ -1547,9 +1551,11 @@ Réponds UNIQUEMENT avec ce JSON valide :
   "conclusion_proposee": "Projet de conclusion au conditionnel, prêt à être validé ou modifié par l'auditeur"{fraude_json}
 }}"""
 
+        # 4096 : la variante « fraude » ajoute la liste risques_fraude à la réponse ;
+        # à 2048 le JSON était tronqué (tokens_sortie = max_tokens) et la synthèse perdue.
         resp = self._messages_create(
             model=MODEL_DEFAULT,
-            max_tokens=2048,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, f"evaluer_diligence_{diligence.get('code')}",
@@ -1617,7 +1623,7 @@ Réponds UNIQUEMENT avec un JSON :
 
         resp = self._messages_create(
             model=MODEL_DEFAULT,
-            max_tokens=3000,
+            max_tokens=6000,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_DEFAULT, f"generer_lettre_{type_lettre}",
@@ -1739,7 +1745,7 @@ Réponds UNIQUEMENT avec un JSON valide :
 
         resp = self._messages_create(
             model=MODEL_ESCALADE,
-            max_tokens=4000,
+            max_tokens=6000,
             messages=[{"role": "user", "content": prompt}],
         )
         self._log(MODEL_ESCALADE, "proposer_opinion",

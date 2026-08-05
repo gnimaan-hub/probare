@@ -3,7 +3,8 @@ import { useProjetStore } from '../../stores/projetStore'
 import { Spinner } from '../ui/Spinner'
 
 interface HeaderProps {
-  title: string
+  /** Texte, ou composition libre (icône + libellé, fil d'Ariane…). */
+  title: React.ReactNode
   subtitle?: string
   actions?: React.ReactNode
 }
@@ -17,7 +18,7 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
         <motion.div
           initial={{ opacity: 0, x: -8 }}
           animate={{ opacity: 1, x: 0 }}
-          key={title}
+          key={typeof title === 'string' ? title : undefined}
         >
           <h1 className="text-base font-semibold text-slate-900 truncate">{title}</h1>
           {subtitle && (

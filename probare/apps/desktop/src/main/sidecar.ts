@@ -11,6 +11,25 @@ let sidecarPort: number = 8765
 // Jeton partagé entre le renderer et le sidecar, régénéré à chaque démarrage.
 const sidecarToken: string = randomBytes(32).toString('hex')
 
+// Dernières lignes d'erreur du moteur, conservées pour être montrées à
+// l'utilisateur si le démarrage échoue. Sans elles, l'écran d'erreur ne peut
+// dire que « le moteur n'a pas démarré » — ce qui n'aide personne à comprendre
+// s'il manque Python, une dépendance, ou si le port est occupé.
+const derniersMessagesErreur: string[] = []
+const MAX_LIGNES_ERREUR = 40
+
+function retenirErreur(texte: string): void {
+  for (const ligne of texte.split(/\r?\n/)) {
+    if (!ligne.trim()) continue
+    derniersMessagesErreur.push(ligne)
+    if (derniersMessagesErreur.length > MAX_LIGNES_ERREUR) derniersMessagesErreur.shift()
+  }
+}
+
+export function getSidecarErrorLog(): string {
+  return derniersMessagesErreur.join('\n')
+}
+
 async function findFreePort(start = 8765): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer()
@@ -67,10 +86,21 @@ export async function startSidecar(): Promise<void> {
   sidecarProcess.stdout?.on('data', (d: Buffer) =>
     console.log('[sidecar]', d.toString().trim())
   )
-  sidecarProcess.stderr?.on('data', (d: Buffer) =>
-    console.error('[sidecar:err]', d.toString().trim())
-  )
+  sidecarProcess.stderr?.on('data', (d: Buffer) => {
+    const texte = d.toString()
+    retenirErreur(texte)
+    console.error('[sidecar:err]', texte.trim())
+  })
+  // Un exécutable absent ou non lançable ne produit pas de stderr : l'échec
+  // arrive par 'error', qu'il faut retenir aussi sous peine d'écran d'erreur vide.
+  sidecarProcess.on('error', (err) => {
+    retenirErreur(`Lancement impossible : ${err.message}`)
+    console.error('[sidecar] Lancement impossible :', err)
+  })
   sidecarProcess.on('exit', (code) => {
+    if (code !== 0 && code !== null) {
+      retenirErreur(`Le moteur s'est arrêté avec le code ${code}.`)
+    }
     console.log('[sidecar] Processus terminé avec le code', code)
     sidecarProcess = null
   })

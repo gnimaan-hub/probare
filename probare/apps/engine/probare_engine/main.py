@@ -1,20 +1,19 @@
 """Point d'entrée FastAPI — sidecar Probare."""
 import os
 import re
-from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-# Charger .env depuis la racine probare/ (4 niveaux au-dessus de ce fichier)
-try:
-    from dotenv import load_dotenv
-    _env_file = Path(__file__).parent.parent.parent.parent / ".env"
-    if _env_file.exists():
-        load_dotenv(_env_file)
-except ImportError:
-    pass
+# Publier la clé API Claude dans l'environnement du processus. La déduction du
+# chemin de `.env` depuis `__file__` ne tient pas une fois l'application gelée
+# par PyInstaller (les sources sont dépliées dans un répertoire temporaire) :
+# la résolution est déportée dans cle_api, qui couvre les deux modes.
+from .cle_api import installer_cle_api
 
+installer_cle_api()
+
+from .acteur import ENTETE_ACTEUR, definir_acteur, reinitialiser_acteur
 from .api.routes import router
 
 app = FastAPI(
@@ -54,6 +53,21 @@ async def verifier_jeton(request: Request, call_next):
     return await call_next(request)
 
 
+# ─── Identité de l'auteur des actions (ISA 230) ──────────────────────────────
+# Le renderer transmet le « Responsable signataire » de la fiche Cabinet sur
+# chaque requête ; toute écriture au journal l'enregistre. Voir acteur.py pour
+# pourquoi ce n'est pas — et n'a pas à être — une authentification.
+
+
+@app.middleware("http")
+async def rattacher_acteur(request: Request, call_next):
+    token = definir_acteur(request.headers.get(ENTETE_ACTEUR))
+    try:
+        return await call_next(request)
+    finally:
+        reinitialiser_acteur(token)
+
+
 # ─── Verrou lecture seule des dossiers archivés ──────────────────────────────
 # Un dossier archivé est scellé : toute mutation (POST/PATCH/PUT/DELETE) est
 # refusée, à l'exception du désarchivage explicite qui, lui, est journalisé.
@@ -67,7 +81,13 @@ async def verrou_archive(request: Request, call_next):
         if m and (m.group(2) or "") != "/desarchiver":
             projet_id = m.group(1)
             try:
-                from .api.routes import _get_db
+                from .api.routes import DATA_DIR, _get_db
+                # Ne pas ouvrir la base d'un projet qui n'existe pas : `_get_db`
+                # la CRÉE, et une requête portant un identifiant bien formé mais
+                # inconnu sèmerait un dossier de mission vide dans les données de
+                # l'utilisateur. Sans base, il n'y a rien à archiver.
+                if not (DATA_DIR / projet_id / "audit.db").exists():
+                    return await call_next(request)
                 projet = _get_db(projet_id).get_projet(projet_id)
                 if projet and projet.get("archive"):
                     return JSONResponse(

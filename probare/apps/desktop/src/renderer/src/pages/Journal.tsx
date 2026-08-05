@@ -85,6 +85,17 @@ export function Journal() {
                           {entry.type.replace('_', ' ')}
                         </span>
                         <span className="text-xs text-slate-400">{formatDate(entry.horodatage)}</span>
+                        {/* ISA 230 : la piste d'audit doit identifier l'auteur.
+                            Les lignes antérieures à l'introduction de la colonne
+                            n'en portent pas — on le dit plutôt que de laisser
+                            croire à une action anonyme du logiciel. */}
+                        {entry.acteur ? (
+                          <span className="text-xs text-slate-500 truncate" title={entry.acteur}>
+                            · {entry.acteur}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-300 italic">· auteur non renseigné</span>
+                        )}
                       </div>
                       <pre className="mt-1 text-xs text-slate-600 font-mono overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
                         {typeof entry.payload === 'object'

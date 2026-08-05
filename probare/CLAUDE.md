@@ -35,9 +35,10 @@ Trois règles d'or :
    ne doit être écrite en dur dans un texte destiné à l'utilisateur : passer par
    `normes.norme(nnn)` / `normes.reformater_refs()` (backend) ou `normeLabel()` (frontend).
 
-6. **Tout est journalisé.** Chaque transition d'état, chaque appel LLM et chaque action humaine
-   est écrit dans la piste d'audit (table `journal`, affichée « Historique » dans l'UI — ne pas
-   la confondre avec le journal comptable).
+6. **Tout est journalisé, et l'auteur est nommé.** Chaque transition d'état, chaque appel LLM
+   et chaque action humaine est écrit dans la piste d'audit (table `journal`, affichée
+   « Historique » dans l'UI — ne pas la confondre avec le journal comptable), avec le nom de
+   son auteur en colonne `acteur` (ISA 230). Voir « Identité de l'auteur » ci-dessous.
 
 7. **Tests unitaires pour chaque contrôle.** Chaque contrôle déterministe a un test avec des
    données équilibrées/correctes ET des données déséquilibrées/incorrectes.
@@ -81,6 +82,54 @@ probare/
 - On ne passe à `generation` que si toutes les exceptions sont `tranchee` et que le
   cumul des anomalies non corrigées respecte le seuil (NEP 450) ou est confirmé.
 - `opinion` est manuel — Probare ne signe pas.
+
+## Identité de l'auteur des actions (ISA 230 — module `acteur.py`)
+
+Une documentation d'audit qui n'identifie pas la personne ayant exécuté le
+travail ne satisfait pas ISA 230. La piste d'audit porte donc, en plus du quoi
+et du quand, le **qui**.
+
+- Le nom est le **responsable signataire de la fiche Cabinet** (page
+  Configuration, `lib/cabinet.ts` côté renderer). Celui qui engage le cabinet
+  est celui qui répond des diligences enregistrées.
+- Il voyage sur **chaque requête** dans l'en-tête `X-Probare-Acteur`, posé par
+  `authHeaders()`. Les accents en sont retirés : un en-tête HTTP ne transporte
+  que du latin-1 et `fetch` lèverait sur « Awalé », cassant l'appel entier. Les
+  livrables signés portent, eux, le nom complet non dégradé.
+- Côté moteur, un middleware le dépose dans un `ContextVar` que `db.log()` lit
+  par défaut. Le nom n'est PAS un paramètre de `log()` : celui-ci est appelé
+  depuis des centaines de points, et chaque oubli produirait une ligne anonyme —
+  exactement ce qu'on supprime. La propagation jusqu'aux routes **synchrones**
+  (exécutées dans un thread de travail par Starlette) est figée par un test.
+- **Ce n'est pas une authentification.** Le poste est mono-utilisateur, le
+  moteur n'écoute que sur 127.0.0.1 derrière un jeton partagé. C'est une
+  *attribution* : elle documente qui a mené la diligence, elle n'ouvre aucun
+  droit. Ne pas la transformer en contrôle d'accès sans repenser le modèle.
+- Fiche cabinet non renseignée ⇒ pas d'en-tête ⇒ `acteur` NULL, affiché
+  « auteur non renseigné ». Un état visible vaut mieux qu'un nom inventé ; les
+  lignes antérieures à l'introduction de la colonne restent NULL, on n'attribue
+  pas rétroactivement un auteur qui n'a jamais été enregistré.
+
+## Clé API et construction de l'installeur
+
+`cle_api.py` résout la clé dans l'ordre : variable d'environnement, `.env` à
+côté de l'exécutable (ou à la racine du dépôt en développement), puis **clé
+gravée dans le binaire à la construction**. La déduction du chemin de `.env`
+depuis `__file__` ne tient pas une fois l'application gelée par PyInstaller.
+
+`apps/engine/build_engine.py` grave la clé, lance PyInstaller
+(`probare_engine.spec`), dépose le résultat dans `apps/desktop/resources/engine/`
+puis **supprime le fichier de clé de l'arbre source**. Il est aussi dans
+`.gitignore` : la clé ne doit jamais entrer dans l'historique.
+
+⚠️ **La clé gravée n'est pas un secret** — elle est extractible du binaire livré.
+Ce mode ne vaut que pour une démonstration remise à un cabinet identifié, clé
+révoquée en fin de test. Voir `docs/INSTALLATION.md`.
+
+`GET /api/health` expose `llm_disponible` (jamais la valeur de la clé) : sans
+clé, le moteur saute les interprétations automatiques en silence, et le dossier
+se lirait comme « l'IA n'a rien trouvé à signaler ». Le bandeau du `Layout` lève
+l'ambiguïté.
 
 ## Référentiel de normes : ISA (défaut) ou NEP (option)
 

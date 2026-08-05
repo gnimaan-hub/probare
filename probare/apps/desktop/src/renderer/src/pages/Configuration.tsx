@@ -8,63 +8,10 @@ import { Header } from '../components/layout/Header'
 import { Spinner } from '../components/ui/Spinner'
 import { useToast } from '../hooks/useToast'
 import { useApi } from '../hooks/useApi'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface CabinetConfig {
-  nom: string
-  forme_juridique: string
-  adresse_rue: string
-  adresse_code_postal: string
-  adresse_ville: string
-  adresse_pays: string
-  telephone: string
-  email: string
-  site_web: string
-  numero_agrement: string
-  numero_ordre: string
-  inscription_cour_appel: string
-  responsable_nom: string
-  responsable_titre: string
-  logo_data_url: string
-}
-
-const DEFAULT_CONFIG: CabinetConfig = {
-  nom: '',
-  forme_juridique: '',
-  adresse_rue: '',
-  adresse_code_postal: '',
-  adresse_ville: '',
-  adresse_pays: 'Djibouti',
-  telephone: '',
-  email: '',
-  site_web: '',
-  numero_agrement: '',
-  numero_ordre: '',
-  inscription_cour_appel: '',
-  responsable_nom: '',
-  responsable_titre: 'Commissaire aux comptes',
-  logo_data_url: '',
-}
-
-const STORAGE_KEY = 'probare_cabinet_config'
+import { CabinetConfig, loadCabinet, saveCabinet } from '../lib/cabinet'
 
 const FORMES_JURIDIQUES = ['SCP', 'SARL', 'SA', 'SAS', 'Exercice individuel', 'Association', 'Autre']
 const TITRES = ['Commissaire aux comptes', 'Expert-comptable', 'Auditeur', 'Associé', 'Directeur', 'Autre']
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function loadConfig(): CabinetConfig {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return { ...DEFAULT_CONFIG, ...JSON.parse(raw) }
-  } catch { /* ignore */ }
-  return { ...DEFAULT_CONFIG }
-}
-
-function saveConfig(config: CabinetConfig) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
-}
 
 // Miroir de CHAMPS_CABINET_REQUIS côté moteur : sans ces champs, le bloc de
 // signature est incomplet et le moteur refuse de produire les livrables signés.
@@ -214,7 +161,7 @@ function SectionReferentiel() {
 
 export function Configuration() {
   const toast = useToast()
-  const [form, setForm] = useState<CabinetConfig>(loadConfig)
+  const [form, setForm] = useState<CabinetConfig>(loadCabinet)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [logoPreview, setLogoPreview] = useState(form.logo_data_url || '')
@@ -234,7 +181,7 @@ export function Configuration() {
     }
     setSaving(true)
     await new Promise((r) => setTimeout(r, 300))
-    saveConfig(form)
+    saveCabinet(form)
     setSaving(false)
     setSaved(true)
     toast.success('Configuration du cabinet enregistrée.')

@@ -15,6 +15,28 @@ build/
 .env.local
 .env.*.local
 
+# Clé API intégrée au binaire à la construction (générée par build_engine.py).
+# Elle ne doit jamais entrer dans l'historique : elle est écrite en clair.
+probare/apps/engine/probare_engine/_cle_integree.py
+
+# Données d'audit réelles. Les jeux de test synthétiques (Harbi, Dalol, Marsa)
+# restent versionnés ; un dossier client identifiable ne l'est jamais — états
+# financiers, situation des prêts et pièces administratives d'une entreprise
+# réelle n'ont pas leur place dans un dépôt de code, et l'archive dépasse de
+# toute façon la limite de 100 Mo par fichier de GitHub.
+probare/test_data/ARULOS_EF_2025/
+probare/test_data/ARULOS_EF_2025.zip
+
+# Livrables produits pendant les tests (contiennent des données de mission)
+/*.docx
+/*.pdf
+
+# Artefacts de construction du moteur et de l'installeur
+probare/apps/engine/build/
+probare/apps/engine/dist/
+probare/apps/desktop/resources/engine/
+probare/apps/desktop/release/
+
 # Logs
 *.log
 npm-debug.log*

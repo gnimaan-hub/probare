@@ -93,13 +93,24 @@ def _get_clients_db():
     return _clients_db_instance
 
 
-def _get_db(projet_id: str) -> ProjectDB:
+def _get_db(projet_id: str, creer: bool = False) -> ProjectDB:
+    """Base du projet demandé.
+
+    `creer` n'est vrai que sur la route de création. Ouvrir une base absente la
+    CRÉE : sans cette garde, une requête portant un identifiant bien formé mais
+    inconnu semait un dossier de mission vide dans les données de l'utilisateur,
+    puis échouait en 500 sur la clé étrangère du journal — au lieu du 404 qu'elle
+    doit rendre.
+    """
     _safe_id(projet_id, "Projet")
     with _db_cache_lock:
         db = _db_cache.get(projet_id)
         if db is not None:
             _db_cache.move_to_end(projet_id)  # LRU : marquer comme récemment utilisé
             return db
+        db_path = DATA_DIR / projet_id / "audit.db"
+        if not creer and not db_path.exists():
+            raise HTTPException(404, "Projet introuvable.")
         # Éviction du moins récemment utilisé (jamais celui qu'on vient d'accéder)
         while len(_db_cache) >= _DB_CACHE_MAX:
             oldest_key, oldest_db = _db_cache.popitem(last=False)
@@ -107,7 +118,6 @@ def _get_db(projet_id: str) -> ProjectDB:
                 oldest_db.close()
             except Exception:
                 pass
-        db_path = DATA_DIR / projet_id / "audit.db"
         db = ProjectDB(db_path)
         db.connect()
         _db_cache[projet_id] = db
@@ -396,7 +406,21 @@ def _preconditions_check(
 
 @router.get("/health")
 def health():
-    return {"status": "ok", "service": "probare-engine", "version": "0.2.0"}
+    """État du moteur.
+
+    `llm_disponible` dit si une clé API est configurée — sans jamais rendre sa
+    valeur. Probare est un logiciel IA-first : sans clé, les interprétations
+    automatiques sont ignorées en silence côté moteur. L'interface a besoin de
+    ce signal pour le dire clairement plutôt que de laisser croire que l'IA a
+    examiné le dossier et n'a rien trouvé.
+    """
+    from ..cle_api import cle_disponible
+    return {
+        "status": "ok",
+        "service": "probare-engine",
+        "version": "0.2.0",
+        "llm_disponible": cle_disponible(),
+    }
 
 
 # ─── Configuration cabinet (référentiel de normes) ───────────────────────────
@@ -490,7 +514,7 @@ def list_projets():
 @router.post("/projets")
 def create_projet(body: CreateProjetBody):
     projet_id = str(uuid.uuid4())
-    db = _get_db(projet_id)
+    db = _get_db(projet_id, creer=True)
     data = {
         "id": projet_id,
         **body.model_dump(),

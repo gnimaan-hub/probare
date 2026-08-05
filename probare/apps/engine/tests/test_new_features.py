@@ -232,3 +232,24 @@ def test_cycle_ignore_si_non_couvert(tmp_db):
     p = tmp_db.get_projet("p7")
     assert "achats" not in p["cycles_couverts"]
     assert "tresorerie" in p["cycles_couverts"]
+
+
+# ─── Verrou lecture seule des dossiers archivés ──────────────────────────────
+
+def test_verrou_archive_ne_cree_pas_de_dossier_pour_un_projet_inconnu():
+    """Le middleware ouvrait la base pour lire l'indicateur « archivé ». Or
+    l'ouverture CRÉE la base : une requête portant un identifiant bien formé
+    mais inexistant semait un dossier de mission vide dans les données de
+    l'utilisateur, que rien ensuite ne venait nettoyer."""
+    import uuid
+    from fastapi.testclient import TestClient
+    from probare_engine.api.routes import DATA_DIR
+    from probare_engine.main import app
+
+    inconnu = str(uuid.uuid4())
+    with TestClient(app) as client:
+        client.patch(f"/api/projets/{inconnu}", json={"nom": "fantome"})
+
+    assert not (DATA_DIR / inconnu).exists(), (
+        "une requête sur un projet inexistant a créé un dossier de mission"
+    )
